@@ -1,6 +1,6 @@
 # Porting from Pluto — what is possible, and the rules
 
-**Status:** nothing is ported. Decision D-12 (PRD): everything is built from scratch; a port is considered only **after checkpoint C4**.
+**Status:** nothing is ported yet. One exception is approved (§5). Decision D-12 (PRD): everything is built from scratch; a port is considered only **after checkpoint C4**.
 **Source:** the owner's Pluto repository, commit `eb4d520`. MIT licence, copyright notice "QUORBIT TECHNOLOGIES".
 
 ## 1. What Pluto has (measured in the repo)
@@ -42,3 +42,15 @@ Every module uses Pluto's shared event bus, clock and database wrapper. Porting 
 5. **Adapt to our contracts**, not the other way round. Ported tests must pass against our schema.
 6. **Disclose it** in the submission (HACKATHON_PLAN checklist) and be ready to explain every ported file in the interview.
 7. **Never port anything for voice, audio, LLM or meetings.**
+
+## 5. Approved exception (PRD D-13): UI theme and base components
+| Item | Source (Pluto `eb4d520`) | Destination | Owner | Task |
+|---|---|---|---|---|
+| Theme and styles | `src/index.css` (261 lines) | `ui/src/index.css` | D2 | T-002 |
+| 12 base components | `src/components/ui/` (`badge`, `button`, `checkbox`, `dialog`, `dropdown-menu`, `input`, `kbd`, `popover`, `slider`, `switch`, `toggle-group`, `tooltip`; about 352 lines) | `ui/src/components/ui/` | D2 | T-002 |
+
+- **Rights:** QUORBIT TECHNOLOGIES is the repository owner's company; one contributor appears in the history. Because the owner holds the rights, the MIT notice is not legally required for this code.
+- **Scope limit:** only the files above. The shell, pages, hooks and anything importing Pluto's `@/ipc` are **not** ported.
+- **Adapt:** replace any import of Pluto modules (`@/lib/...`) with local equivalents; no Pluto types or backend calls come along.
+- **Submission:** the owner has decided not to list this port separately. This repository's history and this file record the origin. No document in this pack states that all code was written during the contest.
+- **Other candidates in §3** (notes, focus, scheduler) remain under D-12 and its disclosure rule (§4, rule 6) until the owner decides otherwise.
