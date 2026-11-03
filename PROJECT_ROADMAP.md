@@ -12,11 +12,12 @@
 > **Active milestone: M0 — Foundation and contracts.**
 > Exit criteria:
 > - the app builds;
-> - the shared types are frozen;
-> - every command is stubbed;
-> - the mock API is in place;
+> - the shared types are frozen (T-003, T-003b);
+> - every command is stubbed (T-006) and the mock API is in place (T-007);
+> - the contract CI checks run (T-014, T-015);
 > - the Day-1 checks (T-IPC-01, T-LLM-01, T-GN-01) have been run and recorded.
 >
+> **First hour:** D1 merges T-001a (workspace skeleton). D2 starts T-002, T-008 and T-012, which need nothing from D1.
 > Nothing in M1 or later starts until M0 exits, except tasks marked "parallel-safe" in §4.
 
 ---
@@ -66,19 +67,23 @@
 ### M0 — Foundation and contracts
 | ID | Story / Feature | Task → deliverable | Owner | Priority | Dependencies | Est. | Acceptance criteria | Tests | Status |
 |---|---|---|---|---|---|---|---|---|---|
-| T-001 | E0 Repo | Create git repo, Tauri v2 workspace (`app`, `crates/core`, `crates/voice`, `ui`), CI running fmt, clippy, cargo test, lint, typecheck, vitest → green `main` | D1 | P0 | — | M | `pnpm tauri dev` opens an empty window; CI green on the first PR | CI run | To do |
-| T-002 | E0 UI shell | Vite + React + TS + Tailwind + shadcn, router, sidebar (all pages as placeholders), voice bar placeholder | D2 | P0 | T-001 | M | Every sidebar route renders; lint and typecheck clean | Vitest render test per route | To do |
-| T-003 | E0 Contracts | `core/types.rs` + `voice/types.rs` with every type in API_CONTRACTS §3; `ts-rs` export script | D1 | P0 | T-001 | M | Generated TS compiles in `ui`; **D2 approves the PR** | `cargo test` export; `pnpm typecheck` | To do |
-| T-004 | E3 Contracts | `Llm` + `Decider` traits, `LlmRequest`/`LlmResponse`, `MockLlm` with fixtures (`intent_*.json`, `extract_as1.json`, `recall_priya.json`) | D2 | P0 | T-001 | S | Traits compile; MockLlm returns fixtures and can simulate 429 and timeouts; **D1 approves** | Unit | To do |
-| T-005 | E0 Schema | `001_init.sql` per DATA_SCHEMA + migration runner | D1 | P0 | T-001 | M | Applies on an empty DB; `user_version` = 1 | T-DB-01..05 | To do |
-| T-006 | E0 Stubs | Register every IPC command (API_CONTRACTS §4) as a stub returning fixture data; emit sample events | D1 | P0 | T-003 | M | The UI can `invoke` every command and receive every event | Smoke test invoking each command | To do |
-| T-007 | E0 Mocks | `ui/src/lib/mockApi.ts` with the same signatures as the generated bindings, every state including errors; `VITE_MOCK=1` switch | D2 | P0 | T-003 | M | Each screen can be driven through loading, empty, error and success | Vitest | To do |
+| T-001a | E0 Repo | **Workspace skeleton:** root `Cargo.toml` (glob members `app`, `crates/*`), empty crates `types`, `core`, `voice`, `intel`, all `types/src/*.rs` module files with `lib.rs` listing them, `.gitignore`. **Merge within the first hour** | D1 | P0 | — | S | `cargo build` succeeds on the empty workspace; D2 can add code under `crates/intel` without editing any shared file | `cargo build` | To do |
+| T-001b | E0 Repo | Tauri v2 `app` shell (`ui/` is **not** touched; the dev server is whatever D2 creates), CI running fmt, clippy, cargo test, lint, typecheck, vitest, no-`tauri`-outside-`app` check → green `main` | D1 | P0 | T-001a, T-002 | M | `pnpm tauri dev` opens a window showing the UI; CI green on the first PR | CI run | To do |
+| T-002 | E0 UI shell | Create `ui/`: Vite + React + TS + Tailwind + shadcn, router, sidebar (all pages as placeholders), voice bar placeholder | D2 | P0 | — (parallel-safe; `ui/` is D2-owned and runs in the browser) | M | Every sidebar route renders; lint and typecheck clean | Vitest render test per route | To do |
+| T-003 | E0 Contracts | `crates/types`: `ids`, `time`, `error`, `personal`, `voice`, `speech` + traits `SpeechToText`, `TextToSpeech`, `ToolExecutor`; `ts-rs` export script (`pnpm gen:types`) into `ui/src/lib/api/generated/` | D1 | P0 | T-001a | M | Generated TS compiles in `ui`; **D2 approves the PR** | `cargo test` export; `pnpm typecheck` | To do |
+| T-003b | E3 Contracts | `crates/types/src/{meeting,llm,decide}.rs`: meeting types (API_CONTRACTS §3.3, §3.4), `LlmRequest`/`LlmResponse`, traits `Llm` and `Decider`, `DecideContext`; each with a mock | D2 | P0 | T-001a | M | Types compile; generated TypeScript compiles in `ui`; **D1 approves the PR** | `cargo test` export; `pnpm typecheck` | To do |
+| T-004 | E3 Contracts | Create `crates/intel`; `MockLlm` with fixtures (`intent_*.json`, `extract_as1.json`, `recall_priya.json`) | D2 | P0 | T-001a, T-003b | S | Traits compile; MockLlm returns fixtures and can simulate 429 and timeouts; **D1 approves** | Unit | To do |
+| T-005 | E0 Schema | `001_init.sql` per DATA_SCHEMA + migration runner | D1 | P0 | T-001a | M | Applies on an empty DB; `user_version` = 1 | T-DB-01..05 | To do |
+| T-006 | E0 Stubs | Register every IPC command (API_CONTRACTS §4) in `app/src/commands/registry.rs` as a stub returning fixture data; emit sample events | D1 | P0 | T-003, T-003b | M | The UI can `invoke` every command and receive every event | Smoke test invoking each command | To do |
+| T-007 | E0 Mocks | `ui/src/lib/api/client.ts` (the only `invoke`/`listen` caller) + `ui/src/lib/mock/{meetings,voice,settings,index}.ts` with the same signatures, every state including errors; empty `mock/personal.ts` for D1; `VITE_MOCK=1` switch | D2 | P0 | T-003, T-003b | M | Each screen can be driven through loading, empty, error and success | Vitest | To do |
 | T-008 | E8 Test data | Scripts + ground truth for AS-1..AS-4 (synthetic) | D2 | P0 | — (parallel-safe) | M | Ground-truth files list the expected items and intents | Review by D1 | To do |
-| T-009 | E1 Rust audio IPC | `audio_push` (raw binary body + `x-session-id`) → in-memory sink + WAV writer; playback `Channel<Vec<u8>>` that sends a test tone | D1 | P0 | T-001 | M | 1,024-byte frames are received in order; the tone plays in the UI | Unit + T-IPC-01 | To do |
+| T-009 | E1 Rust audio IPC | `audio_push` (raw binary body + `x-session-id`) → in-memory sink + WAV writer; playback `Channel<Vec<u8>>` that sends a test tone | D1 | P0 | T-001a | M | 1,024-byte frames are received in order; the tone plays in the UI | Unit + T-IPC-01 | To do |
 | T-010 | E1 UI audio | Capture worklet (device rate → 16 kHz PCM16, 1,024-byte frames) + sender; gapless player queue with `stop()` | D2 | P0 | T-002 | L | Frames hold the correct sample count; playback has no gaps between chunks | Unit test of the downsampler; T-IPC-01 | To do |
 | T-011 | E1 Day-1 check | **T-IPC-01** joint run: 10 s capture → Rust → WAV plays back; tone playback. Record the result. **If it fails:** open T-011F (`cpal` capture, D1, L) | D1 | P0 | T-009, T-010 | S | Result recorded in `docs/results/` | T-IPC-01 | To do |
-| T-012 | E3 Day-1 check | **T-LLM-01:** minimal Gemini + Groq adapters; schema-valid JSON on 5 prompts each; record free-tier limits; choose model IDs | D2 | P0 | T-004 | M | 10/10 valid JSON; limits and model IDs recorded in settings defaults | T-LLM-01 | To do |
-| T-013 | E2 Day-1 check | **T-GN-01:** `examples/` for Gnani REST clip, Realtime clip and TTS; record credits used | D1 | P0 | T-001 | S | All three succeed with the team key | T-GN-01 | To do |
+| T-012 | E3 Day-1 check | **T-LLM-01:** minimal Gemini + Groq adapters; schema-valid JSON on 5 prompts each; record free-tier limits; choose model IDs | D2 | P0 | — (parallel-safe; standalone script first, adapters move into `intel` after T-004) | M | 10/10 valid JSON; limits and model IDs recorded in settings defaults | T-LLM-01 | To do |
+| T-013 | E2 Day-1 check | **T-GN-01:** `examples/` for Gnani REST clip, Realtime clip and TTS; record credits used | D1 | P0 | T-001a | S | All three succeed with the team key | T-GN-01 | To do |
+| T-014 | E0 Contract CI | CI job `contracts`: (a) regenerate TypeScript types and fail on any diff; (b) compare command names in API_CONTRACTS §4, `registry.rs`, `client.ts` and every `mock/*.ts`; (c) fail if a crate other than `app` depends on `tauri`; (d) fail if a fixture's `contract_version` ≠ `CONTRACT_VERSION` | D1 | P0 | T-006, T-007 | M | Deliberately renaming a command makes CI fail | The CI job itself, shown failing then passing | To do |
+| T-015 | E3 Fixture tests | Rust tests in `intel` and `core`: every file in `test-data/fixtures/` deserializes into its Rust type; `JSON → type → JSON` round-trip | D2 | P0 | T-003, T-003b, T-008 | S | A fixture with a wrong field name fails `cargo test` | T-CT-01 | To do |
 
 ### M1 — Live voice I/O and services
 | ID | Story / Feature | Task → deliverable | Owner | Priority | Dependencies | Est. | Acceptance criteria | Tests | Status |
@@ -86,7 +91,7 @@
 | T-101 | E2 Realtime | Prisma Realtime client: headers, frames, `commit`, reconnect, rotation at 14 min → `TranscriptSegment` stream | D1 | P0 | T-013, T-003 | L | Live clip gives segments with `detected_language_code`; simulated close code 1001 reconnects | Contract (fixture WS), T-FH-04 | To do |
 | T-102 | E2 TTS | Timbre WS client → base64 → PCM 24 kHz → playback Channel; REST mp3 helper | D1 | P0 | T-013, T-009 | M | "Ho gaya" in hi-IN plays within the measured first-audio time | Contract; audible check | To do |
 | T-103 | E2 Reliability | Request queues (1 in flight per REST family), retry/backoff, Gnani error → `AppError` mapping, privacy-log write on every call | D1 | P0 | T-005 | M | A 429 → 200 sequence succeeds silently; 402 → `InsufficientCredit` | T-FH-02, T-FH-03, T-PR-02 | To do |
-| T-104 | E3 Router | LLM router per task (Intent: Groq → Gemini; others: Gemini → Groq), timeouts, one JSON-repair attempt, `fell_back` flag | D2 | P0 | T-012 | M | A mocked 429 on the primary is answered by the fallback; both failing → `LlmUnavailable` | T-FH-07, T-FH-08 | To do |
+| T-104 | E3 Router | LLM router per task (Intent: Groq → Gemini; others: Gemini → Groq), timeouts, one JSON-repair attempt, `fell_back` flag | D2 | P0 | T-012, T-004 | M | A mocked 429 on the primary is answered by the fallback; both failing → `LlmUnavailable` | T-FH-07, T-FH-08 | To do |
 | T-105 | E7 Keys and settings | Keychain (Gnani, Gemini, Groq) + settings service + `voice_settings_*` / `voice_key_*` commands | D1 | P0 | T-005 | M | Keys survive a restart and never appear in the DB or logs | T-PR-01 | To do |
 | T-106 | E6 Tasks backend | Task service + commands (`tasks_list`, `task_create`, `task_update`, `task_delete`) | D1 | P0 | T-005 | M | Views Today/Upcoming/All/Done return the correct sets | T-PP-01 (backend part) | To do |
 | T-107 | E6 Reminders | Reminder service + scheduler + OS notification + missed-on-startup; commands | D1 | P0 | T-005 | M | Fires within 2 s of `remind_at`; a missed reminder fires once on startup | T-PP-01 | To do |
@@ -164,21 +169,29 @@
 
 ## 5. Dependency graph (critical path in bold)
 ```
-T-001 ─┬─ T-002 ─ T-010 ─┐
-       ├─ T-003 ─ T-006 / T-007
-       ├─ T-004 ─ T-012 ─ T-104 ─┬─ T-206a ─ T-206b ─┬─ **T-207** ─ T-209(C2)
-       ├─ T-005 ─ T-106 ─────────┼───────────────────┘
-       ├─ T-009 ─────────────────┴─ **T-011** ─ **T-201** ─ T-202
-       └─ T-013 ─ **T-101** ─┬─ **T-203** (needs T-103) ─ T-205
-                             └─ T-102 ─ **T-301** ─ **T-303** (needs T-302, T-106, T-107) ─ T-306(C3)
-T-305 (needs T-206b) ─ T-306(C3) ─ T-402..T-407 ─ **T-408(C4)** ─ **T-601** ─ T-602 ─ T-603 ─ T-604
+FIRST HOUR
+  T-001a (D1, skeleton) ──┬── T-003 (D1 types) ───┐
+                          ├── T-003b (D2 types) ──┼── T-006 stubs (D1) ─┐
+                          ├── T-005 schema (D1)   │   T-007 client+mocks (D2) ── T-014 contract CI (D1)
+                          └── T-004 MockLlm (D2)  │
+  parallel-safe from minute 0:  T-002 UI shell (D2) ── T-010 audio (D2) · T-008 test data (D2) · T-012 LLM check (D2)
+                                T-009 audio IPC (D1) · T-013 Gnani check (D1) · T-001b app shell (D1, needs T-002)
+
+CRITICAL PATH
+  T-009 + T-010 ── **T-011** mic/IPC check ── **T-201** recorder ── T-202 captions
+  T-013 ── **T-101** Realtime ── **T-203** Batch (needs T-103) ── T-205 speakers
+  T-012 ── T-104 router ── T-206a ── **T-206b** extraction ── **T-207** apply (needs T-106) ── T-209 (C2)
+  T-101 + T-102 ── **T-301** runtime ── **T-303** tools (needs T-302, T-106, T-107) ── T-306 (C3)
+  T-206b ── T-305 recall ── T-306 (C3)
+  C3 ── T-402..T-407 ── **T-408** (C4) ── **T-601** freeze ── T-602 ── T-603 ── T-604
 ```
 
 ## 6. Definition of Done (every task)
-1. Code merged to `develop` through a reviewed PR with all merge checks green (HACKATHON_PLAN §4).
+1. Code merged to `develop` through a reviewed PR with all merge checks green (`docs/common/WORKING_AGREEMENT.md` §4).
 2. The task's tests are written and passing. UI tasks are checked on mocks in every state.
 3. The acceptance criteria are verified by the owner. Live-service tasks are verified with a real call once.
-4. Contracts are unchanged, or the contract documents were updated first and approved by both developers.
+4. Contracts are unchanged, or a contract PR (`WORKING_AGREEMENT.md` §5) was merged first and approved by both developers.
+   Fixtures and mocks match the contract (CI-checked).
 5. No secrets in code, logs or fixtures. Synthetic data only.
 6. Board status updated.
 

@@ -1,0 +1,23 @@
+# Build output
+/target/
+**/target/
+node_modules/
+dist/
+ui/dist/
+
+# Local secrets and config. Keys live in the OS keychain at runtime.
+.env
+.env.local
+
+# Recordings and app data must never be committed
+*.wav
+!test-data/audio/**/*.wav
+recordings/
+app-data/
+
+# Editors and OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db

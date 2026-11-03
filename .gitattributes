@@ -1,0 +1,16 @@
+# Normalise line endings so Windows and other editors never produce whole-file diffs.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+# Binary files
+*.png binary
+*.jpg binary
+*.ico binary
+*.wav binary
+*.mp3 binary
+*.m4a binary
+*.woff2 binary
+# Generated files: collapse in diffs and never hand-edit
+ui/src/lib/api/generated/** linguist-generated=true -diff
+Cargo.lock -diff
+pnpm-lock.yaml -diff

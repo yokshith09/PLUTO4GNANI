@@ -19,6 +19,15 @@
 | T-LLM-01 | Gemini and Groq JSON output with the chosen models | Schema-valid JSON on 5 prompts each. Record the free-tier limits from each dashboard |
 | T-GN-01 | Gnani key: REST clip, Realtime clip, TTS | All return successfully. Record the credits used |
 
+### Contract checks (CI, every PR)
+| ID | Check | Pass |
+|---|---|---|
+| T-CT-01 | Every fixture in `test-data/fixtures/` deserializes into its Rust type and round-trips | Pass |
+| T-CT-02 | Regenerating TypeScript types produces no diff | Pass |
+| T-CT-03 | Command names match across API_CONTRACTS §4, `registry.rs`, `client.ts` and every mock | Pass |
+| T-CT-04 | No crate except `app` depends on `tauri`; no dependency cycle between crates | Pass |
+| T-CT-05 | Fixture `contract_version` equals `CONTRACT_VERSION` | Pass |
+
 ## 3. Audio test set (synthetic only)
 | Set | Content | Use |
 |---|---|---|

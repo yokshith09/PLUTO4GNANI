@@ -8,12 +8,14 @@ Work top to bottom. Each item lists the tasks it waits on from Developer 2.
 
 | # | Task | Waits on Developer 2 |
 |---|---|---|
-| 1 | T-001 Repo, workspace, CI | — |
-| 2 | T-003 Shared types (Developer 2 reviews) | — |
+| 1 | **T-001a Workspace skeleton: merge within the first hour** (unblocks D2's Rust work) | — |
+| 2 | T-003 Shared types: personal, voice, speech + 3 traits (Developer 2 reviews) | T-003b (parallel) |
 | 3 | T-005 Schema + migration runner | — |
 | 4 | T-009 `audio_push` + playback Channel | — |
 | 5 | T-013 Gnani Day-1 check | — |
-| 6 | T-006 Stub commands + events | — |
+| 6 | T-006 Stub commands + events (registry lists every command) | T-003b |
+| 6a | T-001b Tauri app shell + CI (needs D2's `ui/` from T-002) | T-002 |
+| 6b | T-014 Contract CI checks | T-007 |
 | 7 | T-011 **Joint mic/IPC check** (you own the result) | T-010 |
 | 8 | T-101 Prisma Realtime client | — |
 | 9 | T-102 Timbre client | — |
@@ -36,4 +38,5 @@ Work top to bottom. Each item lists the tasks it waits on from Developer 2.
 | 26 | T-604 Submission form | T-603 |
 | — | P2 (only after C5): T-701, T-702, T-703, T-704, T-705 | — |
 
-**You review:** every Developer 2 PR touching `voice::llm`, `voice::decide`, `voice::meeting`, `mockApi.ts` or any contract.
+**You review:** every Developer 2 PR touching `crates/types` (their files), `crates/intel`, `ui/src/lib/api`, `ui/src/lib/mock` or any contract.
+**Rules you follow:** [`../common/WORKING_AGREEMENT.md`](../common/WORKING_AGREEMENT.md). Do not edit `crates/intel/**`, `ui/src/features/{meetings,voice,settings}/**`, `ui/src/audio/**` or `crates/types/src/{meeting,llm,decide}.rs` without a PR D2 approves.

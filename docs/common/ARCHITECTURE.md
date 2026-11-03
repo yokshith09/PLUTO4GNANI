@@ -20,32 +20,41 @@ A standalone **Tauri v2** desktop app (Windows is the target):
 │ command + event registration, hotkey, tray, notifications,       │
 │ keychain                                                         │
 └──────────────────────────────┬──────────────────────────────────┘
-┌──────────── crates/voice (no tauri dep) ┼───────────────────────┐
-│ gnani   : realtime (WS), rest, batch, tts (WS + REST), clone,    │
-│           request queues, retry                                   │
-│ runtime : VoiceRuntime state machine, sessions, recorder (WAV)    │
-│ llm     : Llm trait, GeminiClient, GroqClient, router + fallback  │
-│ decide  : rules → LLM                                             │
-│ assistant: tool registry, proposals, execution, context           │
-│ meeting : pipeline, extraction, validation, recall, recap,        │
-│           commitments                                             │
-│ privacy : opt-in checks, outbound log, usage counters             │
-└──────────────────────────────┬──────────────────────────────────┘
-┌──────────── crates/core (no tauri dep) ─────────────────────────┐
+┌──────── crates/voice (D1) ───────┐  ┌──────── crates/intel (D2) ───────┐
+│ gnani   : realtime, rest, batch, │  │ llm     : GeminiClient, GroqClient│
+│           tts, clone, queues,    │  │           router + fallback       │
+│           retry                  │  │ decide  : rules → LLM             │
+│ runtime : state machine,         │  │ meeting : speakers, relevance,    │
+│           sessions, recorder     │  │           extraction, validation, │
+│ assistant: tools, proposals,     │  │           recall, recap,          │
+│           execution, context     │  │           commitments, dates      │
+│ privacy : opt-in, outbound log,  │  │                                   │
+│           usage counters         │  │                                   │
+└───────────────┬──────────────────┘  └───────────────┬───────────────────┘
+        talk only through traits in crates/types (Llm, Decider,
+        SpeechToText, TextToSpeech, ToolExecutor); app wires them
+┌──────────── crates/core (D1, no tauri dep) ─────────────────────┐
 │ db (SQLite, migrations), tasks, reminders (+scheduler), notes,   │
 │ focus, projects, meetings, settings, search (FTS5)               │
+└──────────────────────────────┬──────────────────────────────────┘
+┌──────────── crates/types (shared contracts, no logic) ──────────┐
+│ ids, time, error, personal, voice, speech, meeting, llm, decide  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-## 2. Repository layout (proposed)
+## 2. Repository layout
+Full ownership, hot-file and branch rules are in `WORKING_AGREEMENT.md`.
 ```
-/app            Tauri shell (src-tauri equivalent): main.rs, commands/, events.rs, keychain.rs
-/crates/core    domain + SQLite + migrations/001_init.sql …
-/crates/voice   Gnani, LLM, runtime, assistant, meeting intelligence
-/ui             React + Vite app (src/audio, src/features, src/lib/api)
+/app            Tauri shell: main.rs, commands/ (registry.rs, personal.rs, voice.rs, meetings.rs, settings.rs), events.rs, keychain.rs   D1
+/crates/types   shared contract types and traits (no logic)                                                                    D1 + D2 (file split)
+/crates/core    domain + SQLite + migrations/001_init.sql …                                                                    D1
+/crates/voice   Gnani clients, runtime, recorder, assistant, privacy                                                           D1
+/crates/intel   LLM layer, decisions, meeting intelligence                                                                     D2
+/ui             React + Vite app (src/audio, src/features, src/lib/api, src/lib/mock)                                          D2 (features/personal: D1)
+/test-data      audio-scripts/, ground-truth/, fixtures/                                                                       D2 (some fixtures: D1)
 /docs           this pack
-/test-audio     synthetic scripts + recordings (no real data)
 ```
+Dependency direction: `types ← core ← voice` and `types ← core ← intel`. `voice` and `intel` never depend on each other. Only `app` depends on `tauri`.
 
 ## 3. Tech stack
 | Layer | Technology | Purpose | Status |
@@ -162,7 +171,7 @@ Exact contracts are in API_CONTRACTS §2.
 - **Conversation context:** the last 6 turns in memory (resolves "it", "that task"). Reset after 5 min idle. Turns persisted in `voice_interactions`.
 
 ## 10. Tool execution
-- Tools map to `crates/core` service functions (list in API_CONTRACTS §3.5).
+- Tools map to `crates/core` service functions (list in API_CONTRACTS §3.5). `voice::assistant` implements the `ToolExecutor` trait.
 - **Reads** run directly. **Writes** create a `Proposal` and run only after `voice_proposal_respond(Approve)`.
 - Execution happens in Rust. The UI is never involved in authorising writes, except to show the proposal and send the response.
 

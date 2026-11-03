@@ -25,7 +25,8 @@ docs/
 │   ├── UI_UX_SPEC.md           all screens and states
 │   ├── APPLICATION_FLOWS.md    journeys and failure paths
 │   ├── TESTING_STRATEGY.md     Day-1 checks, audio sets, tests, E2E gate
-│   ├── INTEGRATION_CONTRACT.md ownership, mocks, shared files, checkpoints
+│   ├── WORKING_AGREEMENT.md    ★ ownership map, shared files, branches/PRs, contract changes
+│   ├── INTEGRATION_CONTRACT.md components, frozen-before-parallel order, mocks, checkpoints
 │   └── PPT_FRAMEWORK.md        placeholder (supplied separately)
 ├── dev1/     Developer 1: platform, Gnani I/O, runtime, personal module
 │   ├── FEATURE_SPECS_DEV1.md
@@ -41,7 +42,7 @@ docs/
 | Desktop shell | Tauri v2 (Rust) |
 | UI | React 18 + TypeScript + Vite + Tailwind + shadcn/ui |
 | Audio | **Hybrid:** mic capture and playback in the UI (WebView2 `getUserMedia`, AudioWorklet, Web Audio); everything else in Rust |
-| Rust | tokio, reqwest, tokio-tungstenite, rusqlite (SQLite + FTS5), hound, keyring, ts-rs |
+| Rust | crates `types`, `core`, `voice` (D1) and `intel` (D2); tokio, reqwest, tokio-tungstenite, rusqlite (SQLite + FTS5), hound, keyring, ts-rs |
 | Speech | Gnani Prisma v3.0 (Realtime, Batch, REST), Timbre v3.0 |
 | Reasoning | Gemini (meetings) and Groq (voice commands), each the other's fallback |
 | Decisions | Rules first, then the LLM |

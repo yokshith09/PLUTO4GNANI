@@ -9,9 +9,26 @@
 
 Other documents link here and never redefine these.
 
-**Conventions:**
-- Rust types live in `crates/voice/src/types.rs` and `crates/core/src/types.rs` and are exported to TypeScript with `ts-rs`.
-- Fields are `snake_case`. Timestamps are ms since the Unix epoch (UTC). Dates are `YYYY-MM-DD`.
+**Contract version:** `1` (`CONTRACT_VERSION` in `crates/types/src/lib.rs`). Changes follow `WORKING_AGREEMENT.md` §5.
+
+## 0. Conventions (apply to every type, command, event and fixture)
+| Topic | Rule |
+|---|---|
+| Where types live | `crates/types/src/`: `personal.rs`, `voice.rs`, `speech.rs`, `error.rs`, `ids.rs`, `time.rs` (written by D1); `meeting.rs`, `llm.rs`, `decide.rs` (written by D2). Exported to TypeScript with `ts-rs` into `ui/src/lib/api/generated/` |
+| Field names | `snake_case` in Rust, JSON and TypeScript |
+| Enums on the wire | `snake_case` strings (`#[serde(rename_all = "snake_case")]`), e.g. `"in_progress"`, `"action_item"`. **The database stores different spellings** (`'IN_PROGRESS'`, `'action_item'`; see DATA_SCHEMA). The conversion exists only in `crates/core` |
+| IDs | Strings generated in Rust by `types::ids::new_id()` (UUID v7, lowercase). The UI never creates IDs |
+| Timestamps | `i64` milliseconds since the Unix epoch, UTC |
+| Dates | `"YYYY-MM-DD"` in the user's local timezone. Computed in Rust, never in the UI |
+| Gnani time values | Gnani returns **seconds** (`start_time`, `end_time`). Our types use **milliseconds**. The conversion happens once, in `voice::gnani`, and nowhere else |
+| Optional vs null | A missing optional value is JSON `null`, never an empty string or `0`. Patch fields that can be cleared use `Option<Option<T>>` (outer = "not provided", inner = "set to null") |
+| Language codes | `hi-IN`, `en-IN`, `ta-IN`, `te-IN`, `kn-IN`, `ml-IN`, `mr-IN`, `pa-IN`, `bn-IN`, `gu-IN`. `hi-en` and `auto` are TTS-only. `detected_language_code` may be absent; treat it as unknown |
+| Speakers | `speaker_label` stores Gnani's `speaker_id` exactly as returned (the docs' example starts at 1). The UI shows "Speaker N". `participant` is the mapped name or null |
+| Segment order | `index` is our own 0-based order across all chunks of a meeting, after chunk offsets are applied. Gnani's `segment_id` is not stored |
+| Audio formats | **Mic → Rust:** PCM16 little-endian, mono, 16 kHz, frames of exactly 1,024 bytes. **Rust → speaker:** PCM16 little-endian, mono, 24 kHz. These never change without a contract PR |
+| Natural-language dates | Resolved in `intel` before they leave it. `Decision.args` therefore carries resolved fields (`due_date` as `YYYY-MM-DD`, `remind_at` as ms) alongside the original phrase (`due_phrase`, `when_phrase`) for display. `voice` and `core` accept only resolved values |
+| Errors | Commands return `AppError` (§6). Crates use their own error types internally and convert at the command boundary |
+| Fixtures | One shared set in `test-data/fixtures/`. Each file is named `<type>.<case>.json` and includes `"contract_version": 1`. The UI mocks and the Rust tests use the same files |
 
 ---
 
@@ -127,7 +144,7 @@ enum LlmProvider { Gemini, Groq, Mock }
 
 ## 3. Shared types
 
-### 3.1 Personal domain (`crates/core`)
+### 3.1 Personal domain (`crates/types/src/personal.rs`)
 ```rust
 enum TaskStatus { Todo, InProgress, Done, Cancelled }
 enum Priority { Low, Medium, High }
@@ -151,7 +168,7 @@ struct FocusSession { id: String, task_id: Option<String>, planned_minutes: u32,
 struct Project { id: String, name: String, color: Option<String>, archived: bool, created_at: i64 }
 ```
 
-### 3.2 Voice runtime (`crates/voice`)
+### 3.2 Voice runtime (`crates/types/src/voice.rs`)
 ```rust
 enum VoiceState { Disabled, Idle, Listening, Thinking, AwaitingApproval, Executing, Speaking, Recording, Error }
 enum VoiceMode { Assistant, Meeting }
@@ -162,7 +179,7 @@ struct VoiceSettings { cloud_voice_enabled: bool, languages: Vec<String>, stt_fo
   has_gnani_key: bool, has_gemini_key: bool, has_groq_key: bool }
 ```
 
-### 3.3 Transcript and meetings
+### 3.3 Transcript and meetings (`crates/types/src/meeting.rs`)
 ```rust
 struct Meeting { id: String, title: String, starts_at: i64, participants: Vec<String>, status: MeetingStatus, created_at: i64 }
 enum MeetingStatus { Recording, Transcribing, NeedsSpeakers, NeedsReview, Done, Failed }
@@ -192,7 +209,7 @@ struct Commitment { action_item_id: String, meeting_id: String, meeting_title: S
 enum CommitmentStatus { Open, Done, Overdue, NoTask }
 ```
 
-### 3.4 Decisions
+### 3.4 Decisions (`crates/types/src/decide.rs`)
 ```rust
 enum Intent { MeetingQuery, Task, Reminder, Note, Focus, Project, Approval, Reject, Cancel, Noise }
 enum DecisionSource { Rules, Llm }
@@ -236,6 +253,25 @@ struct PrivacyLogEntry { id: i64, at: i64, destination: Destination, purpose: St
 struct UsageCounters { stt_seconds_today: f64, batch_seconds_today: f64, tts_chars_today: i64, gemini_calls_today: i64, groq_calls_today: i64 }
 ```
 
+### 3.7 Cross-crate traits (`crates/types`)
+These are the only way `voice` and `intel` talk to each other. `app` creates the implementations and passes them in as `Arc<dyn …>`.
+
+| Trait | File (writer) | Implemented in | Used by |
+|---|---|---|---|
+| `Llm` | `llm.rs` (D2) | `intel::llm` (`GeminiClient`, `GroqClient`, `Router`, `MockLlm`) | `intel` (meeting, decide) |
+| `Decider` | `decide.rs` (D2) | `intel::decide` (rules → LLM) | `voice::assistant` |
+| `SpeechToText` | `speech.rs` (D1) | `voice::gnani` (`MockStt` for tests) | `voice::runtime` |
+| `TextToSpeech` | `speech.rs` (D1) | `voice::gnani` (`MockTts` for tests) | `voice::assistant`, `intel::meeting` (recap) |
+| `ToolExecutor` | `voice.rs` (D1) | `voice::assistant` | `intel` (recall follow-up proposals) |
+
+```rust
+#[async_trait] trait Llm { async fn complete_json(&self, req: LlmRequest) -> Result<LlmResponse, AppError>; }
+trait Decider { fn decide(&self, text: &str, ctx: &DecideContext) -> Decision; }     // may call Llm internally; blocking-free via block_in_place or an async variant agreed in the T-004 PR
+#[async_trait] trait SpeechToText { async fn open(&self, cfg: RtConfig) -> Result<RtSession, AppError>; }
+#[async_trait] trait TextToSpeech { async fn stream(&self, req: TtsRequest, out: PcmSink) -> Result<(), AppError>; }
+```
+`DecideContext` holds the last 6 turns, today's open task titles, participant names, the user's timezone and "now". Each trait ships with a mock implementation in its owner's crate in the same PR that defines it.
+
 ---
 
 ## 4. IPC commands
@@ -244,7 +280,7 @@ All commands return `Result<T, AppError>` (§6).
 
 **Owners:**
 - §4.1 and §4.2: Developer 1 (backend and personal UI).
-- §4.3: Developer 1, except commands marked *(D2)*, which Developer 2 implements in `crates/voice::meeting`.
+- §4.3: Developer 1, except commands marked *(D2)*, which Developer 2 implements in `crates/intel` (meeting module). Their wrappers in `app/src/commands/meetings.rs` are owned by D2 after the stubs exist (WORKING_AGREEMENT §2).
 - Meeting, voice and settings UI: Developer 2.
 
 ### 4.1 Personal (P0: tasks, reminders · P1: notes, focus · P2: projects)

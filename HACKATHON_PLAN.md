@@ -8,17 +8,17 @@ This plan improves the odds of a working demo. It cannot guarantee one: external
 
 ## Current Focus
 **M0 — Foundation and contracts.** First tasks:
-- **D1:** T-001 → T-003 → T-005 / T-009 / T-013.
-- **D2:** T-002 → T-004 → T-007 / T-010 / T-012, with T-008 in any gaps.
+- **D1:** T-001a (merge within the first hour) → T-003 → T-005 / T-009 / T-013 → T-006 → T-001b.
+- **D2:** T-002, T-008 and T-012 from minute 0 (no dependency on D1) → T-003b / T-004 → T-007 / T-010.
 
 ## 1. Team allocation
 Team skills are unknown, so ownership follows integration boundaries. Each side can be built and tested against mocks of the other.
 
 | | **Developer 1 — Platform, Gnani I/O, runtime, personal module** | **Developer 2 — UI audio, LLM and decisions, meeting intelligence, voice UX** |
 |---|---|---|
-| Owns (Rust) | `core` (DB, tasks, reminders, notes, focus, projects), `voice::gnani`, `voice::runtime`, `voice::assistant`, `app` shell | `voice::llm`, `voice::decide`, `voice::meeting` |
+| Owns (Rust) | `crates/core` (DB, tasks, reminders, notes, focus, projects), `crates/voice` (gnani, runtime, assistant), `app` shell, `crates/types` (personal, voice, speech files) | `crates/intel` (llm, decide, meeting), `crates/types` (meeting, llm, decide files) |
 | Owns (UI) | Today, Tasks, Reminders, Notes, Focus, Projects pages | `ui/src/audio`, Meetings pages, Voice page, overlay and proposal card, Settings |
-| Owns (process) | Repo, CI, contracts PRs (types, schema), build and installer, submission form | Test scripts and ground truth, measurements, demo rehearsal, video and post |
+| Owns (process) | Repo, CI and contract checks, schema, build and installer, submission form | Test scripts and ground truth, measurements, demo rehearsal, video and post |
 | Spec | [`docs/dev1/`](docs/dev1/) | [`docs/dev2/`](docs/dev2/) |
 
 **Rebalancing rule:** at C1, if one developer's critical-path tasks are behind by ≥ 1 L task, move the next unstarted UI page to the other developer, with no contract change.
@@ -35,7 +35,7 @@ Relative days from the start of build. Integration happens at the end of every m
 
 | Day | Milestone | D1 | D2 | Checkpoint (owner) |
 |---|---|---|---|---|
-| 1 | M0 | T-001, T-003, T-005, T-009, T-013, T-006 | T-002, T-004, T-007, T-010, T-012, T-008 | **C0** (D1): app builds; contracts frozen; Day-1 checks recorded (T-011 joint) |
+| 1 | M0 | T-001a, T-003, T-005, T-009, T-013, T-006, T-001b, T-014 | T-002, T-008, T-012, T-003b, T-004, T-015, T-007, T-010 | **C0** (D1): app builds; contracts frozen; Day-1 checks recorded (T-011 joint) |
 | 2 | M1 | T-101, T-102, T-103, T-105, T-106, T-107 | T-104, T-204, T-206a, T-304 (mocks) | **C1** (D1): live caption smoke; TTS plays; LLM router falls back |
 | 3 | M2 | T-201, T-202, T-203 | T-205, T-206b, T-207, T-208 | **C2** (D2): journey A1 live → tasks created |
 | 4 | M3 | T-301, T-303 | T-302, T-305, T-304 live | **C3** (D1): journeys B1, B2 live |
@@ -51,17 +51,16 @@ Relative days from the start of build. Integration happens at the end of every m
 - Installer build and demo-machine setup (T-407) are on day 5, not on demo day.
 
 ## 4. Engineering workflow
-**SDLC per task:** Plan (read the spec and contracts) → Contract check → Implement on a branch → Test → PR → Review → Merge to `develop` → Integrate at the checkpoint → Verify against the acceptance criteria → Update the board.
+**SDLC per task:** Plan (read the spec and contracts) → Definition of Ready check → Implement on a branch → Test → PR → Review → Merge to `develop` → Integrate at the checkpoint → Verify against the acceptance criteria → Update the board.
+
+All rules are in [`docs/common/WORKING_AGREEMENT.md`](docs/common/WORKING_AGREEMENT.md): ownership map (§2), shared-file rules (§3), branches, commits and PRs (§4), contract changes (§5), integration-error rules (§6), communication (§7). Summary:
 
 | Item | Rule |
 |---|---|
-| Branches | `main` (demo-ready only) ← `develop` (integration) ← `feat/T-xxx-short-name`, `fix/T-xxx-…`, `chore/…`, `contract/…` |
-| PR size | One task ID per PR. Target ≤ 400 changed lines |
-| Review | The other developer reviews every PR within 2 working hours. Contract PRs (`contract/…`) need explicit approval from both |
-| Merge checks | CI green (fmt, clippy `-D warnings`, cargo test, lint, typecheck, vitest); acceptance criteria ticked in the PR; no new secrets; generated types up to date |
-| Cadence | Each developer merges to `develop` **at least once per day**. `develop` → `main` only at C0, C2, C3, C4 and C5, after the checkpoint passes |
-| Contract changes | Edit `docs/common/API_CONTRACTS.md` or `DATA_SCHEMA.md` first, plus `mockApi.ts` and fixtures in the same PR |
-| Daily sync | 15 minutes: yesterday, today, blockers. Board status updated before the sync |
+| Branches | `main` (demo-ready) ← `develop` (always green) ← `feat/T-xxx-name`, `fix/…`, `contract/…`, `chore/…` |
+| PRs | One task ID, ≤ 400 lines, reviewed by the other developer within 2 working hours, squash-merged by the author |
+| Cadence | Merge to `develop` at least daily; `develop` → `main` only at C0, C2, C3, C4, C5; 6 PM daily full check of `develop` |
+| Contracts | Change only through a `contract/` PR approved by both; fixtures, mocks and generated types change in the same PR |
 | Stop-the-line | If `develop` is red, the next commit from either developer is the fix |
 
 ## 5. Risks and fallbacks
@@ -84,7 +83,7 @@ Relative days from the start of build. Integration happens at the end of every m
 
 ## 7. Demo-critical path
 ```
-T-001 → T-003/T-005 → T-011 (mic) → T-101 (Realtime) → T-201 (record) → T-203 (Batch)
+T-001a → T-003/T-003b/T-005 → T-006/T-007 → T-011 (mic) → T-101 (Realtime) → T-201 (record) → T-203 (Batch)
 → T-205 (speakers) → T-206a/b (extract) → T-207 (apply → tasks) → C2
 → T-301 (runtime) → T-302 (decide) → T-303 (tools + approval) → T-305 (recall) → C3
 → T-402/T-403 → T-408 (E2E, C4) → T-601 (freeze) → T-602 (rehearse) → T-603 (post) → T-604 (submit)

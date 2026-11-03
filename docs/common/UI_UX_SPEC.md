@@ -6,7 +6,7 @@
 - Personal pages: Developer 1.
 - Meetings, Voice and Settings pages, the overlay, and the audio modules: Developer 2.
 
-All pages are built against `ui/src/lib/mockApi.ts` first (INTEGRATION_CONTRACT §3).
+All pages are built against `ui/src/lib/mock/` first (INTEGRATION_CONTRACT §3).
 
 ## 1. Navigation
 **Left sidebar:**

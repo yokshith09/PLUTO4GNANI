@@ -204,6 +204,9 @@ CREATE TABLE settings (
 ) STRICT;
 ```
 
+## Enum spelling
+The database stores the spellings in the `CHECK` constraints above (for example `'IN_PROGRESS'`, `'LOW'`, `'action_item'`). The wire format is `snake_case` (`"in_progress"`, `"low"`, `"action_item"`; API_CONTRACTS §0). The conversion lives only in `crates/core`.
+
 ## Relationships
 ```
 projects 1─* tasks, notes
