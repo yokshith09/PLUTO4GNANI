@@ -1,0 +1,17 @@
+[workspace]
+resolver = "2"
+members = ["src-tauri", "crates/pluto-core"]
+
+[workspace.package]
+version = "0.5.7"
+edition = "2021"
+license = "MIT"
+publish = false
+
+[profile.release]
+# Size and idle cost matter more than peak speed for a tray app (09 budgets).
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

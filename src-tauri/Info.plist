@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Merged into Pluto.app's Info.plist by Tauri. -->
+<plist version="1.0">
+<dict>
+  <!-- Shown when "Track websites" first asks a browser for its active tab (src/sites.rs). -->
+  <key>NSAppleEventsUsageDescription</key>
+  <string>Pluto asks your browser which website is open so it can count time per site. Only the site's name is kept, never the full address, and nothing leaves this Mac.</string>
+</dict>
+</plist>

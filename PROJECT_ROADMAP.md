@@ -8,6 +8,9 @@
 - Developer 2 specs and tasks: [`docs/dev2/`](docs/dev2/).
 - Schedule and cadence: [`HACKATHON_PLAN.md`](HACKATHON_PLAN.md).
 
+## Plan status
+> **Under re-plan.** The Pluto base was ported (PRD D-12). The tasks below were written for a from-scratch build; some are now done by the base (database, tasks, reminders, notes, focus, shell), some need adapting, and the voice, meeting and LLM tasks stand. Verify the base on Windows first, then re-baseline this board. Do not start tasks that duplicate the base.
+
 ## Current Focus
 > **Active milestone: M0 — Foundation and contracts.**
 > Exit criteria:
@@ -28,7 +31,7 @@
 | Source code | **Not started** | No application files exist; the workspace is not a git repository |
 | Git / CI | **Not started** | `git status` → "not a git repository" |
 | Documentation | **Complete** | 11 documents in `docs/common`, `docs/dev1`, `docs/dev2` |
-| Decisions | **Approved** | Standalone Tauri v2 hybrid app; Gnani Prisma + Timbre; Gemini/Groq split by job; rules → LLM; full personal scope in tiers (PRD §10) |
+| Decisions | **Approved** | Tauri v2 hybrid app on a ported Pluto base; Gnani Prisma + Timbre; Gemini/Groq split by job; rules → LLM; full personal scope in tiers (PRD §10) |
 | External unknowns | **Open, non-blocking** | G-1..G-4 (Gnani), L-1 (LLM limits), each with a fallback (ARCHITECTURE §13) |
 | Blocked work | **None** | — |
 | Team skills | **Unknown** | Ownership is assigned by dependency and integration boundaries, not by skill. Re-balance at checkpoint C1 if needed |

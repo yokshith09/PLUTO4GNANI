@@ -6,6 +6,9 @@
 
 This plan improves the odds of a working demo. It cannot guarantee one: external services (Gnani, Gemini, Groq) and unknown limits remain risks, and §5 lists the fallbacks.
 
+## Plan status
+**Under re-plan after the Pluto port (PRD D-12).** Verify the base on Windows, then re-baseline tasks and days. The cut rules, risks and critical path for the voice and meeting layers still apply.
+
 ## Current Focus
 **M0 — Foundation and contracts.** First tasks:
 - **D1:** T-001a (merge within the first hour) → T-003 → T-005 / T-009 / T-013 → T-006 → T-001b.
@@ -95,5 +98,5 @@ T-001a → T-003/T-003b/T-005 → T-006/T-007 → T-011 (mic) → T-101 (Realtim
 - [ ] Each developer's contribution listed (from §1).
 - [ ] Demo posted on LinkedIn and X with **#GnaniAI** and **#GreatIndianAIInternshipChallenge**, tagging Gnani AI; live before submission; one post nominated per platform.
 - [ ] Synthetic data only; any mocked or pre-recorded segment disclosed.
-- [ ] Pluto ports other than the UI theme and base components (PRD D-13) are listed in the submission with source files and the MIT notice kept (PRD D-12). The D-13 UI port is recorded in `PORTING_FROM_PLUTO.md`; the submission wording is the owner's decision.
+- [ ] The Pluto port is recorded in `docs/common/PORTING_FROM_PLUTO.md`. Submission wording about it is the owner's decision (PRD D-12).
 - [ ] Submitted before 11:59 PM IST, 10 Nov 2026.

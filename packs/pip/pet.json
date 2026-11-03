@@ -1,0 +1,6 @@
+{
+  "id": "pip",
+  "displayName": "Pip",
+  "description": "Pip, the penguin",
+  "spritesheetPath": "spritesheet.webp"
+}

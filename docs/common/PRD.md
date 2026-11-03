@@ -2,7 +2,7 @@
 
 **Event:** Gnani AI Great Indian AI Internship Challenge 2026. Deadline **10 Nov 2026, 11:59 PM IST**.
 **Team:** exactly 2 developers (Developer 1, Developer 2).
-**Build:** a **new, standalone desktop app**, built from scratch. The existing Pluto app and repository are **not touched**. Pluto was used only as a product reference.
+**Build:** a desktop app built **on top of a base ported from the owner's earlier Pluto app** (PRD D-12). The voice, meeting and LLM layers are new. See `PORTING_FROM_PLUTO.md` for exactly what was copied. Contracts and tasks in this pack are being re-baselined against that base.
 
 ---
 
@@ -33,7 +33,7 @@ Two core capabilities share one voice runtime and one local database:
    - Spoken recaps, voice recall and a commitment tracker.
 2. **Voice Assistant (common interface):** manage tasks, reminders, notes, focus sessions and projects, and ask questions about meetings, by speaking in any supported language mix. Replies are spoken in the same language.
 
-**Personal productivity module** (built from scratch, because Pluto is not reused): tasks, reminders, notes, focus sessions and projects. Meeting records and personal records stay separate. Meeting tasks come only from approved action items.
+**Personal productivity module** (provided by the ported Pluto base; to be adapted): tasks, reminders, notes, focus sessions and projects. Meeting records and personal records stay separate. Meeting tasks come only from approved action items.
 
 ## 4. Goals and success metrics
 Measured on synthetic, scripted audio.
@@ -140,7 +140,7 @@ All P0 requirements, working end to end on the Windows demo machine with synthet
 ## 10. Decision register (owner-approved)
 | ID | Decision |
 |---|---|
-| D-01 | Standalone app, built from scratch. Pluto is not modified |
+| D-01 | **Superseded by D-12.** The app is built on a ported Pluto base |
 | D-02 | Meetings are the main feature. The Voice Assistant is the common interface |
 | D-03 | Personal scope: tasks, reminders, notes, focus and projects, built in tiers (tasks + reminders P0 → notes + focus P1 → projects P2) |
 | D-04 | Stack: **Tauri v2 hybrid.** React/TypeScript UI does audio capture and playback with browser APIs (WebView2). Rust does Gnani, LLM, storage and logic. Details in ARCHITECTURE §3 |
@@ -150,8 +150,8 @@ All P0 requirements, working end to end on the Windows demo machine with synthet
 | D-08 | Every write needs explicit approval |
 | D-09 | Primary award target: Mixed Vibes |
 | D-10 | Gnani questions (credits, concurrency, streaming hints, presigned upload) are asked on Discord but don't block the build. Each has a fallback in ARCHITECTURE §13 |
-| D-12 | Pluto code: **built from scratch.** After the P0 milestones (C4) pass, Pluto's notes and focus code may be ported, but only if Developer 1 agrees, the licence holder is confirmed (the MIT notice names QUORBIT TECHNOLOGIES), the copyright notice is kept, and the port is disclosed in the submission and the PR. Nothing is ported for voice, audio, LLM or meeting features (Pluto has none). Details and candidates: `PORTING_FROM_PLUTO.md` |
-| D-13 | **Approved exception to D-12:** Pluto's UI theme (`src/index.css`) and the 12 base components (`src/components/ui/*`, about 600 lines) are ported into `ui/` as part of T-002. Rights: QUORBIT TECHNOLOGIES is the owner's company. Nothing else in Pluto's UI (shell, pages, hooks) is ported. The owner has decided not to list this separately in the submission; the origin stays recorded in `PORTING_FROM_PLUTO.md` and the commit history. This exception does not cover notes, focus or any backend code, which stay under D-12 |
+| D-12 | **Port approved by the owner (Developer 1 agreed):** the working base of Pluto (Rust core, shell, UI, scripts, build configs, migrations) was copied into this repository as-is on branch `chore/port-pluto-base`. The owner holds the rights (QUORBIT TECHNOLOGIES is the owner's company). The submission does not mention the port (owner's decision). After the base is verified, the team re-plans what to keep, prune, adapt and build. Details: `PORTING_FROM_PLUTO.md` |
+| D-13 | **Superseded by D-12** (the UI theme and base components are part of the port) |
 | D-11 | Work is divided by component between Developer 1 and Developer 2 (`HACKATHON_PLAN.md` §2, `PROJECT_ROADMAP.md` board) |
 
 ## 11. Open items (non-blocking)

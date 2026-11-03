@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Main window: receives bus events forwarded by the shell.",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:event:default",
+    "notification:default",
+    "opener:allow-open-url",
+    "opener:allow-default-urls"
+  ]
+}

@@ -13,6 +13,8 @@ Everything else (types, commands, tables) is in the other `docs/common/` files a
 ---
 
 ## 1. Repository layout and dependency direction
+> **Path mapping after the port (PRD D-12):** `app` = `src-tauri/`, `ui` = `src/`, `crates/core` = `crates/pluto-core/`. The ownership map in §2 applies to the mapped paths until the re-plan finalises the layout.
+
 ```
 /app                  Tauri shell: commands, events, hotkey, tray, keychain          D1
 /crates/types         shared contract types + traits (no logic)                      D1 (files split, see §2)

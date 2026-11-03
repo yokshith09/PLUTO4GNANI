@@ -1,0 +1,261 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-success: var(--success);
+  --color-violet: var(--violet);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI", Roboto, sans-serif;
+}
+
+/* Light: clean paper, one restrained copper accent. */
+:root {
+  --radius: 0.625rem;
+  --background: oklch(0.972 0.003 270);
+  --foreground: oklch(0.2 0.01 270);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.2 0.01 270);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.2 0.01 270);
+  --primary: oklch(0.56 0.16 48);
+  --primary-foreground: oklch(0.99 0.005 80);
+  --secondary: oklch(0.96 0.003 270);
+  --secondary-foreground: oklch(0.25 0.01 270);
+  --muted: oklch(0.96 0.003 270);
+  --muted-foreground: oklch(0.46 0.012 270);
+  --accent: oklch(0.95 0.004 270);
+  --accent-foreground: oklch(0.25 0.01 270);
+  --destructive: oklch(0.55 0.2 27);
+  --border: oklch(0.895 0.005 270);
+  --input: oklch(0.86 0.006 270);
+  --ring: oklch(0.56 0.16 48);
+  --success: oklch(0.52 0.13 150);
+  --violet: oklch(0.52 0.18 285);
+  --sidebar: oklch(0.955 0.004 270);
+  /* note tint: lightness/chroma of the fill and of the edge */
+  --nl: 0.975;
+  --nc: 0.016;
+  --nbl: 0.885;
+  --nbc: 0.04;
+}
+
+/* Dark: neutral graphite, the default look. */
+.dark {
+  --background: oklch(0.13 0.004 270);
+  --foreground: oklch(0.96 0.003 270);
+  --card: oklch(0.19 0.006 270);
+  --card-foreground: oklch(0.96 0.003 270);
+  --popover: oklch(0.215 0.007 270);
+  --popover-foreground: oklch(0.96 0.003 270);
+  --primary: oklch(0.76 0.15 62);
+  --primary-foreground: oklch(0.18 0.02 60);
+  --secondary: oklch(0.26 0.007 270);
+  --secondary-foreground: oklch(0.96 0.003 270);
+  --muted: oklch(0.24 0.006 270);
+  --muted-foreground: oklch(0.74 0.01 270);
+  --accent: oklch(0.27 0.008 270);
+  --accent-foreground: oklch(0.96 0.003 270);
+  --destructive: oklch(0.7 0.18 22);
+  --border: oklch(1 0 0 / 11%);
+  --input: oklch(1 0 0 / 17%);
+  --ring: oklch(0.76 0.15 62);
+  --success: oklch(0.75 0.14 155);
+  --violet: oklch(0.72 0.14 285);
+  --sidebar: oklch(0.155 0.005 270);
+  --nl: 0.215;
+  --nc: 0.02;
+  --nbl: 0.33;
+  --nbc: 0.045;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--font-sans);
+    font-size: 13.5px;
+    line-height: 20px;
+    letter-spacing: -0.003em;
+    font-feature-settings: "cv11", "ss01";
+  }
+}
+
+/* Surfaces (colour-palette rules): canvas → sidebar → cards are one neutral step apart, cards
+   carry a hairline and a whisper of depth (light) or a top edge highlight (dark). One accent,
+   copper, marks what can be acted on. Utilities (shadow-*, ring-*) still win: this is a layer. */
+@layer components {
+  .bg-card { box-shadow: 0 1px 2px oklch(0 0 0 / 0.05); }
+  .dark .bg-card { box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.05); }
+}
+
+/* The pet window is see-through: only the bear and its card are drawn. */
+html.pet,
+html.pet body {
+  background: transparent !important;
+  overflow: hidden;
+}
+html.pet * { scrollbar-width: none; }
+
+/* Scrollbars stay out of sight until the pointer is over the area that scrolls. */
+* { scrollbar-width: thin; scrollbar-color: transparent transparent; }
+*:hover { scrollbar-color: color-mix(in oklch, var(--muted-foreground) 45%, transparent) transparent; }
+
+/* Lists that scroll inside a card: a slim rounded thumb, no arrow buttons (WebView2 on Windows
+   draws them otherwise). Opting out of the standard properties lets the WebKit ones apply. */
+.slim-scroll { scrollbar-width: auto; scrollbar-color: auto; }
+.slim-scroll::-webkit-scrollbar { width: 6px; }
+.slim-scroll::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+.slim-scroll::-webkit-scrollbar-track { background: transparent; }
+.slim-scroll::-webkit-scrollbar-thumb { background: transparent; border-radius: 9999px; }
+.slim-scroll:hover::-webkit-scrollbar-thumb { background: color-mix(in oklch, var(--muted-foreground) 40%, transparent); }
+
+/* Note colours: one hue per name, tinted by the theme's lightness/chroma. */
+[data-note-color] {
+  --nh: 260;
+}
+[data-note-color="red"] { --nh: 22; }
+[data-note-color="orange"] { --nh: 55; }
+[data-note-color="yellow"] { --nh: 95; }
+[data-note-color="green"] { --nh: 150; }
+[data-note-color="teal"] { --nh: 195; }
+[data-note-color="blue"] { --nh: 250; }
+[data-note-color="purple"] { --nh: 310; }
+[data-note-color="gray"] { --nh: 270; --nc: 0.012; --nbc: 0.015; }
+
+.note-tint {
+  background-color: oklch(var(--nl) var(--nc) var(--nh));
+  border-color: oklch(var(--nbl) var(--nbc) var(--nh) / 0.7);
+}
+.note-dot {
+  background: oklch(0.72 0.16 var(--nh));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+/* The bear (src/features/shell/Bear.tsx). Transforms and opacity only, so the compositor does the
+   work; the pet window is hidden (and paused) when the pet is off. Origins are viewBox units. */
+.bear-breathe, .bear-breathe-slow, .bear-jump, .bear-catch, .bear-shake { transform-box: view-box; transform-origin: 100px 186px; }
+.bear-breathe { animation: bear-breathe 3.6s ease-in-out infinite; }
+.bear-breathe-slow { animation: bear-breathe 5.5s ease-in-out infinite; }
+@keyframes bear-breathe { 50% { transform: scale(1.025, 0.985); } }
+.bear-head-tilt { transform-box: view-box; transform-origin: 100px 125px; animation: bear-head-tilt 8s ease-in-out infinite; }
+@keyframes bear-head-tilt { 0%, 40%, 100% { transform: rotate(0); } 50%, 65% { transform: rotate(-3deg); } 75% { transform: rotate(2deg); } }
+.bear-blink { transform-box: view-box; transform-origin: 100px 72px; animation: bear-blink 5.5s infinite; }
+@keyframes bear-blink { 0%, 94%, 100% { transform: scaleY(1); } 97% { transform: scaleY(0.1); } }
+.bear-wave { animation: bear-wave 0.9s ease-in-out infinite; }
+@keyframes bear-wave { 50% { transform: rotate(-100deg); } }
+/* Squash, jump, stretch, land. */
+.bear-jump { animation: bear-jump 0.8s cubic-bezier(.3,.7,.4,1) 2; }
+.bear-jump-twice { animation-iteration-count: 3; }
+@keyframes bear-jump {
+  0% { transform: none; } 15% { transform: scale(1.08, .9); } 45% { transform: translateY(-22px) scale(.95, 1.07); }
+  75% { transform: scale(1.07, .92); } 90% { transform: scale(.98, 1.02); } 100% { transform: none; }
+}
+.bear-shadow-jump { transform-box: fill-box; transform-origin: center; animation: bear-shadow-jump 0.8s cubic-bezier(.3,.7,.4,1) 2; }
+@keyframes bear-shadow-jump { 45% { transform: scale(.7); opacity: .15; } }
+.bear-arm-up-l, .bear-arm-up-r { animation: bear-arm-pump 0.4s ease-in-out infinite alternate; }
+@keyframes bear-arm-pump { to { translate: 0 -4px; } }
+.bear-type { animation: bear-type 0.28s ease-in-out infinite alternate; }
+@keyframes bear-type { to { translate: 0 2.5px; } }
+.bear-screen { animation: bear-screen 2.4s steps(3) infinite; }
+@keyframes bear-screen { 50% { opacity: .6; } }
+.bear-catch { animation: bear-catch 0.7s ease-out; }
+@keyframes bear-catch { 0% { transform: none; } 45% { transform: scale(1.06, .92); } 70% { transform: translateY(-6px); } 100% { transform: none; } }
+.bear-card-in { animation: bear-card-in 0.5s cubic-bezier(.2,.9,.3,1.2) both; }
+@keyframes bear-card-in { from { transform: translateY(-90px) rotate(-12deg); opacity: 0; } 60% { opacity: 1; } }
+.bear-shake { animation: bear-shake 0.5s ease-in-out 4; }
+@keyframes bear-shake { 25% { transform: rotate(-2.5deg); } 75% { transform: rotate(2.5deg); } }
+/* Back-turn shake (FR-40): hips and tail rock while the paws and feet stay planted. */
+.bear-butt-shake { transform-box: view-box; transform-origin: 100px 150px; animation: bear-butt 0.2s ease-in-out infinite alternate; }
+@keyframes bear-butt { from { transform: translateX(-3px) rotate(-5deg); } to { transform: translateX(3px) rotate(5deg); } }
+.bear-tail-wag { transform-box: fill-box; transform-origin: center; animation: bear-tail 0.1s ease-in-out infinite alternate; }
+@keyframes bear-tail { from { transform: translateX(-3px); } to { transform: translateX(3px); } }
+.bear-sweat { animation: bear-sweat 1.6s ease-in infinite; }
+@keyframes bear-sweat { 0% { opacity: 0; transform: translateY(-4px); } 30% { opacity: 1; } 100% { opacity: 0; transform: translateY(10px); } }
+.bear-bell { animation: bear-bell 0.32s ease-in-out infinite alternate; }
+@keyframes bear-bell { from { transform: rotate(-16deg); } to { transform: rotate(16deg); } }
+.bear-throw { animation: bear-throw 0.9s ease-out both; }
+@keyframes bear-throw { 0% { transform: rotate(-20deg); } 40% { transform: rotate(-150deg); } 100% { transform: rotate(-110deg); } }
+.bear-ball { transform-box: fill-box; transform-origin: center; animation: bear-ball 1.1s cubic-bezier(.3,.6,.5,1) 0.25s both; }
+@keyframes bear-ball { 0% { transform: translate(-6px, 30px); opacity: 1; } 60% { opacity: 1; } 100% { transform: translate(34px, -46px) rotate(320deg); opacity: 0; } }
+.bear-zzz { animation: bear-zzz 3s ease-out infinite; }
+.bear-zzz-late { animation-delay: 1.5s; }
+@keyframes bear-zzz { 0% { opacity: 0; transform: translate(0, 6px); } 30% { opacity: 1; } 100% { opacity: 0; transform: translate(8px, -14px); } }
+.bear-confetti { transform-box: fill-box; transform-origin: center; animation: bear-confetti 1.4s cubic-bezier(.2,.7,.4,1) both; }
+@keyframes bear-confetti {
+  from { transform: rotate(var(--r, 0deg)); opacity: 1; }
+  to { transform: translate(var(--dx, 0), var(--dy, 0)) rotate(calc(var(--r, 0deg) + 240deg)); opacity: 0; }
+}
+.pet-hop { animation: pet-hop 0.45s ease-out; }
+@keyframes pet-hop { 40% { transform: translateY(-8px); } }
+/* Picture pets have one row for several of the bear's moments; these give each its own motion. */
+.pet-shake { animation: pet-shake 0.5s ease-in-out 2; }
+@keyframes pet-shake { 25% { transform: rotate(-7deg); } 75% { transform: rotate(7deg); } }
+.pet-toss { animation: pet-toss 0.7s ease-out; }
+@keyframes pet-toss { 50% { transform: rotate(16deg) scale(1.05); } }
+.pet-pop { animation: pet-pop 0.4s cubic-bezier(.2,.9,.3,1.4); }
+@keyframes pet-pop { from { transform: scale(0.8); } }
+@media (prefers-reduced-motion: reduce) { .pet-shake, .pet-toss, .pet-pop { animation: none; } }
+.pet-bubble-in { animation: pet-bubble-in 0.22s cubic-bezier(.2,.9,.3,1.2) both; }
+@keyframes pet-bubble-in { from { transform: translateY(6px) scale(.96); opacity: 0; } }
+
+/* Typing along with you (all characters): the lid opens, then two paws/hands tap in turn. */
+.pet-lid-open { transform-box: fill-box; transform-origin: bottom; animation: pet-lid-open 0.35s cubic-bezier(.2,.9,.3,1.2) both; }
+@keyframes pet-lid-open { from { transform: scaleY(0.1); opacity: .4; } }
+.pet-tap-l, .pet-tap-r { animation: pet-tap 0.18s ease-in-out infinite alternate; }
+.pet-tap-r { animation-delay: -0.09s; }
+@keyframes pet-tap { to { translate: 0 3px; } }
+.pet-float { transform-box: view-box; transform-origin: 100px 120px; animation: pet-float 3.2s ease-in-out infinite; }
+@keyframes pet-float { 50% { transform: translateY(-6px); } }
+.pet-wheel { transform-box: fill-box; transform-origin: center; animation: pet-wheel 0.5s linear infinite; }
+@keyframes pet-wheel { to { transform: rotate(360deg); } }
+.pet-code { animation: pet-code 0.6s steps(3) infinite; }
+@keyframes pet-code { 50% { translate: 0 -4px; } }
+.pet-glow { animation: pet-glow 1.2s ease-in-out infinite alternate; }
+@keyframes pet-glow { to { opacity: .35; } }
+/* Typing along: the laptop comes out of the pocket, the lid opens, and later it goes back. */
+.pet-laptop-out, .pet-laptop-away { transform-box: view-box; }
+.pet-laptop-out { animation: pet-laptop-out 0.55s cubic-bezier(.2,.9,.3,1.15) both; }
+@keyframes pet-laptop-out { 0% { transform: translateY(10px) scale(.18); opacity: 0; } 25% { opacity: 1; } 65% { transform: translateY(-5px) scale(1.04); } 100% { transform: none; } }
+.pet-laptop-away { animation: pet-laptop-away 0.5s cubic-bezier(.5,0,.8,.4) both; }
+@keyframes pet-laptop-away { 0% { transform: none; } 30% { transform: translateY(-4px) scale(1.02); } 100% { transform: translateY(10px) scale(.18); opacity: 0; } }
+.pet-lid-late { animation-delay: 0.4s; }
+.pet-look { transform-box: view-box; transform-origin: 100px 120px; animation: pet-look 2.8s ease-in-out infinite; }
+@keyframes pet-look { 0%, 100% { transform: rotate(0); } 40%, 70% { transform: rotate(-4deg); } }

@@ -1,0 +1,6 @@
+{
+  "id": "bolt",
+  "displayName": "Bolt",
+  "description": "Bolt, the robot",
+  "spritesheetPath": "spritesheet.webp"
+}

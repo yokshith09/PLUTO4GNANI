@@ -1,0 +1,75 @@
+{
+  "reactions": {
+    "all-done": "party"
+  },
+  "special": {
+    "name": "Pluto mode",
+    "pose": "sleep",
+    "line": "Five done. Pluto mode: on.",
+    "trigger": "tasks",
+    "every": 5
+  },
+  "cell": {
+    "width": 192,
+    "height": 208
+  },
+  "columns": 8,
+  "rows": [
+    {
+      "name": "idle",
+      "frames": 6,
+      "pose": "idle",
+      "source": "drawn"
+    },
+    {
+      "name": "running-right",
+      "frames": 8,
+      "pose": "turn",
+      "source": "drawn"
+    },
+    {
+      "name": "running-left",
+      "frames": 8,
+      "pose": "turn",
+      "source": "mirrored"
+    },
+    {
+      "name": "waving",
+      "frames": 4,
+      "pose": "cheer",
+      "source": "drawn"
+    },
+    {
+      "name": "jumping",
+      "frames": 5,
+      "pose": "jump",
+      "source": "drawn"
+    },
+    {
+      "name": "failed",
+      "frames": 8,
+      "pose": "sad",
+      "source": "drawn"
+    },
+    {
+      "name": "waiting",
+      "frames": 6,
+      "pose": "wait",
+      "source": "drawn"
+    },
+    {
+      "name": "running",
+      "frames": 6,
+      "pose": "type",
+      "source": "drawn"
+    },
+    {
+      "name": "review",
+      "frames": 6,
+      "pose": "review",
+      "source": "drawn"
+    }
+  ],
+  "license": "CC BY 4.0, credit QUORBIT TECHNOLOGIES (auto-chosen 2026-10-22, owner may change)",
+  "status": "Unverified"
+}

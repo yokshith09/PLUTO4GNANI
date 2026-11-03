@@ -1,56 +1,50 @@
-# Porting from Pluto — what is possible, and the rules
+# Porting from Pluto — record
 
-**Status:** nothing is ported yet. One exception is approved (§5). Decision D-12 (PRD): everything is built from scratch; a port is considered only **after checkpoint C4**.
-**Source:** the owner's Pluto repository, commit `eb4d520`. MIT licence, copyright notice "QUORBIT TECHNOLOGIES".
+**Status:** the base is ported (branch `chore/port-pluto-base`). Verification on Windows and the re-plan are the next steps.
+**Source:** the owner's Pluto repository, commit `eb4d520`. The owner holds the rights (QUORBIT TECHNOLOGIES is the owner's company). Decisions: PRD D-12.
 
-## 1. What Pluto has (measured in the repo)
-| Module | Lines | Tests | Depends on |
-|---|---|---|---|
-| `scheduler.rs` | 439 | 12 | infrastructure only |
-| `focus.rs` | 606 | 7 | infrastructure + `tasks` |
-| `notes.rs` + `labels.rs` | 1,941 + 308 | 37 | infrastructure + `labels` |
-| `reminders.rs` | 1,117 | 18 | infrastructure + `notes` + `tasks` |
-| `tasks.rs` + `task_plans.rs` | 2,381 + | 41 | infrastructure + `task_plans` |
-| UI: tasks / notes pages | about 1,365 / 1,367 | — | shadcn components, Pluto's hooks |
-| `db/migrate.rs` (forward-only runner) | 224 | — | infrastructure |
-| **Infrastructure** | `bus`, `clock`, `db`, `error`, `events`, `ids` | — | needed by every module above |
+## 1. What was copied (as-is, Pluto's layout kept)
+| Pluto path | Now in this repo | Role |
+|---|---|---|
+| `crates/pluto-core/` | `crates/pluto-core/` | Rust business logic: db, tasks, reminders, scheduler, notes, labels, focus, meetings, projects, settings, usage tracking, diary, pets… |
+| `src-tauri/` | `src-tauri/` | Tauri v2 shell: IPC (99 commands), tray, global shortcuts, notifications, autostart, windows |
+| `src/` | `src/` | React + TypeScript UI |
+| `scripts/`, `e2e/` | same | Type generation, core-deps check, end-to-end smoke tests |
+| `packs/` | `packs/` | Desktop-pet art |
+| Root configs: `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml` (1.97.0), `package.json`, `pnpm-lock.yaml`, `tsconfig*.json`, `vite.config.ts`, `eslint.config.js`, `components.json`, `main.html`, `pet.html`, `card.html` | same | Build setup |
+| `desktop-pet-docs/docs/05-backend/migrations/` | same path | The only docs the code needs (included with `include_str!`) |
 
-**Not in Pluto at all:** audio, speech-to-text, text-to-speech, LLM calls, transcripts, meeting extraction, voice commands. None of the judged features can be ported.
+## 2. What was not copied
+Pluto's other documentation (`desktop-pet-docs/` apart from migrations), `skills/`, its instructions file for AI sessions, `README.md`, `LICENSE`, `.github/workflows/` (CI, audit, e2e, release, v2-ram). CI will be added back deliberately at the re-plan; the release workflow is intentionally not brought over.
 
-## 2. Why it can't be done a module at a time
-Every module uses Pluto's shared event bus, clock and database wrapper. Porting one module means porting that infrastructure as well, and then adapting it to **our** frozen contracts:
-- Pluto's task statuses are `PLANNED / IN_PROGRESS / PENDING / COMPLETED / CANCELLED`; ours are `TODO / IN_PROGRESS / DONE / CANCELLED` (`DATA_SCHEMA.md`).
-- Pluto's IDs, event names and error types differ from `API_CONTRACTS.md` §0 and §6.
-- Pluto's own status file lists 42 items as "Unverified" on a real machine.
+## 3. Verification so far (Linux sandbox, 3 Nov 2026)
+| Check | Result |
+|---|---|
+| `cargo test -p pluto-core` | **492 passed, 0 failed** |
+| `pnpm install --frozen-lockfile`, `pnpm typecheck` | Clean |
+| `pnpm test` (UI) | **486 passed**, 7 skipped, 0 failed |
+| `pnpm check:core-deps` | OK: no Tauri crates in the core's 148 dependencies |
+| `cargo check` on the Tauri shell | **Not possible in this sandbox** (missing GTK system libraries). **Unverified.** It must be built on the Windows demo machine |
+| Running the app, tray, shortcuts, notifications, tracking | **Unverified.** Pluto's own status file marks 42 such items as unverified on a real machine |
 
-**[Guessing]** Porting the infrastructure plus one module takes at least a day of Developer 1's time. Do not take on that cost before the demo path works.
+## 4. Mapping to the architecture in this pack (until the re-plan finalises it)
+| This pack says | In the ported code |
+|---|---|
+| `app` (Tauri shell) | `src-tauri/` |
+| `ui` | `src/` |
+| `crates/core` | `crates/pluto-core/` |
+| `crates/types`, `crates/voice`, `crates/intel` | Not yet created; they are the new layers |
 
-## 3. Candidates, best first (all only after C4)
-| Candidate | Tasks it would replace | Value | Cost | Verdict |
-|---|---|---|---|---|
-| `scheduler.rs` + infrastructure | Reminder scheduler inside T-107 | Medium: proven timing logic and 12 tests | The infrastructure comes with it | Only if our own scheduler has problems |
-| `notes.rs` + `labels.rs` (UI included) | T-501 Notes (P1) | Medium: a full notes feature | Schema differs: labels, colours and pinning do not exist in our schema | Reasonable for P1 |
-| `focus.rs` (UI included) | T-502 Focus (P1) | Low to medium | Needs a task adapter | Reasonable for P1 |
-| `tasks.rs`, `reminders.rs` | T-106, T-107 (P0) | Low: the P0 versions are small | Largest adaptation (status mismatch) | **Do not port. Write fresh** |
-| UI pages | T-402 and others | Low | Different hooks and components | **Do not port** |
+**Naming finding:** a crate named `core` conflicts with Rust's built-in `core` library. Pluto's name `pluto-core` avoids this, so the docs' `crates/core` becomes `crates/pluto-core`.
 
-## 4. Rules for any port
-1. **Both developers agree**, and the PRD decision register is updated before any code is copied.
-2. **Confirm who holds the rights.** The MIT notice names QUORBIT TECHNOLOGIES; the repository shows one contributor. Confirm before copying, and tell Developer 1.
-3. **Keep the MIT notice** with the ported files.
-4. **Port in its own PR** (`chore/port-<module>`), with the source commit and files listed in the description.
-5. **Adapt to our contracts**, not the other way round. Ported tests must pass against our schema.
-6. **Disclose it** in the submission (HACKATHON_PLAN checklist) and be ready to explain every ported file in the interview.
-7. **Never port anything for voice, audio, LLM or meetings.**
+## 5. Known differences from the contracts in this pack (to resolve at the re-plan)
+- Task statuses: Pluto `PLANNED / IN_PROGRESS / PENDING / COMPLETED / CANCELLED`; this pack `TODO / IN_PROGRESS / DONE / CANCELLED`.
+- Pluto has no `meeting_items` provenance (quotes, source segments), no transcript segments or recordings, and no voice, LLM or Gnani code.
+- Pluto includes features outside this product's scope (desktop pet, characters, diary, courses and exams, app and website usage tracking). They compile and are tested, but are not part of the plan.
+- Two incidental mentions of "claude" exist in the copied code: a URL in a unit test (`sites.rs`) and a comment (`tracking.rs`).
 
-## 5. Approved exception (PRD D-13): UI theme and base components
-| Item | Source (Pluto `eb4d520`) | Destination | Owner | Task |
-|---|---|---|---|---|
-| Theme and styles | `src/index.css` (261 lines) | `ui/src/index.css` | D2 | T-002 |
-| 12 base components | `src/components/ui/` (`badge`, `button`, `checkbox`, `dialog`, `dropdown-menu`, `input`, `kbd`, `popover`, `slider`, `switch`, `toggle-group`, `tooltip`; about 352 lines) | `ui/src/components/ui/` | D2 | T-002 |
-
-- **Rights:** QUORBIT TECHNOLOGIES is the repository owner's company; one contributor appears in the history. Because the owner holds the rights, the MIT notice is not legally required for this code.
-- **Scope limit:** only the files above. The shell, pages, hooks and anything importing Pluto's `@/ipc` are **not** ported.
-- **Adapt:** replace any import of Pluto modules (`@/lib/...`) with local equivalents; no Pluto types or backend calls come along.
-- **Submission:** the owner has decided not to list this port separately. This repository's history and this file record the origin. No document in this pack states that all code was written during the contest.
-- **Other candidates in §3** (notes, focus, scheduler) remain under D-12 and its disclosure rule (§4, rule 6) until the owner decides otherwise.
+## 6. Next steps
+1. Build and run on Windows; record results next to the checks above.
+2. Decide what to keep, prune, adapt or replace (adopt Pluto's schema and types, or adapt them to the contracts in this pack).
+3. Re-baseline `PROJECT_ROADMAP.md`, `API_CONTRACTS.md`, `DATA_SCHEMA.md` and the ownership map.
+4. Then build the voice, audio, LLM and meeting layers on top.

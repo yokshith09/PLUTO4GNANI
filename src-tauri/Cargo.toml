@@ -1,0 +1,63 @@
+[package]
+name = "pluto"
+description = "Pluto, small companion, big universe: the desktop shell (Tauri v2)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "pluto_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "=2.7.1", features = [] }
+
+[dependencies]
+tauri = { version = "=2.12.1", features = ["tray-icon", "macos-private-api"] }
+pluto-core = { path = "../crates/pluto-core" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.0", features = ["full"] }
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+tauri-plugin-single-instance = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-autostart = "2"
+tauri-plugin-dialog = "2"
+base64 = "0.22"
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-window-state = "2"
+tracing = "0.1"
+
+# The Windows foreground-app collector (src/tracking.rs). Only the features it calls.
+[target.'cfg(windows)'.dependencies]
+# UI Automation (COM) for reading the browser's address bar (src/sites.rs). Same version Tauri uses.
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_System_Com",
+    "Win32_System_Ole",
+    "Win32_System_Variant",
+    "Win32_UI_Accessibility",
+    "Win32_UI_WindowsAndMessaging",
+] }
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_System_Power",
+    "Win32_System_SystemInformation",
+    "Win32_System_Threading",
+    "Win32_UI_Accessibility",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+# The macOS foreground-app collector (src/tracking.rs). Same versions Tauri uses.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "libc", "NSRunningApplication", "NSWorkspace"] }
+core-foundation = "0.10"
+core-graphics = "0.25"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString"] }
+
+[dev-dependencies]
+tempfile = "3.27.0"

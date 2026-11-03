@@ -1,0 +1,98 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Pluto",
+  "version": "0.5.7",
+  "identifier": "app.pluto.desktop",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Pluto",
+        "url": "main.html",
+        "width": 1180,
+        "height": 760,
+        "center": true,
+        "visible": false,
+        "minWidth": 900,
+        "minHeight": 600
+      },
+      {
+        "label": "pet",
+        "title": "Pluto pet",
+        "url": "pet.html",
+        "width": 128,
+        "height": 128,
+        "transparent": true,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "resizable": false,
+        "maximizable": false,
+        "minimizable": false,
+        "visible": false,
+        "shadow": false,
+        "focus": false
+      },
+      {
+        "label": "pet-card",
+        "title": "Pluto card",
+        "url": "card.html",
+        "width": 300,
+        "height": 404,
+        "transparent": true,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "resizable": false,
+        "maximizable": false,
+        "minimizable": false,
+        "visible": false,
+        "shadow": false,
+        "focus": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost; img-src 'self' data:",
+      "devCsp": "default-src 'self'; connect-src ipc: http://ipc.localhost ws://localhost:1420 http://localhost:1420; img-src 'self' data:; style-src 'self' 'unsafe-inline'"
+    },
+    "macOSPrivateApi": true
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "shortDescription": "Pluto: small companion, big universe",
+    "longDescription": "Pluto is a local-first desktop companion for Windows and macOS: notes, tasks, meetings, a daily work log and a pet that lives alongside your work. Small companion. Big universe.",
+    "windows": {
+      "webviewInstallMode": {
+        "type": "embedBootstrapper"
+      },
+      "nsis": {
+        "installerHooks": "windows/hooks.nsh"
+      }
+    },
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": {
+      "../packs/bolt/pet.json": "packs/bolt/pet.json",
+      "../packs/bolt/spritesheet.webp": "packs/bolt/spritesheet.webp",
+      "../packs/ghosty/pet.json": "packs/ghosty/pet.json",
+      "../packs/ghosty/spritesheet.webp": "packs/ghosty/spritesheet.webp",
+      "../packs/mochi/pet.json": "packs/mochi/pet.json",
+      "../packs/mochi/spritesheet.webp": "packs/mochi/spritesheet.webp",
+      "../packs/pip/pet.json": "packs/pip/pet.json",
+      "../packs/pip/spritesheet.webp": "packs/pip/spritesheet.webp"
+    }
+  }
+}

@@ -1,12 +1,12 @@
 # Pluto Voice — Hackathon Workspace
 
-A new standalone Windows desktop app with two parts:
+A Windows desktop app with two parts:
 - a **Meeting Assistant** (primary);
 - a **Voice Assistant** that operates the whole app, including its own tasks, reminders, notes, focus sessions and projects.
 
-It is built on Gnani **Prisma** (speech-to-text) and **Timbre** (text-to-speech), with Gemini and Groq for reasoning. The existing Pluto app is not modified.
+It is built on Gnani **Prisma** (speech-to-text) and **Timbre** (text-to-speech), with Gemini and Groq for reasoning. It is built on a base ported from the owner's earlier Pluto app (see [`docs/common/PORTING_FROM_PLUTO.md`](docs/common/PORTING_FROM_PLUTO.md)); the voice, meeting and LLM layers are new.
 
-**Status:** documentation complete; implementation not started. **Current focus:** M0 (see [`PROJECT_ROADMAP.md`](PROJECT_ROADMAP.md)).
+**Status:** the Pluto base is ported and its Rust core and UI tests pass; the Tauri shell is unverified until built on Windows. The plan below is being re-baselined against that base.
 
 ## Start here
 | File | Purpose |
