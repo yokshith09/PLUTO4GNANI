@@ -134,8 +134,8 @@
 ### M5 — P1 (cut in the order given in HACKATHON_PLAN §6)
 | ID | Story / Feature | Task → deliverable | Owner | Priority | Dependencies | Est. | Acceptance criteria | Tests | Status |
 |---|---|---|---|---|---|---|---|---|---|
-| T-501 | E6 Notes | Notes service (FTS) + page + `note_create` tool + dictation (`codemix`/`transliterate`) | D1 | P1 | C4 | L | Dictated Hinglish note saved and searchable | Unit + Vitest | To do |
-| T-502 | E6 Focus | Focus service + `focus://tick` + page + voice tools | D1 | P1 | C4 | M | Timer accurate within 1 s over 5 min | T-PP-02 | To do |
+| T-501 | E6 Notes (**may port from Pluto after C4**; see PRD D-12) | Notes service (FTS) + page + `note_create` tool + dictation (`codemix`/`transliterate`) | D1 | P1 | C4 | L | Dictated Hinglish note saved and searchable | Unit + Vitest | To do |
+| T-502 | E6 Focus (**may port from Pluto after C4**; see PRD D-12) | Focus service + `focus://tick` + page + voice tools | D1 | P1 | C4 | M | Timer accurate within 1 s over 5 min | T-PP-02 | To do |
 | T-503 | E4 Export | Recap mp3 export per language (Timbre REST) | D1 | P1 | T-102 | S | mp3 plays externally | Manual | To do |
 | T-504 | E7 Privacy UI backend | Privacy log + usage counters commands | D1 | P1 | T-103 | S | Counters move after each call | Unit | To do |
 | T-505 | E4 Warnings | Quality warnings (banner + spoken) | D2 | P1 | T-206b | S | AS-1 variant with no owner shows the warning | Unit | To do |
