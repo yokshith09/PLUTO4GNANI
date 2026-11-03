@@ -150,7 +150,7 @@ All P0 requirements, working end to end on the Windows demo machine with synthet
 | D-08 | Every write needs explicit approval |
 | D-09 | Primary award target: Mixed Vibes |
 | D-10 | Gnani questions (credits, concurrency, streaming hints, presigned upload) are asked on Discord but don't block the build. Each has a fallback in ARCHITECTURE §13 |
-| D-12 | Pluto code: **built from scratch.** After the P0 milestones (C4) pass, Pluto's notes and focus code may be ported, but only if Developer 1 agrees, the licence holder is confirmed (the MIT notice names QUORBIT TECHNOLOGIES), the copyright notice is kept, and the port is disclosed in the submission and the PR. Nothing is ported for voice, audio, LLM or meeting features (Pluto has none) |
+| D-12 | Pluto code: **built from scratch.** After the P0 milestones (C4) pass, Pluto's notes and focus code may be ported, but only if Developer 1 agrees, the licence holder is confirmed (the MIT notice names QUORBIT TECHNOLOGIES), the copyright notice is kept, and the port is disclosed in the submission and the PR. Nothing is ported for voice, audio, LLM or meeting features (Pluto has none). Details and candidates: `PORTING_FROM_PLUTO.md` |
 | D-11 | Work is divided by component between Developer 1 and Developer 2 (`HACKATHON_PLAN.md` §2, `PROJECT_ROADMAP.md` board) |
 
 ## 11. Open items (non-blocking)

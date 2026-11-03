@@ -26,6 +26,7 @@ docs/
 │   ├── APPLICATION_FLOWS.md    journeys and failure paths
 │   ├── TESTING_STRATEGY.md     Day-1 checks, audio sets, tests, E2E gate
 │   ├── WORKING_AGREEMENT.md    ★ ownership map, shared files, branches/PRs, contract changes
+│   ├── PORTING_FROM_PLUTO.md   what could be ported from Pluto, why it is deferred, and the rules
 │   ├── INTEGRATION_CONTRACT.md components, frozen-before-parallel order, mocks, checkpoints
 │   └── PPT_FRAMEWORK.md        placeholder (supplied separately)
 ├── dev1/     Developer 1: platform, Gnani I/O, runtime, personal module
