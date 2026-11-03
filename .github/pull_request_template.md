@@ -1,5 +1,5 @@
-## Task
-<!-- T-xxx, one task per PR -->
+## Tasks
+<!-- T-xxx IDs completed by this PR -->
 
 ## What changed
 <!-- 2-4 lines -->
@@ -13,11 +13,11 @@
 
 ## Contract impact
 - [ ] No contract change
-- [ ] Contract change: this is a `contract/` PR, with docs, Rust types, generated TypeScript, fixtures, mocks and registry/client updated together, and `CONTRACT_VERSION` bumped
+- [ ] Contract change: labelled `contract`, with docs, Rust types, generated TypeScript, fixtures, mock handlers, command registration and client function updated together, and `CONTRACT_VERSION` bumped
 
 ## Checklist
 - [ ] Only files I own were changed, or the owner is a reviewer (docs/common/WORKING_AGREEMENT.md §2)
-- [ ] CI is green and `develop` merged in
+- [ ] CI is green and `main` merged into my branch
 - [ ] No keys, recordings or real data
 - [ ] Board row for this task updated
 - [ ] Screenshots attached (UI changes)

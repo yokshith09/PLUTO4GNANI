@@ -3,79 +3,76 @@
 **Contracts:** all types, commands and events are in `API_CONTRACTS.md`. All tables are in `DATA_SCHEMA.md`. This file covers structure and behaviour only.
 
 ## 1. Overview
-A standalone **Tauri v2** desktop app (Windows is the target):
-- The **web layer** (React/TypeScript in WebView2) handles UI, **mic capture** and **audio playback**.
-- The **native layer** (Rust) handles Gnani, the LLMs, the database, recording files, tool execution and all network I/O.
+A **Tauri v2** desktop app (Windows is the target), built on the ported Pluto base (`PORTING_FROM_PLUTO.md`):
+- The **web layer** (React/TypeScript in WebView2) is Pluto's UI plus the new Meetings, Voice and Settings parts, and **mic capture and audio playback**.
+- The **native layer** (Rust) is Pluto's shell and core plus four new crates. It handles Gnani, the LLMs, the database, recording files, tool execution and all network I/O.
 
 ```
-┌──────────── Web layer: React + TypeScript (WebView2) ───────────┐
-│ audio/capture: getUserMedia → AudioWorklet → 16 kHz PCM16 mono   │
-│                → 1,024-byte frames ──────────┐                   │
-│ audio/player : Web Audio gapless queue ◄─────┼── PCM chunks      │
-│ features/    : tasks, reminders, notes, focus, projects,         │
-│                meetings (record, captions, review, recall),      │
-│                voice (overlay, history), settings                │
-└──────────── invoke() / Channel / listen() (API_CONTRACTS) ──────┘
-┌──────────── app (src-tauri): thin shell ────────────────────────┐
-│ command + event registration, hotkey, tray, notifications,       │
-│ keychain                                                         │
-└──────────────────────────────┬──────────────────────────────────┘
-┌──────── crates/voice (D1) ───────┐  ┌──────── crates/intel (D2) ───────┐
-│ gnani   : realtime, rest, batch, │  │ llm     : GeminiClient, GroqClient│
-│           tts, clone, queues,    │  │           router + fallback       │
-│           retry                  │  │ decide  : rules → LLM             │
-│ runtime : state machine,         │  │ meeting : speakers, relevance,    │
-│           sessions, recorder     │  │           extraction, validation, │
-│ assistant: tools, proposals,     │  │           recall, recap,          │
-│           execution, context     │  │           commitments, dates      │
-│ privacy : opt-in, outbound log,  │  │                                   │
-│           usage counters         │  │                                   │
-└───────────────┬──────────────────┘  └───────────────┬───────────────────┘
-        talk only through traits in crates/types (Llm, Decider,
-        SpeechToText, TextToSpeech, ToolExecutor); app wires them
-┌──────────── crates/core (D1, no tauri dep) ─────────────────────┐
-│ db (SQLite, migrations), tasks, reminders (+scheduler), notes,   │
-│ focus, projects, meetings, settings, search (FTS5)               │
-└──────────────────────────────┬──────────────────────────────────┘
-┌──────────── crates/types (shared contracts, no logic) ──────────┐
-│ ids, time, error, personal, voice, speech, meeting, llm, decide  │
-└─────────────────────────────────────────────────────────────────┘
+┌──────────── Web layer: React + TypeScript (WebView2) — src/ ────────────┐
+│ existing pages: Today, Tasks, Notes, Projects, Meetings, Settings …       │
+│ NEW  src/audio/ : getUserMedia → AudioWorklet → 16 kHz PCM16 mono         │
+│                   → 1,024-byte frames ──────────────┐   (D1)              │
+│                   Web Audio gapless player ◄─────────┼── PCM chunks       │
+│ NEW  src/features/meetings (record, import, transcript, review, recall)   │
+│      src/features/voice (bar, proposal card, history) · settings (D2)     │
+│ src/ipc/: typed client + mock (existing) + voiceClient.ts, meetingAi.ts   │
+└───────────── invoke() / Channel / listen() (API_CONTRACTS) ──────────────┘
+┌──────────── src-tauri (Tauri shell, D1) ────────────────────────────────┐
+│ existing: 99 commands, tray, shortcuts, notifications, pet               │
+│ NEW: voice.rs, meeting_ai.rs, hotkey press+release, voice:// events       │
+└──────────────────────────────┬──────────────────────────────────────────┘
+┌──────── pluto-voice (D1) ────────┐  ┌──────── pluto-intel (D2) ────────────┐
+│ runtime : state machine, sessions │  │ llm     : Gemini, Groq, router        │
+│ assistant: tools, proposals,      │  │ decide  : rules → LLM                 │
+│           approval, context       │  │ meeting : extraction, validation,     │
+│ privacy : opt-in, usage           │  │           dates, recall, recap,       │
+│                                   │  │           recorder, commitments       │
+└───────────────┬───────────────────┘  └──────────────────┬───────────────────┘
+┌──────── pluto-gnani ─────────────────────────────────────────────────────┐
+│ http (queue, retry) · realtime · tts · batch (D1) · rest (D2)              │
+└──────────────────────────────┬───────────────────────────────────────────┘
+        voice and intel talk only through traits in pluto-contracts
+┌──────── pluto-contracts (no logic): voice, speech, error | meeting, llm, decide ┐
+┌──────── pluto-core (existing, no tauri dep) ─────────────────────────────┐
+│ db + migrations 001–013, tasks, reminders (+scheduler), notes, focus,     │
+│ meetings, settings … + meeting_ai_store (012, D2), voice_store (013, D1)  │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
 
 ## 2. Repository layout
-Full ownership, hot-file and branch rules are in `WORKING_AGREEMENT.md`.
+Ownership and shared-file rules: `WORKING_AGREEMENT.md` §1–§3.
 ```
-/app            Tauri shell: main.rs, commands/ (registry.rs, personal.rs, voice.rs, meetings.rs, settings.rs), events.rs, keychain.rs   D1
-/crates/types   shared contract types and traits (no logic)                                                                    D1 + D2 (file split)
-/crates/core    domain + SQLite + migrations/001_init.sql …                                                                    D1
-/crates/voice   Gnani clients, runtime, recorder, assistant, privacy                                                           D1
-/crates/intel   LLM layer, decisions, meeting intelligence                                                                     D2
-/ui             React + Vite app (src/audio, src/features, src/lib/api, src/lib/mock)                                          D2 (features/personal: D1)
-/test-data      audio-scripts/, ground-truth/, fixtures/                                                                       D2 (some fixtures: D1)
-/docs           this pack
+src-tauri/                existing shell; new: voice.rs (D1), meeting_ai.rs (D2)
+src/                      existing UI; new: audio/ (D1), features/meetings, voice, settings (D2), ipc/voiceClient.ts, meetingAi.ts
+crates/pluto-core/        existing core; new store files for migrations 012 (D2) and 013 (D1)
+crates/pluto-contracts/   NEW  shared types and traits (voice, speech, error: D1; meeting, llm, decide: D2)
+crates/pluto-gnani/       NEW  Gnani clients (http, realtime, tts, batch: D1; rest: D2)
+crates/pluto-voice/       NEW  runtime, assistant, privacy (D1)
+crates/pluto-intel/       NEW  LLM, decisions, meeting intelligence, recorder (D2)
+test-data/                NEW  audio scripts, ground truth, fixtures
 ```
-Dependency direction: `types ← core ← voice` and `types ← core ← intel`. `voice` and `intel` never depend on each other. Only `app` depends on `tauri`.
+Dependency direction: `pluto-core ← pluto-contracts ← pluto-gnani ← pluto-voice` and `pluto-gnani ← pluto-intel`. `pluto-voice` and `pluto-intel` never depend on each other. Only `src-tauri` depends on `tauri`.
 
 ## 3. Tech stack
 | Layer | Technology | Purpose | Status |
 |---|---|---|---|
-| Desktop shell | **Tauri v2** (Rust stable) | Windows app, IPC, tray, packaging | Approved |
-| UI | **React 18 + TypeScript + Vite** | All screens | Approved |
-| Styling / components | Tailwind CSS + shadcn/ui (Radix) | Fast, accessible UI | Proposed |
-| UI data | TanStack Query | Caching of IPC calls | Proposed |
+| Desktop shell | **Tauri v2** (Rust 1.97.0, pinned) | Windows app, IPC, tray, packaging | Exists (base) |
+| UI | **React 18 + TypeScript + Vite** | All screens | Exists (base) |
+| Styling / components | Tailwind CSS 4 + Radix UI | Pluto's theme and base components | Exists (base) |
+| UI data | TanStack Query | Caching of IPC calls | Exists (base) |
 | Mic capture | **Browser `getUserMedia` + `AudioWorklet`** (in WebView2) | Capture and convert to 16 kHz PCM16 mono | Approved (hybrid) |
 | Playback | **Web Audio API** (scheduled `AudioBufferSourceNode` queue) | Gapless streaming TTS | Approved (hybrid) |
-| Async runtime | `tokio` | Network and background jobs | Proposed |
+| Async runtime | `tokio` | Network and background jobs | Exists (base) |
 | HTTP | `reqwest` (rustls, multipart) | Gnani REST/Batch, Gemini, Groq | Proposed |
 | WebSocket | `tokio-tungstenite` | Prisma Realtime, Timbre streaming | Proposed |
-| Database | SQLite via `rusqlite` (bundled) + FTS5 | Local data and transcript search | Proposed (FTS5 verified by test T-DB-03) |
+| Database | SQLite via `rusqlite` (bundled) | Local data. **FTS5 is new** for transcript search (verified by T-DB-03); notes keep their `LIKE` search | Exists (base); FTS5 proposed |
 | WAV files | `hound` | Crash-safe recording chunks | Proposed |
 | Secrets | `keyring` (Windows Credential Manager) | API keys | Proposed |
-| Type sharing | `ts-rs` | Rust → TypeScript types | Proposed |
-| Tauri plugins | global-shortcut, notification, dialog | Hotkey, reminders, file picker | Proposed |
+| Type sharing | `ts-rs` → `src/ipc/generated` | Rust → TypeScript types (`pnpm gen:types`) | Exists (base); extended to the new crates |
+| Tauri plugins | global-shortcut, notification, dialog, autostart, single-instance, window-state | Already used by the base | Exists (base) |
 | Speech | **Gnani Prisma v3.0, Timbre v3.0** | STT and TTS | Approved |
 | Reasoning | **Gemini API + Groq API** (free tiers) | Extraction, recall, intent | Approved |
-| Tests | `cargo test`, `wiremock`, Vitest + Testing Library | Unit, contract, UI | Proposed |
+| Tests | `cargo test`, Vitest + Testing Library (base); `wiremock` for Gnani contract tests (new) | Unit, contract, UI | Exists (base) / proposed |
 | Fallback capture | `cpal` (Rust) | Only if WebView2 mic fails the Day-1 test | Proposed |
 
 ## 4. Hybrid audio path
@@ -171,7 +168,7 @@ Exact contracts are in API_CONTRACTS §2.
 - **Conversation context:** the last 6 turns in memory (resolves "it", "that task"). Reset after 5 min idle. Turns persisted in `voice_interactions`.
 
 ## 10. Tool execution
-- Tools map to `crates/core` service functions (list in API_CONTRACTS §3.5). `voice::assistant` implements the `ToolExecutor` trait.
+- Tools map to `pluto-core` functions (list in API_CONTRACTS §3.5). `voice::assistant` implements the `ToolExecutor` trait.
 - **Reads** run directly. **Writes** create a `Proposal` and run only after `voice_proposal_respond(Approve)`.
 - Execution happens in Rust. The UI is never involved in authorising writes, except to show the proposal and send the response.
 

@@ -9,15 +9,15 @@
 
 Other documents link here and never redefine these.
 
-**Contract version:** `1` (`CONTRACT_VERSION` in `crates/types/src/lib.rs`). Changes follow `WORKING_AGREEMENT.md` §5.
+**Contract version:** `1` (`CONTRACT_VERSION` in `crates/pluto-contracts/src/lib.rs`). Changes follow `WORKING_AGREEMENT.md` §5.
 
 ## 0. Conventions (apply to every type, command, event and fixture)
 | Topic | Rule |
 |---|---|
-| Where types live | `crates/types/src/`: `personal.rs`, `voice.rs`, `speech.rs`, `error.rs`, `ids.rs`, `time.rs` (written by D1); `meeting.rs`, `llm.rs`, `decide.rs` (written by D2). Exported to TypeScript with `ts-rs` into `ui/src/lib/api/generated/` |
+| Where types live | **Existing (personal, meetings, errors, events):** `crates/pluto-core`, already exported to `src/ipc/generated/` — **not redefined here**. **New:** `crates/pluto-contracts/src/`: `voice.rs`, `speech.rs`, `error.rs` (D1); `meeting.rs`, `llm.rs`, `decide.rs` (D2). Exported with `ts-rs` to `src/ipc/generated/` (set by `.cargo/config.toml`) |
 | Field names | `snake_case` in Rust, JSON and TypeScript |
-| Enums on the wire | `snake_case` strings (`#[serde(rename_all = "snake_case")]`), e.g. `"in_progress"`, `"action_item"`. **The database stores different spellings** (`'IN_PROGRESS'`, `'action_item'`; see DATA_SCHEMA). The conversion exists only in `crates/core` |
-| IDs | Strings generated in Rust by `types::ids::new_id()` (UUID v7, lowercase). The UI never creates IDs |
+| Enums on the wire | **Existing enums keep the base's spelling:** `SCREAMING_SNAKE_CASE` (`"IN_PROGRESS"`). **New enums are `snake_case`** (`#[serde(rename_all = "snake_case")]`, e.g. `"action_item"`). The database stores exactly the wire spelling, so there is no conversion layer |
+| IDs | Strings generated in Rust by `pluto_core::ids::new_id()` (UUID v7). The UI never creates IDs |
 | Timestamps | `i64` milliseconds since the Unix epoch, UTC |
 | Dates | `"YYYY-MM-DD"` in the user's local timezone. Computed in Rust, never in the UI |
 | Gnani time values | Gnani returns **seconds** (`start_time`, `end_time`). Our types use **milliseconds**. The conversion happens once, in `voice::gnani`, and nowhere else |
@@ -27,8 +27,8 @@ Other documents link here and never redefine these.
 | Segment order | `index` is our own 0-based order across all chunks of a meeting, after chunk offsets are applied. Gnani's `segment_id` is not stored |
 | Audio formats | **Mic → Rust:** PCM16 little-endian, mono, 16 kHz, frames of exactly 1,024 bytes. **Rust → speaker:** PCM16 little-endian, mono, 24 kHz. These never change without a contract PR |
 | Natural-language dates | Resolved in `intel` before they leave it. `Decision.args` therefore carries resolved fields (`due_date` as `YYYY-MM-DD`, `remind_at` as ms) alongside the original phrase (`due_phrase`, `when_phrase`) for display. `voice` and `core` accept only resolved values |
-| Errors | Commands return `AppError` (§6). Crates use their own error types internally and convert at the command boundary |
-| Fixtures | One shared set in `test-data/fixtures/`. Each file is named `<type>.<case>.json` and includes `"contract_version": 1`. The UI mocks and the Rust tests use the same files |
+| Errors | **Existing commands** return core's `AppError {code, message, field}`. **New voice and meeting commands** return `VoiceError` (§6) because core's `ErrorCode` has only 7 fixed values. Crates use their own error types internally and convert at the command boundary |
+| Fixtures | One shared set in `test-data/fixtures/` (the UI mock in `src/ipc/` imports them). Each file is named `<type>.<case>.json` and includes `"contract_version": 1`. The UI mocks and the Rust tests use the same files |
 
 ---
 
@@ -144,31 +144,13 @@ enum LlmProvider { Gemini, Groq, Mock }
 
 ## 3. Shared types
 
-### 3.1 Personal domain (`crates/types/src/personal.rs`)
-```rust
-enum TaskStatus { Todo, InProgress, Done, Cancelled }
-enum Priority { Low, Medium, High }
-struct Task { id: String, title: String, notes: String, status: TaskStatus, priority: Option<Priority>,
-  due_date: Option<String>, project_id: Option<String>, source_action_item_id: Option<String>,
-  created_at: i64, updated_at: i64, completed_at: Option<i64> }
-struct TaskInput { title: String, notes: Option<String>, priority: Option<Priority>, due_date: Option<String>, project_id: Option<String> }
-struct TaskPatch { title: Option<String>, notes: Option<String>, status: Option<TaskStatus>, priority: Option<Priority>,
-  due_date: Option<Option<String>>, project_id: Option<Option<String>> }
-struct TaskFilter { view: TaskView /* Today | Upcoming | All | Done */, project_id: Option<String>, query: Option<String> }
+### 3.1 Personal domain — **exists in the base; not redefined**
+Tasks, reminders, notes, focus sessions, meetings (participants, decisions, action items) and their inputs are Rust types in `crates/pluto-core` and generated TypeScript in `src/ipc/generated/`. Notable spellings the new code must use:
+- `TaskStatus`: `PLANNED`, `IN_PROGRESS`, `PENDING`, `COMPLETED`, `CANCELLED` (**"complete" a task = transition to `COMPLETED`**).
+- `Task.project` is free text (a project is the set of tasks sharing it).
+- `Meeting` has `participants`, `decisions`, `action_items` (`assignee`, `task_id`), `follow_up_date`, `notes`, `transcript`.
 
-struct Reminder { id: String, title: String, remind_at: i64, task_id: Option<String>, done_at: Option<i64>, fired_at: Option<i64>, created_at: i64 }
-struct ReminderInput { title: String, remind_at: i64, task_id: Option<String> }
-
-struct Note { id: String, title: String, body: String /* Markdown */, project_id: Option<String>, created_at: i64, updated_at: i64 }
-struct NoteInput { title: String, body: String, project_id: Option<String> }
-
-struct FocusSession { id: String, task_id: Option<String>, planned_minutes: u32, started_at: i64,
-  paused_ms: i64, ended_at: Option<i64>, state: FocusState /* Running | Paused | Completed | Stopped */ }
-
-struct Project { id: String, name: String, color: Option<String>, archived: bool, created_at: i64 }
-```
-
-### 3.2 Voice runtime (`crates/types/src/voice.rs`)
+### 3.2 Voice runtime (`crates/pluto-contracts/src/voice.rs`)
 ```rust
 enum VoiceState { Disabled, Idle, Listening, Thinking, AwaitingApproval, Executing, Speaking, Recording, Error }
 enum VoiceMode { Assistant, Meeting }
@@ -179,10 +161,10 @@ struct VoiceSettings { cloud_voice_enabled: bool, languages: Vec<String>, stt_fo
   has_gnani_key: bool, has_gemini_key: bool, has_groq_key: bool }
 ```
 
-### 3.3 Transcript and meetings (`crates/types/src/meeting.rs`)
+### 3.3 Transcript and meetings (`crates/pluto-contracts/src/meeting.rs`)
 ```rust
-struct Meeting { id: String, title: String, starts_at: i64, participants: Vec<String>, status: MeetingStatus, created_at: i64 }
-enum MeetingStatus { Recording, Transcribing, NeedsSpeakers, NeedsReview, Done, Failed }
+struct MeetingAiStatus { meeting_id: String, status: AiStatus, dominant_language: Option<String>, updated_at: i64 }   // table meeting_ai
+enum AiStatus { Recording, Transcribing, NeedsSpeakers, NeedsReview, Done, Failed }
 
 struct TranscriptSegment { id: String, meeting_id: Option<String>, source: SegmentSource /* Realtime | Batch | Rest */,
   index: u32, start_ms: Option<i64>, end_ms: Option<i64>, speaker_label: Option<u8>, participant: Option<String>,
@@ -209,7 +191,7 @@ struct Commitment { action_item_id: String, meeting_id: String, meeting_title: S
 enum CommitmentStatus { Open, Done, Overdue, NoTask }
 ```
 
-### 3.4 Decisions (`crates/types/src/decide.rs`)
+### 3.4 Decisions (`crates/pluto-contracts/src/decide.rs`)
 ```rust
 enum Intent { MeetingQuery, Task, Reminder, Note, Focus, Project, Approval, Reject, Cancel, Noise }
 enum DecisionSource { Rules, Llm }
@@ -217,26 +199,24 @@ struct Decision { intent: Intent, tool: Option<String>, args: serde_json::Value,
 ```
 
 ### 3.5 Tools and proposals
-| Tool | Write? | Priority |
-|---|---|---|
-| `tasks_list` | | P0 |
-| `task_create` | W | P0 |
-| `task_update` | W | P0 |
-| `task_complete` | W | P0 |
-| `task_delete` | W | P0 |
-| `reminders_list` | | P0 |
-| `reminder_create` | W | P0 |
-| `reminder_done` | W | P0 |
-| `meeting_search` | | P0 |
-| `commitments_list` | | P1 |
-| `notes_search` | | P1 |
-| `note_create` | W | P1 |
-| `focus_start` | W | P1 |
-| `focus_stop` | W | P1 |
-| `projects_list` | | P2 |
-| `project_create` | W | P2 |
+Each tool calls an existing `pluto-core` function. **W** = write (needs an approved proposal).
 
-**W** = write (needs approval).
+| Tool | W | Calls | Priority |
+|---|---|---|---|
+| `tasks_list` | | `tasks::query` | P0 |
+| `task_create` | W | `tasks::create` / `tasks::quick_add` | P0 |
+| `task_complete` | W | `tasks::transition` → `COMPLETED` | P0 |
+| `task_update` | W | `tasks::update` (title, due date), `tasks::defer` | P0 |
+| `reminders_list` | | `reminders::list` | P0 |
+| `reminder_create` | W | `reminders::create` | P0 |
+| `reminder_done` | W | `reminders::set_done` | P0 |
+| `meeting_search` | | `pluto-intel` recall (FTS over `transcript_segments`) | P0 |
+| `commitments_list` | | `pluto-intel` | P1 |
+| `notes_search` | | `notes::search` | P1 |
+| `note_create` | W | `notes::create` | P1 |
+| `focus_start` | W | `focus::start` | P1 |
+| `focus_stop` | W | `focus::stop` | P1 |
+| `projects_list` | | `tasks::query` grouped by `project` | P2 |
 
 ```rust
 struct Proposal { id: String, interaction_id: String, tool: String, args: serde_json::Value, summary_text: String, language: String, expires_at: i64 }
@@ -253,16 +233,17 @@ struct PrivacyLogEntry { id: i64, at: i64, destination: Destination, purpose: St
 struct UsageCounters { stt_seconds_today: f64, batch_seconds_today: f64, tts_chars_today: i64, gemini_calls_today: i64, groq_calls_today: i64 }
 ```
 
-### 3.7 Cross-crate traits (`crates/types`)
+### 3.7 Cross-crate traits (`crates/pluto-contracts`)
 These are the only way `voice` and `intel` talk to each other. `app` creates the implementations and passes them in as `Arc<dyn …>`.
 
 | Trait | File (writer) | Implemented in | Used by |
 |---|---|---|---|
-| `Llm` | `llm.rs` (D2) | `intel::llm` (`GeminiClient`, `GroqClient`, `Router`, `MockLlm`) | `intel` (meeting, decide) |
-| `Decider` | `decide.rs` (D2) | `intel::decide` (rules → LLM) | `voice::assistant` |
-| `SpeechToText` | `speech.rs` (D1) | `voice::gnani` (`MockStt` for tests) | `voice::runtime` |
-| `TextToSpeech` | `speech.rs` (D1) | `voice::gnani` (`MockTts` for tests) | `voice::assistant`, `intel::meeting` (recap) |
-| `ToolExecutor` | `voice.rs` (D1) | `voice::assistant` | `intel` (recall follow-up proposals) |
+| `Llm` | `llm.rs` (D2) | `pluto-intel::llm` (`GeminiClient`, `GroqClient`, `Router`, `MockLlm`) | `pluto-intel` (meeting, decide) |
+| `Decider` | `decide.rs` (D2) | `pluto-intel::decide` (rules → LLM) | `pluto-voice::assistant` |
+| `SpeechToText` | `speech.rs` (D1) | `pluto-gnani::realtime` (`MockStt` for tests) | `pluto-voice::runtime` |
+| `TextToSpeech` | `speech.rs` (D1) | `pluto-gnani::tts` (`MockTts` for tests) | `pluto-voice::assistant`, `pluto-intel::meeting` (recap) |
+| `FrameSink` | `speech.rs` (D1) | `pluto-voice` (WAV writer) and `pluto-intel::meeting::recorder` | `src/audio` frames arriving through `audio_push` |
+| `ToolExecutor` | `voice.rs` (D1) | `pluto-voice::assistant` | `pluto-intel` (recall follow-up proposals) |
 
 ```rust
 #[async_trait] trait Llm { async fn complete_json(&self, req: LlmRequest) -> Result<LlmResponse, AppError>; }
@@ -276,35 +257,13 @@ trait Decider { fn decide(&self, text: &str, ctx: &DecideContext) -> Decision; }
 
 ## 4. IPC commands
 
-All commands return `Result<T, AppError>` (§6).
+**Existing commands (99, in `src-tauri/src/ipc.rs`) are not redefined here.** The ones the new work relies on: `tasks_query`, `task_quick_add`, `task_update`, `task_transition`, `task_defer`, `reminders_list`, `reminder_create`, `reminder_set_done`, `notes_search`, `note_create`, `focus_start`, `focus_stop`, `meeting_create`, `meeting_update`, `meetings_list`, `meeting_get`, `meeting_delete`, `action_item_convert`, `participants_suggest`, `setting_set`, `prefs_get`, `prefs_set`.
+
+**New commands** (§4.2, §4.3) are registered together in `generate_handler!` at task T-007. Existing commands return `AppError`; **new commands return `VoiceError`** (§6).
 
 **Owners:**
-- §4.1 and §4.2: Developer 1 (backend and personal UI).
-- §4.3: Developer 1, except commands marked *(D2)*, which Developer 2 implements in `crates/intel` (meeting module). Their wrappers in `app/src/commands/meetings.rs` are owned by D2 after the stubs exist (WORKING_AGREEMENT §2).
-- Meeting, voice and settings UI: Developer 2.
-
-### 4.1 Personal (P0: tasks, reminders · P1: notes, focus · P2: projects)
-| Command | Args | Returns |
-|---|---|---|
-| `tasks_list` | `filter: TaskFilter` | `Vec<Task>` |
-| `task_create` | `input: TaskInput` | `Task` |
-| `task_update` | `id: String, patch: TaskPatch` | `Task` |
-| `task_delete` | `id: String` | `()` |
-| `reminders_list` | `include_done: bool` | `Vec<Reminder>` |
-| `reminder_create` | `input: ReminderInput` | `Reminder` |
-| `reminder_done` | `id: String` | `Reminder` |
-| `reminder_delete` | `id: String` | `()` |
-| `notes_list` | `query: Option<String>` | `Vec<Note>` |
-| `note_create` | `input: NoteInput` | `Note` |
-| `note_update` | `id, input: NoteInput` | `Note` |
-| `note_delete` | `id` | `()` |
-| `focus_start` | `task_id: Option<String>, minutes: u32` | `FocusSession` |
-| `focus_pause` / `focus_resume` / `focus_stop` | — | `FocusSession` |
-| `focus_current` | — | `Option<FocusSession>` |
-| `focus_history` | `days: u32` | `Vec<FocusSession>` |
-| `projects_list` | — | `Vec<Project>` |
-| `project_create` | `name, color` | `Project` |
-| `project_update` | `id, name, color, archived` | `Project` |
+- §4.2: Developer 1 (`src-tauri/src/voice.rs`).
+- §4.3: Developer 1 writes the stubs (T-007); commands marked *(D2)* are then implemented by Developer 2 in `crates/pluto-intel`, with thin wrappers in `src-tauri/src/meeting_ai.rs` (WORKING_AGREEMENT §2).
 
 ### 4.2 Voice
 | Command | Args | Returns |
@@ -329,9 +288,6 @@ All commands return `Result<T, AppError>` (§6).
 ### 4.3 Meetings
 | Command | Args | Returns |
 |---|---|---|
-| `meetings_list` | — | `Vec<Meeting>` |
-| `meeting_get` | `id` | `Meeting` |
-| `meeting_delete` | `id` | `()` |
 | `meeting_rec_start` | `title, participants: Vec<String>, live_captions: bool, consent: bool` | `RecordingSession` |
 | `meeting_rec_pause` / `meeting_rec_resume` / `meeting_rec_stop` | `session_id` | `RecordingSession` (stop also queues the batch job) |
 | `meeting_import` | `title, participants, path` | `TranscriptionJob` |
@@ -351,30 +307,32 @@ All commands return `Result<T, AppError>` (§6).
 ---
 
 ## 5. Events and channels (Rust → UI)
+The base's events (`ReminderDue`, `FocusChanged`, `TaskCreated`, …) keep flowing through the single `pluto://event` channel and are not redefined. **New events** use separate Tauri event names:
+
 | Name | Payload | Source |
 |---|---|---|
 | `voice://status` | `VoiceStatus` | Runtime, on every transition |
 | `voice://transcript` | `TranscriptSegment` | Prisma Realtime (assistant) |
 | `voice://turn` | `AssistantTurn` | Assistant |
 | `voice://proposal` | `Proposal` | Assistant |
-| `voice://error` | `AppError` | Any |
+| `voice://error` | `VoiceError` | Any |
 | `meeting://caption` | `TranscriptSegment` | Recorder (Realtime) |
 | `meeting://ticker` (P1) | `ExtractedItem` | Live relevance |
 | `meeting://job` | `TranscriptionJob` | Batch poller |
-| `reminder://due` | `Reminder` | Reminder scheduler (also triggers an OS notification) |
-| `focus://tick` | `FocusSession` (every 1 s while running) | Focus timer |
 | Channel `playback` | PCM16 24 kHz bytes | TTS streaming |
 
 ---
 
 ## 6. Errors
+Existing commands keep core's `AppError { code, message, field }` with `ErrorCode` = `VALIDATION | NOT_FOUND | INVALID_TRANSITION | CONFLICT | DB | IO | INTERNAL` (fixed, 7 values). **New commands return `VoiceError`**, defined in `crates/pluto-contracts/src/error.rs`:
 ```rust
-struct AppError { code: ErrorCode, message: String, retryable: bool }
-enum ErrorCode { NotFound, Validation, Db,
+struct VoiceError { code: VoiceErrorCode, message: String, retryable: bool }
+enum VoiceErrorCode {   // snake_case on the wire
   CloudVoiceDisabled, MissingApiKey, InvalidApiKey, InsufficientCredit, RateLimited, MicUnavailable, MicPermissionDenied,
   NetworkOffline, GnaniUpstream, GnaniBadRequest, BatchJobFailed, FileTooLarge, UnsupportedAudio,
-  LlmUnavailable, LlmInvalidOutput, ProposalExpired, ToolFailed, ConsentRequired, Busy }
+  LlmUnavailable, LlmInvalidOutput, ProposalExpired, ToolFailed, ConsentRequired, Busy, Core }
 ```
+`Core` wraps an `AppError` from a core function that failed during a tool call (`message` carries its text). The UI's `src/ipc/voiceClient.ts` and `meetingAi.ts` handle `VoiceError`; the base's `errorMessage()` helper keeps handling `AppError`.
 
 **Mapping from external responses:**
 

@@ -1,92 +1,44 @@
 # Feature Specs — Developer 1
 
-Specs for features owned by **Developer 1**. Shared contracts: [`../common/API_CONTRACTS.md`](../common/API_CONTRACTS.md), [`../common/DATA_SCHEMA.md`](../common/DATA_SCHEMA.md). Task IDs and status: [`../../PROJECT_ROADMAP.md`](../../PROJECT_ROADMAP.md). Definition of Done: PROJECT_ROADMAP §6.
+Specs for the features **Developer 1** owns. Tasks and acceptance criteria: [`../../PROJECT_ROADMAP.md`](../../PROJECT_ROADMAP.md) §4 (IDs in brackets). Shared contracts: [`../common/API_CONTRACTS.md`](../common/API_CONTRACTS.md), [`../common/DATA_SCHEMA.md`](../common/DATA_SCHEMA.md). Rules: [`../common/WORKING_AGREEMENT.md`](../common/WORKING_AGREEMENT.md).
 
-### P1 Tasks (PP-01) — P0 — D1
-- **Story:** I manage my tasks with due dates and priorities and see what's due today.
-- **Behaviour:**
-  - Create, edit, complete, uncomplete and delete (with confirmation).
-  - Views: Today (due ≤ today, not done), Upcoming, All, Done.
-  - Search by title.
-- **Errors:** `Validation` (empty title, invalid date).
-- **Edge cases:** completing sets `completed_at`; reopening clears it. Deleting a task linked from a meeting item sets that item's `task_id` to NULL.
-
-### P2 Reminders (PP-02) — P0 — D1
-- **Behaviour:**
-  - Create with a date and time, optionally linked to a task.
-  - A Rust scheduler sleeps until the next pending reminder, fires an OS notification plus `reminder://due`, and sets `fired_at`.
-  - Mark done; delete.
-- **Edge cases:**
-  - Reminders missed while the app was closed fire once on startup, marked "missed".
-  - A time in the past is rejected at creation.
-
-### P3 Notes (PP-03) — P1 — D1
-- Markdown editor with preview. FTS search. Optional project.
-- Voice dictation uses F7 with `codemix` or `transliterate`.
-
-### P4 Focus (PP-04) — P1 — D1
-- Start (minutes, optional task), pause, resume, stop. `focus://tick` every second.
-- On completion: notification + spoken "Focus done".
-- History list (last 7 days).
-- **Edge case:** only one active session; starting a new one asks to stop the current one.
-
-### P5 Projects (PP-05) — P2 — D1
-- Create, rename, archive. Assign tasks and notes. A project page lists both.
+**Shared Definition of Done:** tests added and passing; `cargo clippy -D warnings`, `pnpm lint`, `pnpm typecheck` clean; types regenerated with `pnpm gen:types` if changed; works on mocks and with the real service; all listed error states implemented; its acceptance test passes on the Windows demo machine.
 
 ---
 
-## Voice platform
+## Skeleton and contracts [T-003, T-004, T-007]
+- **Skeleton (merge within the first hour of Day 1):** add `pluto-contracts`, `pluto-gnani`, `pluto-voice`, `pluto-intel` to the workspace; one placeholder file per owner so nobody edits `lib.rs` later; extend `gen:types` to the new crates; register migrations 012 and 013 in `migrate.rs` as empty files; add the `mod` lines for `meeting_ai_store` and `voice_store` to `pluto-core`.
+- **Contracts A:** voice, speech, proposal and tool types, `VoiceError`, traits `SpeechToText`, `TextToSpeech`, `ToolExecutor`, `FrameSink`, each with a mock.
+- **Shell stubs:** every new command returns fixture data; all registered in `generate_handler!` in one edit.
 
-### F1 Push-to-talk and runtime (VA-01, VA-07) — P0 — D1 (overlay UI: D2)
-- **Behaviour:**
-  1. Hotkey down → `voice_ptt_start` → the UI starts capture (`getUserMedia`, worklet) and streams frames to `audio_push` → Prisma Realtime (`indic-auto`, `codemix`, `keyterms` = glossary + open task titles + participants).
-  2. Hotkey up → `commit` → wait up to 3 s for the final transcript → `Thinking`.
-- **Errors:** `MicPermissionDenied`, `MicUnavailable`, `MissingApiKey`, `CloudVoiceDisabled`, `NetworkOffline`, `RateLimited`, `InsufficientCredit`, `Busy`.
-- **Edge cases:**
-  - Held for under 300 ms → ignored.
-  - Held for over 60 s → auto-commit.
-  - Pressed while `Speaking` → barge-in.
-  - Pressed while `Recording` → `Busy`.
-- **DoD:** STT latency stored in `voice_interactions`.
+## Audio I/O [T-012, T-013, T-011]
+- **UI side (`src/audio`):** `getUserMedia` with echo cancellation and noise suppression, mono. An `AudioWorklet` converts the device rate to 16 kHz Int16 and packs **1,024-byte frames**. A sender calls `audio_push` (raw body, header `x-session-id`) while a session is active. A player turns PCM16 24 kHz chunks from the `playback` Channel into a gapless scheduled queue; `stop()` clears it (barge-in).
+- **Rust side:** `audio_push` hands frames to every registered `FrameSink` (the WAV writer, the Realtime sender, the recorder). The playback Channel carries Timbre audio back.
+- **Errors:** `MicPermissionDenied`, `MicUnavailable`.
+- **Edge cases:** device rates of 44.1 and 48 kHz; frame boundary carry-over; window hidden (capture continues).
+- **Fallback:** if WebView2 capture or binary IPC fails the Day-1 check, capture moves to Rust with `cpal`; contracts do not change.
 
-### F2 Speech output (VA-07, VA-08) — P0 (tags P1) — D1 (player: D2)
-- `voice_speak` → Timbre WS (`timbre-v3.0`, `raw`, 24 kHz) → playback `Channel` → web audio queue. Language = detected language.
-- Text over 500 characters is split at sentence boundaries. Audio tags only from the allow-list.
-- **Errors:** TTS failure → the reply is shown as text with a "voice unavailable" note.
+## Gnani clients [T-101, T-102, T-103, T-201]
+- **`http` (T-103):** one request in flight per REST family; retry with 0.5 / 1 / 2 s backoff on connection errors and 429/500/503/504, honouring `Retry-After`; no retry on other 4xx; 402 → `InsufficientCredit` and voice is disabled; every call writes a privacy-log row.
+- **`realtime` (T-101):** headers per API_CONTRACTS §2.1; `commit` on hotkey release; rotate the connection at 14 minutes; reconnect with backoff, buffering up to 10 s of audio; one `TranscriptSegment` per final transcript (there are no partials).
+- **`tts` (T-102):** WebSocket synthesis, base64 chunks decoded to PCM16 24 kHz and pushed to the playback Channel; REST for files; language follows the detected language; text over 500 characters is split at sentence boundaries; audio tags only from the allow-list.
+- **`batch` (T-201):** create / start / poll (5 s backing off to 15 s) / files / transcript; segments stored with chunk offsets; `meeting_import` accepts Gnani's formats up to 10 MB; `PARTIAL_FAILURE` keeps finished chunks and shows gap markers; emits `meeting://job`.
 
-### F4 Tools and approval gate (VA-03, VA-06; VA-04 P1; VA-05 P2) — P0 — D1
-- **Behaviour:**
-  - Reads execute and are spoken (lists: at most 5 items, then "and N more").
-  - Writes → `Proposal` (stored, shown, spoken) → `AwaitingApproval`, 30 s → approve by voice (rules) or click → core service → spoken result.
-- **Context:** the last 6 turns, so "usse Friday kar do" (make that one Friday) resolves "that one".
-- **Edge cases:**
-  - Several matching tasks → the proposal lists up to 3; "pehla / doosra" (first / second) selects.
-  - Unresolvable date → choose on screen.
-- **DoD:** test T-AS-05 proves no write runs without an approved proposal.
+## Voice runtime [T-301]
+- **Push-to-talk:** a new `VoicePtt` action in `shortcuts.rs`. The base handles only key press, so key **release** is added. Hotkey down → Listening (shown within 100 ms) → frames to Realtime; release → `commit` → wait up to 3 s for the final transcript → Thinking.
+- **States:** Disabled, Idle, Listening, Thinking, AwaitingApproval, Executing, Speaking, Recording, Error (ARCHITECTURE §5). Pressed while Speaking stops playback (barge-in). Pressed while Recording → `Busy`.
+- **Edge cases:** a press under 300 ms is ignored; a press over 60 s auto-commits.
 
-### F5 Settings and privacy (PL-01 to PL-05) — P0 / P1 — D1 (backend), D2 (UI)
-- Opt-in disclosure. Keys → keychain (Gnani, Gemini, Groq). Languages, caption style, voice (with preview), hotkey.
-- P1: glossary, privacy log, usage counters.
+## Assistant: tools and approval [T-303]
+- **Reads** run directly and are spoken (lists: at most 5 items, then "and N more"). **Writes** create a `Proposal` (stored, shown, spoken) and wait up to 30 s; approval by rules ("haan", "yes") or a click; then the core function runs and the result is spoken.
+- **Context:** the last 6 turns, so "usse Friday kar do" refers to the previous task.
+- **Ambiguity:** several matching tasks → the proposal lists up to 3; "pehla / doosra" selects.
+- **Safety:** no write path bypasses `voice_proposal_respond` (T-AS-05).
 
----
+## Safety, build and submission [T-403, T-404, T-601, T-604]
+- Automate T-AS-05 and T-PR-01..04.
+- `pnpm tauri build` for Windows, demo-machine setup, a rollback installer.
+- Tag `demo-v1`; fill in the submission form with the models used and each developer's contribution.
 
-## Meeting Assistant
-
-### M1 Recording (MA-01, MA-05) — P0 — D1 (UI: D2)
-- **Behaviour:**
-  1. `meeting_rec_start` requires `consent`.
-  2. The UI streams frames.
-  3. Rust writes 16 kHz mono WAV chunks of ≤ 4.5 min, flushed every 30 s.
-  4. With `live_captions`, frames also go to Realtime and produce `meeting://caption`. The connection rotates at 14 min.
-  5. Stop → batch job queued.
-- **Errors:** `ConsentRequired`, `MicUnavailable`, `NetworkOffline` (captions only; recording continues).
-- **Edge cases:** recording under 5 s → discard after confirmation; crash → recovery on next launch.
-
-### M2 Import and batch transcription (MA-02, MA-03) — P0 — D1
-- **Behaviour:**
-  - Validate the extension and size (≤ 10 MB).
-  - Create the job with: participant count as `num_speakers` (1–8), the first 4 participants as `speaker_names`, and glossary + participants as `keyterms`.
-  - Start → poll → fetch the transcript files → insert segments with chunk offsets → meeting status `NEEDS_SPEAKERS`.
-- **Errors:** `FileTooLarge`, `UnsupportedAudio`, `BatchJobFailed`, `RateLimited`, `InsufficientCredit`.
-- **Edge cases:** `PARTIAL_FAILURE` → keep the completed chunks and show gap markers; no speech → "No speech found".
-
+## P1 and P2 (after C4; never in `demo-v1` unless done and tested)
+Privacy log backend [T-506], notes and focus voice tools [T-508], mp3 export [T-509], failure suite [T-511]. P2: projects voice tools, voice cloning, folder watch, WASAPI loopback, always-on wake word [T-701..T-705].

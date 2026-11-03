@@ -1,64 +1,28 @@
 # UI / UX Specification — Pluto Voice
 
-**Stack:** React + TypeScript + Tailwind + shadcn/ui.
+**Base:** the ported Pluto UI (React + TypeScript + Tailwind + Radix, `src/`). Pages switch by state, not by a router (`Page` in `src/features/shell/Sidebar.tsx`). **This file specifies only what is new or changed.**
 
-**Owners:**
-- Personal pages: Developer 1.
-- Meetings, Voice and Settings pages, the overlay, and the audio modules: Developer 2.
-
-All pages are built against `ui/src/lib/mock/` first (INTEGRATION_CONTRACT §3).
+**Owners:** Developer 2 for all Meetings, Voice, Settings and shell changes; Developer 1 for `src/audio`.
+All new screens are built against the in-memory mock (`src/ipc/mock.ts` plus the new mock handlers) first.
 
 ## 1. Navigation
-**Left sidebar:**
-- **Today** (default)
-- **Tasks**
-- **Reminders**
-- **Notes** (P1)
-- **Focus** (P1)
-- **Projects** (P2)
-- **Meetings**
-- **Voice**
-- **Settings**
+**Existing sidebar pages:** Today, Tasks, Time, Notes, Projects, Study, Diary, Meetings, Archive, Bin, Character, MCP, Settings.
 
-**Always visible:**
-- A voice bar at the bottom of the window, showing state, the last transcript line and a mic button.
-- A tray icon with "Start recording" and "Quit".
-
-**Global hotkey:** push-to-talk (default `Ctrl+Shift+Space`, configurable).
-
-## 2. Screens
-
-### S1 Today (D1)
-- Tasks due today and overdue, the next 3 reminders, the active focus session, and open meeting commitments (P1).
-- **Empty state:** "Nothing due today. Press Ctrl+Shift+Space and say what you need."
-
-### S2 Tasks (D1)
-- **Tabs:** Today / Upcoming / All / Done.
-- **Row:** checkbox, title, due chip, priority dot, "from meeting" link if it came from a meeting.
-- **Detail drawer:** edit all fields.
-- **States:**
-
-| State | Shown |
+| Change | Detail |
 |---|---|
-| Loading | Skeleton rows |
-| Empty | Per-tab message |
-| Error | Toast + Retry |
-| Success | Inline update |
+| New page **Voice** | History of assistant turns, (P1) commitments and comparison. Added to `Page`, `PAGES` in `App.tsx` and the Sidebar once, at T-006 |
+| **Demo build hides non-product pages** | Time, Study, Diary, Character, MCP, Archive are hidden by one setting (T-402). Their code and tests stay; app tracking stays off |
+| Meetings page extended | Import (P0), Record (P0b), status chips, Transcript / Speakers / Review / Recap tabs |
+| Settings gets a **Voice & privacy** section | Between "Keyboard shortcuts" and "Advanced"; adds a `voice_ptt` shortcut row |
+| **Voice bar** | A slim bar at the bottom of the main window showing voice state, the last transcript line and a mic button |
+| Push-to-talk hotkey | New `VoicePtt` global shortcut (default proposal `Ctrl+Shift+Space`, configurable; must not clash with the existing `Ctrl+Shift+L` / `Ctrl+Shift+N`) |
 
-### S3 Reminders (D1)
-- List sorted by time; overdue items highlighted.
-- Create dialog with date and time pickers. A due reminder shows an OS notification and an in-app toast.
+## 2. Screens that already exist (no UI work planned)
+Today, Tasks, Notes, Projects, Focus (on Today), Reminders (in Tasks and Today), Bin. Voice-created tasks and reminders appear in them through the base's normal events, without a reload.
 
-### S4 Notes (D1, P1)
-List + editor (Markdown with preview), search, and a "Dictate" button (uses F7 dictation).
+## 3. New and changed screens
 
-### S5 Focus (D1, P1)
-Timer ring, task picker, start / pause / stop, and 7-day history.
-
-### S6 Projects (D1, P2)
-Project list → project page with its tasks and notes.
-
-### S7 Meetings (D2)
+### S1 Meetings (extends the existing page)
 **List:** title, date, status chip (`Recording`, `Transcribing`, `Needs speakers`, `Needs review`, `Done`, `Failed`). Buttons: **Record** and **Import audio**.
 
 **Record dialog:** title, participants (chips), live-captions toggle, **consent checkbox (required)**.
@@ -81,17 +45,17 @@ Project list → project page with its tasks and notes.
 
 **Job states:** progress · failed + Retry · "No speech found".
 
-### S8 Voice (D2)
+### S2 Voice page (new)
 - **History:** each turn with transcript, language, decision source (rules / LLM), provider (Gemini / Groq), tool and outcome.
 - **Commitments (P1):** table filtered by owner and status.
 - **Comparison (P1):** clip → two columns with a diff.
 
-### S9 Voice overlay / bar (D2)
+### S3 Voice bar and overlay (new)
 - **States:** Idle · Listening (blue pulse) · Thinking (amber) · Speaking (green) · Recording (red dot) · Error (red, with an action).
 - **Proposal card:** summary, Approve / Reject / Edit, 30 s countdown. Voice "haan / nahi" also works.
 - Text is always shown together with the speech.
 
-### S10 Settings → Voice & Privacy (D2)
+### S4 Settings → Voice & privacy (new section)
 | Control | Behaviour |
 |---|---|
 | Cloud voice | Off by default; disclosure modal |
@@ -106,14 +70,14 @@ Project list → project page with its tasks and notes.
 | Usage (P1) | Today's counters |
 | Always-on (P2) | Toggle with a warning |
 
-## 3. Feedback rules
+## 4. Feedback rules
 1. Show the voice state within 100 ms of the hotkey.
 2. Every spoken reply is also shown as text.
 3. Every write shows a proposal first.
 4. Every extracted item shows its source quote.
 5. Every error message says what happened and the one next step.
 
-## 4. Accessibility
+## 5. Accessibility
 - Full keyboard navigation and visible focus.
 - Adjustable caption size.
 - A "text only" option that mutes speech.

@@ -6,12 +6,12 @@ A Windows desktop app with two parts:
 
 It is built on Gnani **Prisma** (speech-to-text) and **Timbre** (text-to-speech), with Gemini and Groq for reasoning. It is built on a base ported from the owner's earlier Pluto app (see [`docs/common/PORTING_FROM_PLUTO.md`](docs/common/PORTING_FROM_PLUTO.md)); the voice, meeting and LLM layers are new.
 
-**Status:** the Pluto base is ported and its Rust core and UI tests pass; the Tauri shell is unverified until built on Windows. The plan below is being re-baselined against that base.
+**Status:** the Pluto base is ported and its Rust core and UI tests pass (Linux); the Tauri shell is unverified until built on Windows. The plan is re-baselined on that base. **Branches:** `main`, `D1`, `D2` only. **Current focus:** M0 (see [`PROJECT_ROADMAP.md`](PROJECT_ROADMAP.md)).
 
 ## Start here
 | File | Purpose |
 |---|---|
-| [`PROJECT_ROADMAP.md`](PROJECT_ROADMAP.md) | Audit, milestones, epics, **task board** (single source for tasks), Definition of Done, criteria → evidence |
+| [`PROJECT_ROADMAP.md`](PROJECT_ROADMAP.md) | **What exists now**, milestones, epics, **task board** (single source for tasks), effort summary, Definition of Done, criteria → evidence |
 | [`HACKATHON_PLAN.md`](HACKATHON_PLAN.md) | Team allocation, dependency order, timeboxed milestones, PR/integration cadence, risks, cut rules, critical path |
 
 ## Documentation layout
@@ -40,11 +40,11 @@ docs/
 ## Tech stack
 | Layer | Choice |
 |---|---|
-| Desktop shell | Tauri v2 (Rust) |
-| UI | React 18 + TypeScript + Vite + Tailwind + shadcn/ui |
+| Desktop shell | Tauri v2 (Rust 1.97.0), from the Pluto base |
+| UI | React 18 + TypeScript + Vite + Tailwind 4 + Radix UI, from the Pluto base |
 | Audio | **Hybrid:** mic capture and playback in the UI (WebView2 `getUserMedia`, AudioWorklet, Web Audio); everything else in Rust |
-| Rust | crates `types`, `core`, `voice` (D1) and `intel` (D2); tokio, reqwest, tokio-tungstenite, rusqlite (SQLite + FTS5), hound, keyring, ts-rs |
+| Rust | Existing `pluto-core`; new `pluto-contracts`, `pluto-gnani`, `pluto-voice` (D1) and `pluto-intel` (D2); tokio, rusqlite (SQLite; FTS5 is new), ts-rs; new dependencies: reqwest, tokio-tungstenite, hound, keyring |
 | Speech | Gnani Prisma v3.0 (Realtime, Batch, REST), Timbre v3.0 |
 | Reasoning | Gemini (meetings) and Groq (voice commands), each the other's fallback |
 | Decisions | Rules first, then the LLM |
-| Tests | cargo test, wiremock, Vitest + Testing Library |
+| Tests | cargo test, Vitest + Testing Library (base); wiremock for Gnani contract tests (new) |

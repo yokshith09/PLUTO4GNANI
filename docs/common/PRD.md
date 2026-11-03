@@ -33,7 +33,7 @@ Two core capabilities share one voice runtime and one local database:
    - Spoken recaps, voice recall and a commitment tracker.
 2. **Voice Assistant (common interface):** manage tasks, reminders, notes, focus sessions and projects, and ask questions about meetings, by speaking in any supported language mix. Replies are spoken in the same language.
 
-**Personal productivity module** (provided by the ported Pluto base; to be adapted): tasks, reminders, notes, focus sessions and projects. Meeting records and personal records stay separate. Meeting tasks come only from approved action items.
+**Personal productivity module** (provided by the ported Pluto base; the Voice Assistant operates it through core functions): tasks, reminders, notes, focus sessions and projects. Meeting records and personal records stay separate. Meeting tasks come only from approved action items.
 
 ## 4. Goals and success metrics
 Measured on synthetic, scripted audio.
@@ -49,16 +49,16 @@ Measured on synthetic, scripted audio.
 
 ## 5. Requirements and priorities
 
-**P0** = MVP and demo-critical. **P1** = planned, cut first if late. **P2** = stretch, only after P1 is complete.
+**P0** = MVP and demo-critical (on the board: **P0a** = demo spine, **P0b** = cut first within P0). **P1** = planned, cut first if late. **P2** = stretch, only after P1 is complete. **Exists** = provided by the ported base.
 
 ### 5.1 Meeting Assistant
 | ID | Requirement | P |
 |---|---|---|
-| MA-01 | Record from the microphone after a consent confirmation. Indicator, pause/stop | P0 |
+| MA-01 | Record from the microphone after a consent confirmation. Indicator, pause/stop | P0b |
 | MA-02 | Import an audio file (wav, mp3, mp4, m4a, flac, ogg, opus, aac, webm, amr), up to 10 MB | P0 |
 | MA-03 | Batch transcription (Prisma v3.0): speaker separation, `codemix`, participant names and glossary hints | P0 |
 | MA-04 | Map speaker labels to participants | P0 |
-| MA-05 | Live captions while recording (Prisma Realtime) | P0 |
+| MA-05 | Live captions while recording (Prisma Realtime) | P1 |
 | MA-06 | Extract decisions, action items (owner, due date, priority), questions and risks, each with a source segment and quote | P0 |
 | MA-07 | Review and approve. Approved action items can become tasks | P0 |
 | MA-08 | Voice recall with a spoken answer and citation. A follow-up change goes through approval | P0 |
@@ -78,11 +78,11 @@ Measured on synthetic, scripted audio.
 ### 5.2 Personal productivity
 | ID | Requirement | P |
 |---|---|---|
-| PP-01 | Tasks: create, edit, complete, delete, due date, priority, list/filter (Today, Upcoming, All) | P0 |
-| PP-02 | Reminders: create, list, complete, desktop notification when due | P0 |
-| PP-03 | Notes: create, edit (Markdown), search | P1 |
-| PP-04 | Focus sessions: start, pause, stop, link to a task, history | P1 |
-| PP-05 | Projects: group tasks and notes, project view | P2 |
+| PP-01 | Tasks: create, edit, complete, delete, due date, priority, views, bin, repeat | Exists |
+| PP-02 | Reminders: create, list, complete, desktop notification when due | Exists |
+| PP-03 | Notes: create, edit, labels, search (`LIKE`) | Exists |
+| PP-04 | Focus sessions: start, pause, stop, per-task length, history | Exists |
+| PP-05 | Projects: a project is the set of tasks sharing a `project`; Projects page | Exists |
 
 ### 5.3 Voice Assistant
 | ID | Requirement | P |
@@ -102,7 +102,7 @@ Measured on synthetic, scripted audio.
 | ID | Requirement | P |
 |---|---|---|
 | PL-01 | Opt-in "Cloud voice" with a disclosure of what is sent where | P0 |
-| PL-02 | API keys (Gnani, Gemini, Groq) in the OS keychain only | P0 |
+| PL-02 | API keys (Gnani, Gemini, Groq) in the OS keychain only (new: the base has no keychain) | P0 |
 | PL-03 | Privacy log of outbound requests | P1 |
 | PL-04 | Team glossary → Prisma `keyterms` | P1 |
 | PL-05 | Usage counters (audio seconds, TTS characters, LLM calls) | P1 |
@@ -110,6 +110,7 @@ Measured on synthetic, scripted audio.
 ## 6. Non-functional requirements
 | ID | Requirement |
 |---|---|
+| NF-00 | The base's tests keep passing (`cargo test -p pluto-core`, `pnpm test`, `pnpm check:core-deps`) |
 | NF-01 | No network calls from the web UI. All external calls go from Rust. The CSP allows IPC only |
 | NF-02 | No audio leaves the device without opt-in plus an explicit user action |
 | NF-03 | Gnani retries follow Gnani's guidance: connection errors and 429/500/503/504 with backoff; no retry on other 4xx |
@@ -152,6 +153,10 @@ All P0 requirements, working end to end on the Windows demo machine with synthet
 | D-10 | Gnani questions (credits, concurrency, streaming hints, presigned upload) are asked on Discord but don't block the build. Each has a fallback in ARCHITECTURE §13 |
 | D-12 | **Port approved by the owner (Developer 1 agreed):** the working base of Pluto (Rust core, shell, UI, scripts, build configs, migrations) was copied into this repository as-is on branch `chore/port-pluto-base`. The owner holds the rights (QUORBIT TECHNOLOGIES is the owner's company). The submission does not mention the port (owner's decision). After the base is verified, the team re-plans what to keep, prune, adapt and build. Details: `PORTING_FROM_PLUTO.md` |
 | D-13 | **Superseded by D-12** (the UI theme and base components are part of the port) |
+| D-14 | **Adopt the base's contracts for everything that exists.** Task statuses, ids, errors and events are Pluto's; the docs no longer redefine them. New types go in `pluto-contracts`; new commands return `VoiceError` (API_CONTRACTS §0, §6). Reversible only through a contract PR |
+| D-15 | **Branches: `main`, `D1`, `D2` only.** Each developer works on their own branch and merges to `main` by pull request with a merge commit (WORKING_AGREEMENT §4) |
+| D-16 | **Crates:** `pluto-contracts`, `pluto-gnani`, `pluto-voice` (D1), `pluto-intel` (D2) are added to the base; `pluto-core` stays Tauri-free and is not restructured |
+| D-17 | **Re-plan:** tasks are re-baselined on the base (PROJECT_ROADMAP). Priorities P0a / P0b replace the single P0; the cut line is decided at the velocity check at C1 (HACKATHON_PLAN §6) |
 | D-11 | Work is divided by component between Developer 1 and Developer 2 (`HACKATHON_PLAN.md` §2, `PROJECT_ROADMAP.md` board) |
 
 ## 11. Open items (non-blocking)

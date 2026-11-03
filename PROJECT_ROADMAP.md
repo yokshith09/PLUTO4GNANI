@@ -1,213 +1,220 @@
 # Project Roadmap — Pluto Voice
 
 **Team:** exactly 2 developers (Developer 1 = **D1**, Developer 2 = **D2**).
-
-**Sources:**
-- Shared documents: [`docs/common/`](docs/common/).
-- Developer 1 specs and tasks: [`docs/dev1/`](docs/dev1/).
-- Developer 2 specs and tasks: [`docs/dev2/`](docs/dev2/).
-- Schedule and cadence: [`HACKATHON_PLAN.md`](HACKATHON_PLAN.md).
-
-## Plan status
-> **Under re-plan.** The Pluto base was ported (PRD D-12). The tasks below were written for a from-scratch build; some are now done by the base (database, tasks, reminders, notes, focus, shell), some need adapting, and the voice, meeting and LLM tasks stand. Verify the base on Windows first, then re-baseline this board. Do not start tasks that duplicate the base.
+**Branches:** `main`, `D1`, `D2` only (`docs/common/WORKING_AGREEMENT.md` §4).
+**Schedule, cadence, risks, cut rules:** [`HACKATHON_PLAN.md`](HACKATHON_PLAN.md). **Per-developer lists:** [`docs/dev1/TASKS_DEV1.md`](docs/dev1/TASKS_DEV1.md), [`docs/dev2/TASKS_DEV2.md`](docs/dev2/TASKS_DEV2.md).
 
 ## Current Focus
-> **Active milestone: M0 — Foundation and contracts.**
-> Exit criteria:
-> - the app builds;
-> - the shared types are frozen (T-003, T-003b);
-> - every command is stubbed (T-006) and the mock API is in place (T-007);
-> - the contract CI checks run (T-014, T-015);
-> - the Day-1 checks (T-IPC-01, T-LLM-01, T-GN-01) have been run and recorded.
->
-> **First hour:** D1 merges T-001a (workspace skeleton). D2 starts T-002, T-008 and T-012, which need nothing from D1.
-> Nothing in M1 or later starts until M0 exits, except tasks marked "parallel-safe" in §4.
+> **Active milestone: M0 — Base verified, skeleton and contracts.**
+> - **D2:** T-001 (verify on Windows) tonight, then T-009, T-008, T-005, T-006, T-105, T-106.
+> - **D1:** T-002 tonight if possible; then **T-003 (merge within the first hour of Day 1)** → T-004 → T-007 / T-013 / T-010 / T-012.
+> - Exit criteria (C0): the shared contracts are on `main`, every new command is stubbed and callable from the UI, the Day-1 checks (T-IPC-01, T-LLM-01, T-GN-01) are recorded.
+> Nothing in M1 or later starts until C0, except tasks marked parallel-safe.
 
 ---
 
-## 1. Audit (as of 3 Nov 2026)
-| Area | State | Evidence |
-|---|---|---|
-| Source code | **Not started** | No application files exist; the workspace is not a git repository |
-| Git / CI | **Not started** | `git status` → "not a git repository" |
-| Documentation | **Complete** | 11 documents in `docs/common`, `docs/dev1`, `docs/dev2` |
-| Decisions | **Approved** | Tauri v2 hybrid app on a ported Pluto base; Gnani Prisma + Timbre; Gemini/Groq split by job; rules → LLM; full personal scope in tiers (PRD §10) |
-| External unknowns | **Open, non-blocking** | G-1..G-4 (Gnani), L-1 (LLM limits), each with a fallback (ARCHITECTURE §13) |
-| Blocked work | **None** | — |
-| Team skills | **Unknown** | Ownership is assigned by dependency and integration boundaries, not by skill. Re-balance at checkpoint C1 if needed |
+## 1. Audit — what exists now (3 Nov 2026)
+**Source of the code:** the ported Pluto base (`docs/common/PORTING_FROM_PLUTO.md`). Verified in a Linux sandbox: `pluto-core` 492 tests pass; UI typecheck clean, 486 tests pass. The Tauri shell has **not** been built or run (needs Windows).
 
-## 2. Milestones (ordered by user value, judging impact, dependency order, uncertainty and demo importance)
-| # | Milestone | Why it's in this position | Exit checkpoint |
+### Implemented (in the base, tested, to be reused as-is)
+| Area | What exists |
+|---|---|
+| Tasks | Create, edit, quick-add, status transitions (`PLANNED / IN_PROGRESS / PENDING / COMPLETED / CANCELLED`), defer, repeat, plans, history, bin; `project` field (Projects page is derived from it) |
+| Reminders | Create, list, done, delete; scheduler; OS notification; shown on the pet |
+| Notes | CRUD, labels, pin, archive, bin; search is `LIKE` (no full-text index) |
+| Focus | Start, pause, extend, stop, finish; per-task length |
+| Meetings (manual) | `meetings`, participants, decisions, action items, `follow_up_date`; `convert_action_item` turns an item into a task (title = item, project = meeting title, due = the meeting's follow-up date) |
+| Settings | Settings and prefs service; data export/import/delete; retention |
+| Shell | Tray, notifications, autostart, single instance, window state, global shortcuts (3 actions, **key press only**), 99 IPC commands registered in one list in `src-tauri/src/lib.rs` |
+| UI | Pages: Today, Tasks, Time, Notes, Projects, Study, Diary, Meetings, Archive, Bin, Character, MCP, Settings; page switching by state (no router); typed IPC client with an in-memory **mock** (`src/ipc/mock.ts`); one event channel `pluto://event` |
+| Pluto-only features | Desktop pet, characters, diary, courses and exams, app/website usage tracking (off by default) |
+
+### Not present (everything below is new work)
+Audio capture or playback; speech-to-text; text-to-speech; any LLM; HTTP or WebSocket client; OS keychain; full-text search; recordings, transcripts, segments, provenance (quotes); extraction; voice runtime; approval gate; hotkey key-release handling; CI (not ported); the `voice` and `meeting_ai` commands.
+
+### In progress
+Nothing. No new feature code has been written.
+
+### Blocked
+Nothing. Open Gnani questions (credits, request limits, streaming hints, presigned upload) have fallbacks and do not block (ARCHITECTURE §13).
+
+### Unverified
+The Tauri shell, tray, hotkeys, notifications, autostart and tracking on Windows. Pluto's own status file lists 42 such items.
+
+## 2. Milestones
+| # | Milestone | Why here | Checkpoint |
 |---|---|---|---|
-| **M0** | Foundation and contracts | Everything depends on it. It removes the biggest technical unknowns first (WebView2 mic, LLM JSON, Gnani key) | C0 |
-| **M1** | Live voice I/O and services | Proves Gnani is central; needed by both main journeys | C1 |
-| **M2** | **Meeting MVP end to end** (record → transcript → speakers → extraction → approved tasks) | Primary feature; strongest Mixed Vibes and Real Deal evidence | C2 |
-| **M3** | **Voice Assistant end to end** (push-to-talk → intent → approval → action; meeting recall) | Second demo pillar; depends on M1 and partly on M2 | C3 |
-| **M4** | P0 complete and hardened (personal P0 pages, settings and privacy, failure handling, E2E gate) | A reliable demo needs this before any P1 work | C4 |
-| **M5** | P1 features (notes, focus, commitments, ticker, comparison, glossary, export) | Polish and extra evidence; cut first | C5 |
-| **M6** | Demo: freeze, rehearse, record, post, submit | Shortlist engagement and submission | Submitted |
-| **M7** | P2 stretch (optional) | Only after C5 is clean; never risks the demo build | — |
+| M0 | Base verified, skeleton, contracts | Everything depends on it; removes the biggest unknowns first (mic in WebView2, LLM JSON, Gnani key) | C0 (Day 1) |
+| M1 | Voice I/O and LLM live | Proves Gnani is central | C1 (Day 2) |
+| M2 | Meeting MVP end to end | Primary feature; strongest Mixed Vibes and Real Deal evidence | C2 (Day 3) |
+| M3 | Voice Assistant end to end | Second pillar; needs M1 and part of M2 | C3 (Day 4) |
+| M4 | P0 hardened, demo build | Reliable demo before any P1 | C4 (Day 5 noon) |
+| M5 | P1 | Polish; cut first | C5 |
+| M6 | Demo, post, submission | Shortlist engagement and submission | Submitted (Day 7) |
+| M7 | P2 | Optional; never in the demo build | — |
 
 ## 3. Epics
-| Epic | Name | Milestones | Owner of record |
+| Epic | Name | Milestones | Owner |
 |---|---|---|---|
-| E0 | Repository, CI and contracts | M0 | D1 |
-| E1 | Audio I/O (hybrid) | M0–M1 | D2 (UI audio), D1 (Rust side) |
+| E0 | Verification, skeleton, contracts | M0 | D1 (skeleton, contracts A), D2 (contracts B, UI plumbing) |
+| E1 | Audio I/O (hybrid) | M0–M1 | D1 |
 | E2 | Gnani clients | M1–M2 | D1 |
-| E3 | LLM layer and decisions | M0–M3 | D2 |
-| E4 | Meeting pipeline and UI | M2, M5 | D2 (intelligence + UI), D1 (recording + batch) |
-| E5 | Voice Assistant | M3 | D1 (runtime + tools), D2 (UX + recall) |
-| E6 | Personal productivity | M2–M5, M7 | D1 |
-| E7 | Settings, privacy and reliability | M4 | D1 (backend), D2 (UI) |
-| E8 | Demo and submission | M6 | D2 (demo), D1 (build + submission) |
+| E3 | LLM layer and decisions | M1–M3 | D2 |
+| E4 | Meeting pipeline and UI | M2, M5 | D2 (intelligence, UI, recorder), D1 (batch) |
+| E5 | Voice Assistant | M3 | D1 (runtime, tools), D2 (decisions, UI, recall) |
+| E6 | Settings, privacy, reliability | M4 | D1 (safety, build), D2 (settings UI) |
+| E7 | Demo and submission | M6 | D2 (demo), D1 (freeze, submission) |
 
 ## 4. Board
+**Estimates:** S ≈ 1 h, M ≈ 2.5 h, L ≈ 5.5 h of focused work; XL is split before starting. These are estimates, not measurements.
+**Priority:** **P0a** = demo spine, **P0b** = needed for the full demo but cut first, **P1**, **P2**.
+**Status:** every task is **To do**.
+**Parallel-safe:** depends on no one else's unmerged work.
 
-**Estimates:** S ≤ 2 h · M ≈ half a day · L ≈ 1 day · XL > 1 day (split before starting).
-**Status:** every task is **To do**, because no code exists yet.
-**Parallel-safe:** the task depends only on frozen contracts or mocks.
-
-### M0 — Foundation and contracts
+### M0 — Base verified, skeleton and contracts (Day 0–1)
 | ID | Story / Feature | Task → deliverable | Owner | Priority | Dependencies | Est. | Acceptance criteria | Tests | Status |
 |---|---|---|---|---|---|---|---|---|---|
-| T-001a | E0 Repo | **Workspace skeleton:** root `Cargo.toml` (glob members `app`, `crates/*`), empty crates `types`, `core`, `voice`, `intel`, all `types/src/*.rs` module files with `lib.rs` listing them, `.gitignore`. **Merge within the first hour** | D1 | P0 | — | S | `cargo build` succeeds on the empty workspace; D2 can add code under `crates/intel` without editing any shared file | `cargo build` | To do |
-| T-001b | E0 Repo | Tauri v2 `app` shell (`ui/` is **not** touched; the dev server is whatever D2 creates), CI running fmt, clippy, cargo test, lint, typecheck, vitest, no-`tauri`-outside-`app` check → green `main` | D1 | P0 | T-001a, T-002 | M | `pnpm tauri dev` opens a window showing the UI; CI green on the first PR | CI run | To do |
-| T-002 | E0 UI shell | Create `ui/`: Vite + React + TS + Tailwind; **port Pluto's theme and 12 base components (PRD D-13)**, add other shadcn components with the CLI; router, sidebar (all pages as placeholders), voice bar placeholder | D2 | P0 | — (parallel-safe; `ui/` is D2-owned and runs in the browser) | M | Every sidebar route renders; lint and typecheck clean | Vitest render test per route | To do |
-| T-003 | E0 Contracts | `crates/types`: `ids`, `time`, `error`, `personal`, `voice`, `speech` + traits `SpeechToText`, `TextToSpeech`, `ToolExecutor`; `ts-rs` export script (`pnpm gen:types`) into `ui/src/lib/api/generated/` | D1 | P0 | T-001a | M | Generated TS compiles in `ui`; **D2 approves the PR** | `cargo test` export; `pnpm typecheck` | To do |
-| T-003b | E3 Contracts | `crates/types/src/{meeting,llm,decide}.rs`: meeting types (API_CONTRACTS §3.3, §3.4), `LlmRequest`/`LlmResponse`, traits `Llm` and `Decider`, `DecideContext`; each with a mock | D2 | P0 | T-001a | M | Types compile; generated TypeScript compiles in `ui`; **D1 approves the PR** | `cargo test` export; `pnpm typecheck` | To do |
-| T-004 | E3 Contracts | Create `crates/intel`; `MockLlm` with fixtures (`intent_*.json`, `extract_as1.json`, `recall_priya.json`) | D2 | P0 | T-001a, T-003b | S | Traits compile; MockLlm returns fixtures and can simulate 429 and timeouts; **D1 approves** | Unit | To do |
-| T-005 | E0 Schema | `001_init.sql` per DATA_SCHEMA + migration runner | D1 | P0 | T-001a | M | Applies on an empty DB; `user_version` = 1 | T-DB-01..05 | To do |
-| T-006 | E0 Stubs | Register every IPC command (API_CONTRACTS §4) in `app/src/commands/registry.rs` as a stub returning fixture data; emit sample events | D1 | P0 | T-003, T-003b | M | The UI can `invoke` every command and receive every event | Smoke test invoking each command | To do |
-| T-007 | E0 Mocks | `ui/src/lib/api/client.ts` (the only `invoke`/`listen` caller) + `ui/src/lib/mock/{meetings,voice,settings,index}.ts` with the same signatures, every state including errors; empty `mock/personal.ts` for D1; `VITE_MOCK=1` switch | D2 | P0 | T-003, T-003b | M | Each screen can be driven through loading, empty, error and success | Vitest | To do |
-| T-008 | E8 Test data | Scripts + ground truth for AS-1..AS-4 (synthetic) | D2 | P0 | — (parallel-safe) | M | Ground-truth files list the expected items and intents | Review by D1 | To do |
-| T-009 | E1 Rust audio IPC | `audio_push` (raw binary body + `x-session-id`) → in-memory sink + WAV writer; playback `Channel<Vec<u8>>` that sends a test tone | D1 | P0 | T-001a | M | 1,024-byte frames are received in order; the tone plays in the UI | Unit + T-IPC-01 | To do |
-| T-010 | E1 UI audio | Capture worklet (device rate → 16 kHz PCM16, 1,024-byte frames) + sender; gapless player queue with `stop()` | D2 | P0 | T-002 | L | Frames hold the correct sample count; playback has no gaps between chunks | Unit test of the downsampler; T-IPC-01 | To do |
-| T-011 | E1 Day-1 check | **T-IPC-01** joint run: 10 s capture → Rust → WAV plays back; tone playback. Record the result. **If it fails:** open T-011F (`cpal` capture, D1, L) | D1 | P0 | T-009, T-010 | S | Result recorded in `docs/results/` | T-IPC-01 | To do |
-| T-012 | E3 Day-1 check | **T-LLM-01:** minimal Gemini + Groq adapters; schema-valid JSON on 5 prompts each; record free-tier limits; choose model IDs | D2 | P0 | — (parallel-safe; standalone script first, adapters move into `intel` after T-004) | M | 10/10 valid JSON; limits and model IDs recorded in settings defaults | T-LLM-01 | To do |
-| T-013 | E2 Day-1 check | **T-GN-01:** `examples/` for Gnani REST clip, Realtime clip and TTS; record credits used | D1 | P0 | T-001a | S | All three succeed with the team key | T-GN-01 | To do |
-| T-014 | E0 Contract CI | CI job `contracts`: (a) regenerate TypeScript types and fail on any diff; (b) compare command names in API_CONTRACTS §4, `registry.rs`, `client.ts` and every `mock/*.ts`; (c) fail if a crate other than `app` depends on `tauri`; (d) fail if a fixture's `contract_version` ≠ `CONTRACT_VERSION` | D1 | P0 | T-006, T-007 | M | Deliberately renaming a command makes CI fail | The CI job itself, shown failing then passing | To do |
-| T-015 | E3 Fixture tests | Rust tests in `intel` and `core`: every file in `test-data/fixtures/` deserializes into its Rust type; `JSON → type → JSON` round-trip | D2 | P0 | T-003, T-003b, T-008 | S | A fixture with a wrong field name fails `cargo test` | T-CT-01 | To do |
+| T-001 | Base | Verify the base on Windows: `pnpm install`, `pnpm tauri dev`, walk the checklist, record results in `docs/results/base-verification.md`, list every failure with its cause | D2 | P0a | — | S | App opens; Today, Tasks, Notes, Meetings load; a reminder notification fires; failures listed | Manual checklist | To do |
+| T-002 | Base | Verify on D1's machine too. Add `.github/workflows/ci.yml` adapted from Pluto's (fmt, clippy, `cargo test --workspace`, typecheck, lint, vitest, core-deps check). No release workflow | D1 | P0a | — | M | CI green on `main`; D1's machine passes `pnpm tauri dev` | CI run | To do |
+| T-003 | Skeleton | New crates `pluto-contracts`, `pluto-gnani`, `pluto-voice`, `pluto-intel` in the workspace; module placeholders (one file per owner); extend `gen:types` to the new crates; workspace deps (reqwest, tokio-tungstenite, hound, keyring, async-trait); pre-register migrations 012 and 013 in `migrate.rs`; add the `mod` lines for `meeting_ai_store` and `voice_store` to `pluto-core/src/lib.rs`. **Merge to `main` within the first hour of Day 1** | D1 | P0a | — | M | `cargo build --workspace` and `pnpm gen:types` succeed; D2 can add files in `pluto-intel` and `pluto-gnani/src/{batch,rest}.rs` without editing any shared file | cargo build; CI | To do |
+| T-004 | Contracts A | `pluto-contracts`: voice runtime, speech, proposal and tool types; `VoiceError`; traits `SpeechToText`, `TextToSpeech`, `ToolExecutor`, `FrameSink`; mocks | D1 | P0a | T-003 | M | Types compile and export TypeScript to `src/ipc/generated`; **D2 approves** | Export test; typecheck | To do |
+| T-005 | Contracts B | `pluto-contracts`: meeting, LLM and decision types; traits `Llm`, `Decider`; `MockLlm` with fixtures | D2 | P0a | T-003 | M | Same; **D1 approves** | Export test; typecheck | To do |
+| T-006 | UI plumbing | `src/ipc/voiceClient.ts`, `meetingAi.ts`, mock handlers composed into `createMock`, `voice://` event listeners, `voice` entry in `Page` / `App.tsx` / Sidebar, folders `src/features/voice`; shared fixtures in `test-data/fixtures` | D2 | P0a | T-004, T-005 | M | Every new command can be called from the UI against the mock; the Voice page opens | Vitest | To do |
+| T-007 | Shell stubs | `src-tauri/src/voice.rs` and `meeting_ai.rs`: every new command as a stub returning fixture data; all added to `generate_handler!` in **one** edit; `voice://` event helper | D1 | P0a | T-004, T-005 | S | The UI can invoke every new command in the real shell | Smoke test | To do |
+| T-008 | Test data | Scripts and ground truth for AS-1..AS-4 (synthetic); recorded audio in `test-data/audio` | D2 | P0a | — | M | Ground truth lists expected items, owners, dates and intents | Review by D1 | To do |
+| T-009 | LLM check | T-LLM-01: standalone script; schema-valid JSON on 5 prompts each from Gemini and Groq; record free-tier limits; choose model IDs | D2 | P0a | — | S | 10 of 10 valid; limits and model IDs recorded | T-LLM-01 | To do |
+| T-010 | Gnani check | T-GN-01: examples for a REST clip, a Realtime clip and TTS; record credits used | D1 | P0a | — | S | All three succeed with the team key | T-GN-01 | To do |
+| T-011 | Mic check | T-IPC-01: 10 s capture → Rust → WAV plays back; tone playback; result recorded. If it fails: `cpal` capture in Rust | D1 | P0a | T-012, T-013 | S | Result recorded in `docs/results/` | T-IPC-01 | To do |
+| T-012 | UI audio | `src/audio`: capture worklet (→ 16 kHz PCM16, 1,024-byte frames), frame sender, gapless player with `stop()` | D1 | P0a | — | L | Frames carry the right sample count; no gaps between chunks | Unit (downsampler) | To do |
+| T-013 | Rust audio IPC | `audio_push` (raw body + `x-session-id`), `FrameSink` fan-out, WAV writer, playback Channel with a test tone | D1 | P0a | T-004 | M | Ordered 1,024-byte frames received; tone audible | Unit; T-IPC-01 | To do |
 
-### M1 — Live voice I/O and services
+### M1 — Voice I/O and LLM live (Day 1–2)
 | ID | Story / Feature | Task → deliverable | Owner | Priority | Dependencies | Est. | Acceptance criteria | Tests | Status |
 |---|---|---|---|---|---|---|---|---|---|
-| T-101 | E2 Realtime | Prisma Realtime client: headers, frames, `commit`, reconnect, rotation at 14 min → `TranscriptSegment` stream | D1 | P0 | T-013, T-003 | L | Live clip gives segments with `detected_language_code`; simulated close code 1001 reconnects | Contract (fixture WS), T-FH-04 | To do |
-| T-102 | E2 TTS | Timbre WS client → base64 → PCM 24 kHz → playback Channel; REST mp3 helper | D1 | P0 | T-013, T-009 | M | "Ho gaya" in hi-IN plays within the measured first-audio time | Contract; audible check | To do |
-| T-103 | E2 Reliability | Request queues (1 in flight per REST family), retry/backoff, Gnani error → `AppError` mapping, privacy-log write on every call | D1 | P0 | T-005 | M | A 429 → 200 sequence succeeds silently; 402 → `InsufficientCredit` | T-FH-02, T-FH-03, T-PR-02 | To do |
-| T-104 | E3 Router | LLM router per task (Intent: Groq → Gemini; others: Gemini → Groq), timeouts, one JSON-repair attempt, `fell_back` flag | D2 | P0 | T-012, T-004 | M | A mocked 429 on the primary is answered by the fallback; both failing → `LlmUnavailable` | T-FH-07, T-FH-08 | To do |
-| T-105 | E7 Keys and settings | Keychain (Gnani, Gemini, Groq) + settings service + `voice_settings_*` / `voice_key_*` commands | D1 | P0 | T-005 | M | Keys survive a restart and never appear in the DB or logs | T-PR-01 | To do |
-| T-106 | E6 Tasks backend | Task service + commands (`tasks_list`, `task_create`, `task_update`, `task_delete`) | D1 | P0 | T-005 | M | Views Today/Upcoming/All/Done return the correct sets | T-PP-01 (backend part) | To do |
-| T-107 | E6 Reminders | Reminder service + scheduler + OS notification + missed-on-startup; commands | D1 | P0 | T-005 | M | Fires within 2 s of `remind_at`; a missed reminder fires once on startup | T-PP-01 | To do |
+| T-101 | Prisma Realtime | Realtime client: headers, frames, `commit`, reconnect, rotation at 14 min → segment stream | D1 | P0a | T-010, T-004 | L | A live clip gives segments with `detected_language_code`; a simulated close code 1001 reconnects | Contract (fixture WS); T-FH-04 | To do |
+| T-102 | Timbre | Timbre WebSocket client → PCM 24 kHz → playback Channel; REST helper | D1 | P0a | T-010, T-013 | M | "Ho gaya" in hi-IN plays | Contract; audible check | To do |
+| T-103 | Gnani base | `pluto-gnani` HTTP base: request queue (1 in flight), retry/backoff, error mapping to `VoiceError`, privacy-log write. **Needed by T-201, so early** | D1 | P0a | T-003 | M | A 429 → 200 sequence succeeds silently; 402 → `InsufficientCredit` | T-FH-02, T-FH-03 | To do |
+| T-104 | LLM | Gemini and Groq clients, router per task, timeouts, one JSON-repair attempt, fallback with `fell_back` flag | D2 | P0a | T-009, T-005 | M | A mocked 429 on the primary is answered by the fallback; both failing → `LlmUnavailable` | T-FH-07, T-FH-08 | To do |
+| T-105 | Secrets | `SecretStore` (OS keychain) for the Gnani, Gemini and Groq keys; key commands; `voice.*` / `llm.*` settings keys through Pluto's settings service | D2 | P0a | T-003 | S | Keys survive a restart; never in the database or logs | T-PR-01 | To do |
+| T-106 | Migration 012 | `012_meeting_ai.sql` + `meeting_ai_store`: recordings, jobs, segments + FTS5, provenance, pipeline status (DATA_SCHEMA) | D2 | P0a | T-003 | M | Chain applies; FTS5 query returns inserted segments; delete cascades | T-DB-01..04 | To do |
+| T-107 | Migration 013 | `013_voice.sql` + `voice_store`: interactions, proposals, privacy log | D1 | P0a | T-003 | S | Chain applies; constraints hold | T-DB-05 | To do |
 
-### M2 — Meeting MVP end to end
+### M2 — Meeting MVP end to end (Day 2–3)
 | ID | Story / Feature | Task → deliverable | Owner | Priority | Dependencies | Est. | Acceptance criteria | Tests | Status |
 |---|---|---|---|---|---|---|---|---|---|
-| T-201 | E4 Recording | Recorder: frames → WAV chunks (≤ 4.5 min, flush 30 s), consent enforcement, pause/resume/stop, crash recovery; `meeting_rec_*` | D1 | P0 | T-011, T-005 | L | A 6-min recording gives 2 chunks with correct offsets; no consent → `ConsentRequired` | T-PR-03, T-FH-09 | To do |
-| T-202 | E4 Captions | Recorder fans frames out to Realtime → `meeting://caption` | D1 | P0 | T-101, T-201 | S | Captions appear while recording; with the network off, recording continues | T-FH-01 | To do |
-| T-203 | E4 Batch | Batch client: create/start/poll/files/transcript → segments with chunk offsets → status `NEEDS_SPEAKERS`; `meeting_import` (≤ 10 MB); `meeting_job_retry` | D1 | P0 | T-103, T-005 | L | AS-1 gives speaker-labelled segments in the DB; `PARTIAL_FAILURE` fixture gives gap markers | Contract (wiremock lifecycle), T-ML-01, T-FH-06 | To do |
-| T-204 | E4 UI record | Meetings list, Record dialog (consent required), live view with captions, level meter, job progress | D2 | P0 | T-007 | L | Works on mocks in every state; consent checkbox gates Start | Vitest states | To do |
-| T-205 | E4 Speakers | `meeting_transcript_get`, `meeting_speakers_set` (Rust) + Transcript and Speakers tabs | D2 | P0 | T-003; T-203 for live data (fixture until then) | M | Mapping updates every segment with that label; status → `NEEDS_REVIEW` | Unit + Vitest | To do |
-| T-206a | E4 Relevance | Relevance prompt + schema; batches of ≤ 40 segments (Gemini) | D2 | P0 | T-104 | M | Every AS-1 segment gets a label | Unit with MockLlm; live smoke | To do |
-| T-206b | E4 Extraction | Extraction prompt + schema + Rust validator (segment ref, owner ∈ participants, date resolution, duplicates via FTS) → `meeting_extract` | D2 | P0 | T-206a, T-005 | L | Items without a valid segment are dropped; "Friday tak" resolves against the meeting date | Unit (validator, date resolver); T-ML-02 | To do |
-| T-207 | E4 Apply | Review tab (edit/accept/reject, quote → transcript jump, duplicate badge) + `meeting_extraction_apply` creating tasks via the task service | D2 | P0 | T-206b, T-106 | L | Applying AS-1 creates tasks linked through `source_action_item_id`; re-applying never duplicates | Unit + Vitest | To do |
-| T-208 | E4 Recap | `meeting_recap` (speak) from applied items in the chosen language | D2 | P0 | T-102, T-104 | S | Hindi recap plays | Live smoke | To do |
-| T-209 | Integration **C2** | Run journey A1 on a real AS-1 recording; record result | D2 | P0 | T-201..T-208 | S | A1 passes up to tasks created | E2E steps 2–4 | To do |
+| T-201 | Batch | `pluto-gnani/src/batch.rs`: create/start/poll/files/transcript; `meeting_import` (≤ 10 MB); segments with offsets into `meeting_ai_store`; job poller and `meeting://job` events; retry | D1 | P0a | T-103, T-106 | L | AS-1 gives speaker-labelled segments in the database; a `PARTIAL_FAILURE` fixture gives gap markers | Contract (wiremock); T-ML-01; T-FH-06 | To do |
+| T-202 | Meetings UI | Extend the Meetings page: Import dialog, status chips, job progress, Transcript and Speakers tabs; `meeting_transcript_get`, `meeting_speakers_set` | D2 | P0a | T-006, T-106 | L | Mapping updates every segment with that label; works on mocks, then live | Vitest; manual | To do |
+| T-203 | Extraction | Prompt + schema (relevance and extraction in one pass), Rust validator (segment ref, owner ∈ participants), date resolver, duplicate check against open tasks | D2 | P0a | T-104, T-005 | L | Items without a valid segment are dropped; "Friday tak" resolves against the meeting date | Unit (validator, dates); T-ML-02 | To do |
+| T-204 | Review and apply | Review tab (edit, accept, quote jump, duplicate badge) + `meeting_extraction_apply`: write via core `meetings::update`, provenance, `convert_action_item`, then set the item's due date with `tasks::update` | D2 | P0a | T-203, T-202 | L | Applying AS-1 creates linked tasks with the right due dates; re-applying never duplicates | Unit; Vitest | To do |
+| T-205 | Recap | `meeting_recap`: recap in the chosen language from applied items, spoken through `TextToSpeech` | D2 | P0a | T-102, T-104 | S | Hindi recap plays | Live smoke | To do |
+| T-206 | Integration C2 | Run journey A1 on the import path with AS-1; record the result | D2 | P0a | T-201..T-205 | S | A1 passes through to tasks created | E2E steps 2–4 | To do |
+| T-207 | Recorder | Mic recording: `FrameSink` → ≤ 4.5-min WAV chunks, consent enforcement, pause/stop, crash recovery, record dialog, `meeting_rec_*` | D2 | P0b | T-013, T-106 | L | A 6-min recording gives 2 chunks with correct offsets; no consent → `ConsentRequired` | T-PR-03; T-FH-09 | To do |
 
-### M3 — Voice Assistant end to end
+### M3 — Voice Assistant end to end (Day 3–4)
 | ID | Story / Feature | Task → deliverable | Owner | Priority | Dependencies | Est. | Acceptance criteria | Tests | Status |
 |---|---|---|---|---|---|---|---|---|---|
-| T-301 | E5 Runtime | State machine, global hotkey, `voice_ptt_start/stop`, `commit`, barge-in, `Busy` while recording, `voice://status` | D1 | P0 | T-101, T-102, T-011 | L | Every transition in ARCHITECTURE §5 is covered; hotkey → `Listening` shown ≤ 100 ms | Transition unit tests; T-LAT-01 | To do |
-| T-302 | E3 Decisions | Rules (hi/ta/kn/en yes/no/cancel/stop/focus) + Intent prompt/schema → `Decision` | D2 | P0 | T-104 | M | Rule set covers the listed phrases; AS-4 routing ≥ 90% | Unit; T-ML-04 | To do |
-| T-303 | E5 Tools | Tool registry (P0 tools), proposals (store, 30 s expiry), approval via rules or click, execution, 6-turn context, `voice_interactions` timings | D1 | P0 | T-301, T-302, T-106, T-107 | L | No write without approval; "usse Friday kar do" resolves the previous task | T-AS-05; B1 manual | To do |
-| T-304 | E5 Overlay | Voice bar/overlay states, proposal card (approve/reject/edit, countdown), Voice history page | D2 | P0 | T-007 | M | All states render on mocks; voice and click approval both work live | Vitest; B1 manual | To do |
-| T-305 | E5 Recall | `meeting_search` (FTS + filters, top 8) + grounded answer with citations + follow-up proposal hook | D2 | P0 | T-206b, T-104 | L | Answer cites a real segment; no match → "Not found in your meetings" | Unit (grounding); B2 manual | To do |
-| T-306 | Integration **C3** | Run journeys B1 and B2 live; record latency | D1 | P0 | T-303..T-305 | S | B1/B2 pass; T-LAT-03/04 recorded | B1, B2, T-LAT | To do |
+| T-301 | Voice runtime | State machine, push-to-talk on a global hotkey **including key release** (`shortcuts.rs`: new `VoicePtt` action), `voice://status`, barge-in, `Busy` while recording | D1 | P0a | T-101, T-102, T-011 | L | Every transition in ARCHITECTURE §5 covered; hotkey → Listening shown ≤ 100 ms | Transition tests; T-LAT-01 | To do |
+| T-302 | Decisions | Rules table (hi/ta/kn/en yes/no/cancel/stop/focus) + intent LLM prompt and schema + date resolution → `Decision` with resolved args | D2 | P0a | T-104, T-005 | M | Rules cover the listed phrases; AS-4 routing ≥ 90% | Unit; T-ML-04 | To do |
+| T-303 | Assistant | Tool registry over core functions, proposals (30 s), approval by voice or click, 6-turn context, interaction log. P0 tools: tasks list/create/complete/update due, reminders list/create/done, meeting search | D1 | P0a | T-301, T-302, T-107 | L | No write without an approved proposal; "usse Friday kar do" resolves the previous task | T-AS-05; B1 manual | To do |
+| T-304 | Voice UI | Voice bar and overlay states, proposal card (approve/reject/edit, countdown), Voice history page | D2 | P0a | T-006 | M | All states render on mocks; voice and click approval both work live | Vitest; B1 manual | To do |
+| T-305 | Recall | `meeting_recall`: FTS search + filters (top 8) + grounded answer with citations + follow-up proposal hook | D2 | P0a | T-203, T-106 | L | Answer cites a real segment; no match → "Not found in your meetings" | Unit (grounding); B2 manual | To do |
+| T-306 | Integration C3 | Run journeys B1 and B2 live; record latency | D1 | P0a | T-303..T-305 | S | B1 and B2 pass; T-LAT-03/04 recorded | B1, B2, T-LAT | To do |
 
-### M4 — P0 complete and hardened
+### M4 — P0 hardened and demo-ready (Day 4–5 noon)
 | ID | Story / Feature | Task → deliverable | Owner | Priority | Dependencies | Est. | Acceptance criteria | Tests | Status |
 |---|---|---|---|---|---|---|---|---|---|
-| T-402 | E6 Pages | Tasks page (tabs, drawer) + Reminders page + Today page | D1 | P0 | T-106, T-107, T-002 | L | All states on mocks, then live; voice-created items appear without reload | Vitest | To do |
-| T-403 | E7 Settings UI | Opt-in disclosure, keys, languages, caption style, voice preview, hotkey, model IDs | D2 | P0 | T-105 | M | Cloud voice off → assistant disabled; keys show "Saved" only | Vitest; T-PR-04 | To do |
-| T-404 | E7 Safety tests | T-PR-01..04, T-AS-05 automated; consent at UI, command and DB levels | D1 | P0 | T-303, T-201 | S | All pass | Listed | To do |
-| T-405 | E7 Failure suite | T-FH-01..09 run and fixed | D1 | P0 | C3 | M | All pass or have a documented fallback | Listed | To do |
-| T-406 | E8 Measurement | Run T-ML-01..04, T-NZ, T-LAT; write `docs/results/` | D2 | P0 | C3 | M | Results recorded with commit and machine | Listed | To do |
-| T-407 | E8 Build | Windows installer build, demo-machine setup, rollback installer kept | D1 | P0 | C3 | M | Fresh install on the demo machine passes the voice test | Manual | To do |
-| T-408 | Integration **C4** | E2E acceptance (TESTING_STRATEGY §7) on the demo machine | D2 | P0 | T-402..T-407 | S | All 8 steps pass | E2E §7 | To do |
+| T-401 | Voice settings | "Voice & privacy" section in Settings: opt-in disclosure, keys, languages, caption style, voice preview, hotkey (shortcut row), model IDs | D2 | P0a | T-105 | M | Cloud voice off → assistant disabled; keys show "Saved" only | Vitest; T-PR-04 | To do |
+| T-402 | Demo build | Hide non-product pages (time, study, diary, character, mcp, archive) behind one setting; app tracking stays off | D2 | P0a | T-006 | S | The demo build shows only Today, Tasks, Notes, Projects, Meetings, Voice, Settings | Vitest | To do |
+| T-403 | Safety | Automate T-AS-05 (no write without approval), T-PR-01..04 (keys, privacy log, consent, cloud-off = zero outbound) | D1 | P0a | T-303 | S | All pass | Listed | To do |
+| T-404 | Build | Windows installer (`pnpm tauri build`), demo-machine setup, rollback installer kept | D1 | P0a | T-306 | S | Fresh install on the demo machine passes the voice test | Manual | To do |
+| T-405 | Measurement | Run T-ML-01..04, T-NZ, T-LAT; write `docs/results/` | D2 | P0b | T-306 | M | Results recorded with commit and machine | Listed | To do |
+| T-406 | Integration C4 | E2E acceptance (TESTING_STRATEGY §7) on the demo machine | D2 | P0a | T-401..T-404 | S | All steps pass | E2E §7 | To do |
 
-### M5 — P1 (cut in the order given in HACKATHON_PLAN §6)
+### M5 — P1 (only if M4 is early; otherwise after the post)
 | ID | Story / Feature | Task → deliverable | Owner | Priority | Dependencies | Est. | Acceptance criteria | Tests | Status |
 |---|---|---|---|---|---|---|---|---|---|
-| T-501 | E6 Notes (**may port from Pluto after C4**; see PRD D-12) | Notes service (FTS) + page + `note_create` tool + dictation (`codemix`/`transliterate`) | D1 | P1 | C4 | L | Dictated Hinglish note saved and searchable | Unit + Vitest | To do |
-| T-502 | E6 Focus (**may port from Pluto after C4**; see PRD D-12) | Focus service + `focus://tick` + page + voice tools | D1 | P1 | C4 | M | Timer accurate within 1 s over 5 min | T-PP-02 | To do |
-| T-503 | E4 Export | Recap mp3 export per language (Timbre REST) | D1 | P1 | T-102 | S | mp3 plays externally | Manual | To do |
-| T-504 | E7 Privacy UI backend | Privacy log + usage counters commands | D1 | P1 | T-103 | S | Counters move after each call | Unit | To do |
-| T-505 | E4 Warnings | Quality warnings (banner + spoken) | D2 | P1 | T-206b | S | AS-1 variant with no owner shows the warning | Unit | To do |
-| T-506 | E4 Commitments | `commitments_list` + Voice → Commitments tab | D2 | P1 | T-207 | M | Overdue / Done / NoTask computed correctly | Unit + Vitest | To do |
-| T-507 | E4 Ticker | Live ticker (relevance over caption windows) | D2 | P1 | T-202, T-206a | M | Items labelled "draft" appear during recording | Manual | To do |
-| T-508 | E4 Comparison | `compare_transcribe` + diff view; choose and document the baseline | D2 | P1 | T-101 | M | Reproducible diff on a named clip | T-CMP-01 | To do |
-| T-509 | E7 UI | Glossary, privacy log and usage UI | D2 | P1 | T-504 | S | All render live | Vitest | To do |
-| T-510 | E5 Tags | Audio-tag allow-list in reply composer (expressive voice) | D2 | P1 | T-102 | S | Only allow-listed tags are sent | Unit | To do |
-| T-511 | Integration **C5** | Re-run E2E §7 with P1 features; record the cut list | D2 | P1 | T-501..T-510 or cuts | S | E2E still passes | E2E §7 | To do |
+| T-501 | Live captions | Fan recorder frames to Realtime → `meeting://caption`; captions pane with native/romanised toggle | D2 | P1 | T-207, T-101 | M | Captions appear while recording; offline → recording continues | T-FH-01 | To do |
+| T-502 | Warnings | Quality warnings (no decisions, no owner, unresolved date), banner + spoken | D2 | P1 | T-203 | S | AS-1 variant with no owner shows the warning | Unit | To do |
+| T-503 | Commitments | `commitments_list` + Voice → Commitments tab | D2 | P1 | T-204 | M | Overdue / Done / NoTask computed correctly | Unit; Vitest | To do |
+| T-504 | Comparison | `compare_transcribe` + diff view; choose and document a baseline | D2 | P1 | T-101 | M | Reproducible diff on a named clip | T-CMP-01 | To do |
+| T-505 | Glossary | Team glossary → Prisma `keyterms`; UI | D2 | P1 | T-106 | S | Terms reach every Prisma request | Unit | To do |
+| T-506 | Privacy log | Privacy-log and usage-counter commands (backend) | D1 | P1 | T-103 | S | Counters move after each call | Unit | To do |
+| T-507 | Privacy UI | Privacy log and usage in Settings | D2 | P1 | T-506 | S | Renders live | Vitest | To do |
+| T-508 | More voice tools | Notes (`notes::create/search`), focus (`focus::start/stop`), dictation in `codemix`/`transliterate` | D1 | P1 | T-303 | M | Dictated Hinglish note saved and found by search | Unit | To do |
+| T-509 | mp3 export | Recap mp3 export per language | D1 | P1 | T-102 | S | mp3 plays externally | Manual | To do |
+| T-510 | Audio tags | Allow-list of Timbre tags in the reply composer | D2 | P1 | T-102 | S | Only allow-listed tags are sent | Unit | To do |
+| T-511 | Failure suite | Run and fix T-FH-01..09 | D1 | P1 | T-306 | M | All pass or have a documented fallback | T-FH-* | To do |
+| T-512 | Integration C5 | Re-run E2E §7 with the P1 features that are in; record the cut list | D2 | P1 | T-501..T-511 or cuts | S | E2E still passes | E2E §7 | To do |
 
-### M6 — Demo and submission
+### M6 — Demo, post and submission (Day 5–7)
 | ID | Story / Feature | Task → deliverable | Owner | Priority | Dependencies | Est. | Acceptance criteria | Tests | Status |
 |---|---|---|---|---|---|---|---|---|---|
-| T-601 | E8 Freeze | Freeze the demo build; tag `demo-v1`; keep the rollback installer | D1 | P0 | C4 (C5 if done) | S | Tag exists; installer archived | — | To do |
-| T-602 | E8 Rehearsal | Demo run-through ×2 on the frozen build (quiet + noisy take) | D2 | P0 | T-601 | M | Two clean runs | E2E §7 | To do |
-| T-603 | E8 Video + post | Record the 60 s video; post on LinkedIn + X with the required hashtags and disclosures | D2 | P0 | T-602 | M | Posts live; links saved | — | To do |
-| T-604 | E8 Submission | Written explanation, models used, each member's contribution, nominated post links | D1 | P0 | T-603 | S | Form submitted; confirmation saved | — | To do |
+| T-601 | Freeze | Tag `demo-v1` on `main`; archive the installer | D1 | P0a | T-406 | S | Tag exists; installer archived | — | To do |
+| T-602 | Rehearsal | Two clean run-throughs on the frozen build (quiet and noisy take) | D2 | P0a | T-601 | M | Two clean runs | E2E §7 | To do |
+| T-603 | Video and post | Record the 60-second video; post on LinkedIn and X with the required hashtags and disclosures | D2 | P0a | T-602 | M | Posts live; links saved | — | To do |
+| T-604 | Submission | Written explanation, models used, each member's contribution, nominated post links; submit | D1 | P0a | T-603 | S | Form submitted; confirmation saved | — | To do |
 
-### M7 — P2 stretch (only after C5; separate branches; never merged into `demo-v1`)
+### M7 — P2 stretch (never in the demo build)
 | ID | Task | Owner | Est. | Dependencies |
 |---|---|---|---|---|
-| T-701 | Projects service + page + voice tools (PP-05, VA-05) | D1 | L | C5 |
-| T-702 | Own-voice recap via voice cloning, with consent (MA-16) | D1 | M | T-102 |
-| T-703 | Folder watch (MA-19) | D1 | M | T-203 |
-| T-704 | WASAPI loopback capture (MA-20) | D1 | L | T-201 |
-| T-705 | Always-on wake word on device (VA-10) | D1 | XL | T-301 |
-| T-706 | Pre-meeting briefing (MA-15) | D2 | M | T-506 |
-| T-707 | Follow-up drafts (MA-17) | D2 | S | T-207 |
-| T-708 | Meeting analytics (MA-18) | D2 | S | T-205 |
-| T-709 | Daily briefing (VA-09) | D2 | S | T-402 |
+| T-701 | Voice tools for projects (derived from `tasks.project`) | D1 | M | T-303 |
+| T-702 | Own-voice recap with voice cloning (consent required) | D1 | M | T-102 |
+| T-703 | Folder watch for new recordings | D1 | M | T-201 |
+| T-704 | WASAPI loopback capture (Windows) | D1 | L | T-207 |
+| T-705 | Always-on mode with an on-device wake word | D1 | L | T-301 |
+| T-706 | Pre-meeting briefing | D2 | M | T-503 |
+| T-707 | Follow-up message drafts per owner | D2 | S | T-204 |
+| T-708 | Meeting analytics (talk time) | D2 | S | T-202 |
+| T-709 | Daily briefing | D2 | S | T-402 |
 
-## 5. Dependency graph (critical path in bold)
+
+## 5. Effort summary (estimates)
+| | D1 | D2 |
+|---|---|---|
+| P0a before the demo freeze (M0–M4) | 50 h | 49 h |
+| P0a after the freeze (M6: freeze, rehearsal, post, submission) | 2 h | 5 h |
+| P0b (cut first) | 0 h | 8 h |
+| P1 | 7 h | 12 h |
+| P2 | 18 h | 6 h |
+| P0a task count (L / M / S) | 5 / 6 / 9 | 4 / 10 / 7 |
+
+**Reading this:** the P0a work before the freeze is about 50 h for D1 and 49 h for D2. The time available from Day 1 to the freeze (Day 5 noon) is roughly 45 h per developer at long hackathon days **[Guessing]**. The plan is therefore at its limit, and P0b is expected to be used as the cut line. **At C1, compare actual time to these estimates and re-size the remaining P0a** (HACKATHON_PLAN §6).
+
+## 6. Dependency graph (critical path in bold)
 ```
-FIRST HOUR
-  T-001a (D1, skeleton) ──┬── T-003 (D1 types) ───┐
-                          ├── T-003b (D2 types) ──┼── T-006 stubs (D1) ─┐
-                          ├── T-005 schema (D1)   │   T-007 client+mocks (D2) ── T-014 contract CI (D1)
-                          └── T-004 MockLlm (D2)  │
-  parallel-safe from minute 0:  T-002 UI shell (D2) ── T-010 audio (D2) · T-008 test data (D2) · T-012 LLM check (D2)
-                                T-009 audio IPC (D1) · T-013 Gnani check (D1) · T-001b app shell (D1, needs T-002)
-
-CRITICAL PATH
-  T-009 + T-010 ── **T-011** mic/IPC check ── **T-201** recorder ── T-202 captions
-  T-013 ── **T-101** Realtime ── **T-203** Batch (needs T-103) ── T-205 speakers
-  T-012 ── T-104 router ── T-206a ── **T-206b** extraction ── **T-207** apply (needs T-106) ── T-209 (C2)
-  T-101 + T-102 ── **T-301** runtime ── **T-303** tools (needs T-302, T-106, T-107) ── T-306 (C3)
-  T-206b ── T-305 recall ── T-306 (C3)
-  C3 ── T-402..T-407 ── **T-408** (C4) ── **T-601** freeze ── T-602 ── T-603 ── T-604
+DAY 0   T-001 (D2) · T-002 (D1)
+DAY 1   **T-003 (D1, first hour)** ──┬── T-004 (D1) ──┬── T-007 stubs (D1) ──┐
+                                     ├── T-005 (D2) ──┤                      ├── C0
+                                     │                └── T-006 UI plumbing (D2) ┘
+                                     ├── T-106 migration 012 (D2) · T-107 migration 013 (D1) · T-105 secrets (D2)
+        parallel-safe: T-008 · T-009 (D2) · T-010 · T-012 (D1)
+        T-012 + T-013 ── **T-011 mic check**
+DAY 2   T-010 ── **T-101 Realtime** · T-102 Timbre · **T-103 Gnani base** (D1)       T-009 ── T-104 LLM router (D2)
+DAY 3   T-103 + T-106 ── **T-201 Batch + import** (D1) ── T-202 Meetings UI / speakers (D2)
+        T-104 ── **T-203 extraction** ── **T-204 review + apply** ── T-206 (C2)        T-205 recap
+DAY 4   T-101 + T-102 + T-011 ── **T-301 runtime** ── **T-303 assistant** (needs T-302, T-107) ── T-306 (C3)
+        T-203 ── **T-305 recall** ── T-306 (C3) · T-304 voice UI
+DAY 5   T-401..T-404 ── **T-406 (C4)** ── **T-601 freeze** ── T-602 ── **T-603 post** ── T-604 submit
 ```
 
-## 6. Definition of Done (every task)
-1. Code merged to `develop` through a reviewed PR with all merge checks green (`docs/common/WORKING_AGREEMENT.md` §4).
-2. The task's tests are written and passing. UI tasks are checked on mocks in every state.
-3. The acceptance criteria are verified by the owner. Live-service tasks are verified with a real call once.
-4. Contracts are unchanged, or a contract PR (`WORKING_AGREEMENT.md` §5) was merged first and approved by both developers.
-   Fixtures and mocks match the contract (CI-checked).
+## 7. Definition of Done (every task)
+1. Merged to `main` through a reviewed PR from your branch, with CI green (`docs/common/WORKING_AGREEMENT.md` §4).
+2. The task's tests are written and pass. UI tasks are checked on the mock in every state.
+3. The acceptance criteria are verified by the owner. Live-service tasks are verified with one real call.
+4. Contracts are unchanged, or a contract PR (`WORKING_AGREEMENT.md` §5) merged first with both developers' approval.
 5. No secrets in code, logs or fixtures. Synthetic data only.
-6. Board status updated.
+6. The board row is updated.
 
-## 7. Official criteria → evidence
+## 8. Official criteria → evidence
 | Criterion (official) | Feature | Test / evidence | Point in the 60-second demo |
 |---|---|---|---|
-| Genuine use of Gnani technology (eligibility) | Realtime captions, Batch transcript, Timbre replies | T-GN-01, T-ML-01 | 0–10 s captions; 10–25 s transcript; every spoken reply |
-| Mixed Vibes (primary) | Code-mixed meeting → items; Hindi recall answer | T-ML-01..04, T-CMP-01 | 10–25 s extraction from Hinglish; 30–45 s spoken Hindi answer with quote |
-| Real Deal | Meeting → approved tasks; voice reminder | T-ML-02, E2E §7 | 25–30 s tasks created; 45–55 s reminder |
-| Noise Canceller (secondary) | Noisy take | T-NZ-01/02 | Shown only if results support it |
-| Jugaad Genius (secondary) | Expressive voice (audio tags) | T-510 | Final confirmation line |
+| Genuine use of Gnani technology (eligibility) | Batch transcript, Realtime voice input, Timbre replies | T-GN-01, T-ML-01 | Transcript on screen; every spoken reply |
+| Mixed Vibes (primary) | Code-mixed meeting → items; spoken Hindi answer with quote | T-ML-01..04 | 10–25 s extraction from Hinglish; 30–45 s spoken answer with citation |
+| Real Deal | Meeting → approved tasks; reminder by voice | T-ML-02, E2E §7 | 25–30 s tasks created; 45–55 s reminder |
+| Noise Canceller (secondary) | Noisy take | T-NZ-01/02 | Only if the results support it |
+| Jugaad Genius (secondary) | Expressive voice (audio tags, P1) | T-510 | Final confirmation line |
 | Demo Day Drop | Whole P0 flow | E2E §7, T-602 | Entire video |
-| Shortlist (verified engagement) | Public post | T-603 | Post live early (HACKATHON_PLAN §3) |
+| Shortlist (verified engagement) | Public post | T-603 | Post live on Day 5 |
 | Rules (synthetic data, no misleading demo) | Consent, opt-in, disclosures | T-PR-01..04 | Disclosure text in the post |
 
-Presentation material is out of scope for this roadmap. The only presentation file is the placeholder [`docs/common/PPT_FRAMEWORK.md`](docs/common/PPT_FRAMEWORK.md).
+Presentation material is out of scope here. The only presentation file is the placeholder [`docs/common/PPT_FRAMEWORK.md`](docs/common/PPT_FRAMEWORK.md).

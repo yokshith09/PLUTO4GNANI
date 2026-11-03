@@ -5,8 +5,9 @@
 ## 1. Levels
 | Level | Scope | Tools | Owner |
 |---|---|---|---|
-| Unit (Rust) | Domain services, reminder scheduler, focus timer, WAV chunking, retries, request queues, Realtime rotation, batch parsing, date resolution, rules, LLM router fallback, grounding validator, proposal gate | `cargo test` | Module owner |
-| Unit (DB) | Migrations, checks, cascades, FTS5 | `cargo test -p core` | D1 |
+| Base regression | The base's existing 492 core tests and 486 UI tests must keep passing | `cargo test -p pluto-core`, `pnpm test` | Both |
+| Unit (Rust) | WAV chunking, retries and request queues, Realtime rotation, Batch parsing, date resolution, rules, LLM router fallback, grounding validator, proposal gate | `cargo test` | Module owner |
+| Unit (DB) | Migrations 012–013, checks, cascades, FTS5 | `cargo test -p pluto-core` | D1 (013), D2 (012) |
 | Unit (UI) | Every screen in every state on mocks; worklet downsampling (pure function) | Vitest + Testing Library | Page owner |
 | Contract | Gnani clients against fixtures from documented shapes; LLM adapters against recorded responses | `wiremock` + local WS server | D1 (Gnani), D2 (LLM) |
 | Live | Real Gnani / Gemini / Groq with short clips | `cargo test --features live -- --ignored` | Both |
@@ -48,8 +49,7 @@ Each set has a ground-truth file (expected items and intents). Noise is mixed wi
 | T-ML-04 | AS-4 routing | ≥ 90% correct tool |
 | T-NZ-01/02 | AS-5 vs clean | Drop reported (no target asserted) |
 | T-CMP-01 | Prisma vs a named baseline | Errors on names, numbers and dates reported |
-| T-PP-01 | Task CRUD and views; reminder fires within 2 s of `remind_at`; missed reminder fires on startup | Pass |
-| T-PP-02 | Focus timer accurate within 1 s over 5 min; pause excluded (P1) | Pass |
+| T-PP-01 | Personal features (tasks, reminders, notes, focus) | Covered by the base's own tests (`pluto-core`, UI); new work must not break them |
 
 ## 5. Latency (20 runs each, from `voice_interactions`)
 | ID | Measure | Target |
@@ -91,3 +91,14 @@ Each set has a ground-truth file (expected items and intents). Noise is mixed wi
 ## 8. Regression (every PR)
 - `pnpm typecheck && pnpm lint && pnpm test`
 - `cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace`
+
+## 9. Commands
+```
+cargo test --workspace                 # core + contracts + gnani + voice + intel
+cargo test -p pluto-intel              # D2, with MockLlm and fixtures
+cargo test -p pluto-gnani -p pluto-voice   # D1, with wiremock and mock STT/TTS
+pnpm gen:types && git diff --exit-code src/ipc/generated   # generated types are current
+pnpm typecheck && pnpm lint && pnpm test && pnpm check:core-deps
+pnpm tauri dev                         # on Windows
+```
+Live-service tests are ignored by default: `cargo test --features live -- --ignored` (needs the keys in `.env`).

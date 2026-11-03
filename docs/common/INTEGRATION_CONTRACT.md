@@ -5,69 +5,65 @@
 ## 1. Components
 | Component | Owner | Input | Output | Dependencies | Mock available | Verification |
 |---|---|---|---|---|---|---|
-| `core::db` + migrations | D1 | — | Tables | rusqlite | In-memory DB | T-DB-01..05 |
-| `core` personal services (tasks, reminders + scheduler, notes, focus, projects) | D1 | Commands | Records, `reminder://due`, `focus://tick` | db | — | T-PP-01/02 |
-| `ui/src/features/personal` pages | D1 | Commands | Screens | Generated types | `mock/personal.ts` | Vitest states |
-| `ui/src/audio` (capture worklet, frame sender, player queue) | D2 | Mic; PCM chunks | 1,024-byte frames → `audio_push`; sound | WebView2 | WAV-file source; sine generator | T-IPC-01; downsampler unit tests |
-| `voice::gnani` (Realtime, REST, Batch, TTS, clone, queues) | D1 | Frames, files, text | Segments, jobs, PCM | Gnani key | `MockStt`, `MockTts`, fixture WS server, `wiremock` | Contract tests + T-GN-01 |
-| `voice::runtime` (state machine, recorder, sessions) | D1 | Hotkey, commands, frames | `voice://status`, WAV chunks, captions | gnani | `MockStt`, `MockTts` | Transition unit tests |
-| `voice::assistant` (tools, proposals, context) | D1 | `Decision` from a `Decider` | `Proposal`, `ToolResult` | core, `Decider` | `MockDecider` | T-AS-05, B1/B2 |
-| `intel::llm` (Gemini, Groq, router) | D2 | `LlmRequest` | `LlmResponse` | Keys | `MockLlm` | T-LLM-01, T-FH-07/08 |
-| `intel::decide` (rules → LLM) | D2 | Transcript | `Decision` | llm | Rules need none | Rule tests, T-ML-04 |
-| `intel::meeting` (speakers, relevance, extraction, validation, dates, recall, recap, commitments) | D2 | Segments, participants | `ExtractionResult`, `RecallAnswer`, `Commitment` | llm, core, `TextToSpeech` | AS-1 segment fixture, `MockTts` | T-ML-02, M4/M5 DoD |
-| `app` shell (registry, hotkey, tray, keychain) | D1 | IPC | — | all crates | Stub commands | Types compile; smoke |
-| Meetings, Voice and Settings UI + overlay | D2 | Commands, events | Screens | Generated types | `mock/{meetings,voice,settings}.ts` | Vitest states; E2E |
+| Base (core, shell, UI) | — (ported) | — | Tasks, reminders, notes, focus, meetings | — | The base's `src/ipc/mock.ts` | Base tests; T-001, T-002 |
+| `src/audio` (capture worklet, sender, player) | D1 | Mic; PCM chunks | 1,024-byte frames → `audio_push`; sound | WebView2 | WAV-file source; sine generator | T-IPC-01; downsampler unit tests |
+| `audio_push`, `FrameSink` fan-out, WAV writer (Rust) | D1 | Frames | Frames to every sink | — | WAV source | Unit; T-IPC-01 |
+| `pluto-gnani::{http,realtime,tts}` | D1 | Frames, text | Segments, PCM | Gnani key | `MockStt`, `MockTts`, fixture WS server, `wiremock` | Contract tests; T-GN-01 |
+| `pluto-gnani::batch` | D1 | Files, config | Segments in the database; `meeting://job` | http base, migration 012 | `wiremock` job lifecycle | Contract; T-ML-01 |
+| `pluto-voice::runtime` | D1 | Hotkey, commands, frames | `voice://status` | gnani, contracts | `MockStt`, `MockTts` | Transition tests |
+| `pluto-voice::assistant` | D1 | `Decision` from a `Decider` | `Proposal`, `ToolResult` | core, contracts | `MockDecider` | T-AS-05; B1/B2 |
+| `pluto-intel::llm` | D2 | `LlmRequest` | `LlmResponse` | Keys | `MockLlm` | T-LLM-01; T-FH-07/08 |
+| `pluto-intel::decide` | D2 | Transcript | `Decision` | llm | Rules need none | Rule tests; T-ML-04 |
+| `pluto-intel::meeting` (extraction, dates, recall, recap, recorder) | D2 | Segments, participants | `ExtractionResult`, `RecallAnswer` | llm, core, `TextToSpeech` | AS-1 segment fixture; `MockTts` | T-ML-02; flows A1, B2 |
+| Migrations 012 (D2) and 013 (D1) | D2 / D1 | — | Tables | `pluto-core` db | In-memory DB | T-DB-01..05 |
+| `src-tauri` new commands | D1 (stubs), D2 (`meeting_ai.rs`) | IPC | Results, `voice://` / `meeting://` events | all crates | Stub commands | Smoke test |
+| UI: Meetings, Voice, Settings, bar | D2 | Commands, events | Screens | Generated types | New mock handlers | Vitest; E2E |
 
 ## 2. What is frozen before parallel work (checkpoint C0)
-In this order. Each item is merged to `develop` before anything that depends on it starts.
+In this order. Each step is merged to `main` before anything that depends on it starts.
 
 | Step | Task | Content | Writer → approver |
 |---|---|---|---|
-| 1 | T-001a | Workspace skeleton: root `Cargo.toml` with glob members, empty crates `types`, `core`, `voice`, `intel`, all `types/src/*.rs` module files (empty) with `lib.rs` listing them, `.gitignore`, CI placeholder | D1 → D2 |
-| 2 | T-003 | `ids`, `time`, `error`, `personal`, `voice`, `speech` types + traits `SpeechToText`, `TextToSpeech`, `ToolExecutor` | D1 → D2 |
-| 2 | T-003b | `meeting`, `llm`, `decide` types + traits `Llm`, `Decider`, with `MockLlm` | D2 → D1 |
-| 3 | T-005 | `001_init.sql` + migration runner | D1 → D2 |
-| 4 | T-006 | All IPC commands registered as stubs returning fixtures; sample events | D1 → D2 |
-| 5 | T-007 | `client.ts`, `mock/*.ts` skeleton (`personal.ts` left empty for D1) | D2 → D1 |
-| 6 | T-014 / T-015 | Contract CI checks; fixture round-trip tests | D1 / D2 |
+| 1 | T-003 | Skeleton: four crates in the workspace, module placeholders, `gen:types` extended, migrations 012/013 pre-registered | D1 → D2 |
+| 2 | T-004 | Voice, speech, error types; traits `SpeechToText`, `TextToSpeech`, `ToolExecutor`, `FrameSink` | D1 → D2 |
+| 2 | T-005 | Meeting, LLM, decision types; traits `Llm`, `Decider`; `MockLlm` | D2 → D1 |
+| 3 | T-007 | All new commands registered as stubs in one edit | D1 → D2 |
+| 4 | T-006 | `voiceClient.ts`, `meetingAi.ts`, mock handlers, `voice` page entry, fixtures | D2 → D1 |
 
 **After C0:** every change goes through a contract PR (`WORKING_AGREEMENT.md` §5).
 
 ## 3. Mocks and fixtures
 | Mock | Location | Behaviour |
 |---|---|---|
-| Client wrapper | `ui/src/lib/api/client.ts` | The only code that calls `invoke` / `listen`. Screens import from here |
-| Mock API | `ui/src/lib/mock/` | Same function signatures as `client.ts`; every UI state including errors; enabled with `VITE_MOCK=1` |
-| Stub commands | `app/src/commands/*.rs` (feature `stub`) | Return fixture data until the real implementation lands |
-| `MockStt` / `MockTts` | `voice/src/gnani/mock.rs` | Fixture transcripts with delays and errors (incl. close code 1001); a 1 s sine wave |
-| `MockLlm` | `intel/src/llm/mock.rs` | Fixture JSON per task; can simulate 429 and timeouts |
-| `MockDecider` | `voice/src/assistant/mock.rs` | Returns scripted `Decision`s so the assistant can be tested without `intel` |
-| Fixtures | `test-data/fixtures/` | One shared set. Named `<type>.<case>.json`, with `contract_version`. Used by UI mocks **and** Rust tests (T-015) |
+| UI mock | `src/ipc/mock.ts` (existing) + handlers for the new commands | Runs when the UI is opened outside Tauri (`vite dev`) or with `VITE_MOCK`; covers every new command and every state, including errors |
+| Stub commands | `src-tauri/src/voice.rs`, `meeting_ai.rs` | Return fixture data until the real implementation lands |
+| `MockStt` / `MockTts` | `pluto-gnani` | Fixture transcripts with delays and errors (incl. close code 1001); a 1 s sine wave |
+| `MockLlm` | `pluto-intel::llm` | Fixture JSON per task; can simulate 429 and timeouts |
+| `MockDecider` | `pluto-voice::assistant` | Scripted `Decision`s so the assistant is tested without `pluto-intel` |
+| Fixtures | `test-data/fixtures/` | One shared set, `<type>.<case>.json` with `contract_version`; used by the UI mock **and** by Rust tests |
 
-Fixtures follow the documented API shapes only. If a live response differs, fix the fixture **and** `API_CONTRACTS.md` in a contract PR.
+Fixtures follow the documented API shapes. If a live response differs, fix the fixture **and** `API_CONTRACTS.md` in a contract PR.
 
 ## 4. Independent verification
 **Developer 1, without D2:**
-1. `cargo test -p types -p core -p voice`.
-2. `cargo run -p voice --example rt_smoke -- test-data/audio/as4_01.wav`.
-3. `cargo run -p voice --example batch_smoke -- test-data/audio/as1.wav`.
-4. `cargo run -p voice --example tts_smoke -- "Ho gaya" hi-IN`.
-5. Personal pages with `VITE_MOCK=1`.
+1. `cargo test -p pluto-core -p pluto-contracts -p pluto-gnani -p pluto-voice`.
+2. `cargo run -p pluto-gnani --example rt_smoke -- test-data/audio/as4_01.wav` (live key).
+3. `cargo run -p pluto-gnani --example batch_smoke -- test-data/audio/as1.wav`.
+4. `cargo run -p pluto-gnani --example tts_smoke -- "Ho gaya" hi-IN`.
 
 **Developer 2, without D1:**
-1. `VITE_MOCK=1 pnpm --dir ui dev` (all meeting, voice and settings states).
-2. `cargo test -p intel`.
-3. `cargo run -p intel --example extract_smoke -- test-data/fixtures/meetings/segments.as1.json` (live Gemini).
-4. The audio page with the WAV-file source (in a browser, no desktop shell needed).
+1. `pnpm dev` in a browser (the mock serves every command; no desktop shell needed).
+2. `cargo test -p pluto-intel`.
+3. `cargo run -p pluto-intel --example extract_smoke -- test-data/fixtures/meetings/segments.as1.json` (live Gemini).
 
 **Joint:** E2E (`TESTING_STRATEGY.md` §7).
 
 ## 5. Checkpoints
-| ID | Content | Exit criterion |
-|---|---|---|
-| C0 | Skeleton + contracts + stubs + mocks | App builds; UI calls stub commands; T-IPC-01 run |
-| C1 | Gnani live (Realtime, TTS); LLM router live; task/reminder backend | `rt_smoke`, `tts_smoke`, T-LLM-01 pass |
-| C2 | Recording → Batch → segments → extraction on a real transcript | A1 works through to the review screen |
-| C3 | Assistant B1/B2 with approval; tasks/reminders UI done | T-AS-05 + B1/B2 manual pass |
-| C4 | All P0 | `TESTING_STRATEGY.md` §7 passes on the demo machine |
-| C5 | P1 done or cut | Cut list recorded in `HACKATHON_PLAN.md` |
+| ID | Day | Content | Exit criterion |
+|---|---|---|---|
+| C0 | 1 | Skeleton, contracts, stubs, plumbing | `main` builds; the UI calls every stub; T-IPC-01, T-LLM-01, T-GN-01 recorded |
+| C1 | 2 | Gnani live (Realtime, TTS, http base); LLM router live; velocity check | `rt_smoke`, `tts_smoke`, T-LLM-01 pass |
+| C2 | 3 | Import → transcript → extraction → approved tasks | Journey A1 passes up to tasks created |
+| C3 | 4 | Assistant B1/B2 with approval; recall | T-AS-05; B1 and B2 pass |
+| C4 | 5 noon | All P0a | `TESTING_STRATEGY.md` §7 passes on the demo machine |
+| C5 | after C4 | P1 done or cut | Cut list recorded in `HACKATHON_PLAN.md` |
