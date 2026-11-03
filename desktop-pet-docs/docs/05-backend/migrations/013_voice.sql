@@ -1,0 +1,5 @@
+-- 013: voice — assistant interactions, proposals (the write gate), privacy log
+-- (DATA_SCHEMA.md §3). Owner: D1 (T-107).
+--
+-- Pre-registered empty at T-003 so `migrate.rs` is edited once. The runner owns the transaction
+-- and user_version.

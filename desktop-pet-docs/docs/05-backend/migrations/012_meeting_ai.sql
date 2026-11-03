@@ -1,0 +1,5 @@
+-- 012: meeting AI — recordings, transcription jobs, transcript segments (+ FTS5), provenance,
+-- insights, glossary (DATA_SCHEMA.md §2). Owner: D2 (T-106).
+--
+-- Pre-registered empty at T-003 so `migrate.rs` is edited once. The runner owns the transaction
+-- and user_version.

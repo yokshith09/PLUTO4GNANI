@@ -1,0 +1,25 @@
+[package]
+name = "pluto-gnani"
+description = "Gnani Prisma (Realtime, Batch, REST) and Timbre clients. No tauri."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+pluto-core.workspace = true
+pluto-contracts.workspace = true
+async-trait.workspace = true
+base64.workspace = true
+futures-util.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-tungstenite.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "test-util"] }
+wiremock.workspace = true

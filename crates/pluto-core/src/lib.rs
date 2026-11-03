@@ -19,6 +19,7 @@ pub mod labels;
 pub mod legacy_data;
 pub mod links;
 pub mod logging;
+pub mod meeting_ai_store;
 pub mod meetings;
 pub mod notes;
 pub mod pet_screen;
@@ -33,6 +34,7 @@ pub mod task_plans;
 pub mod tasks;
 pub mod usage;
 pub mod usage_collector;
+pub mod voice_store;
 
 /// The version of the core, taken from the workspace package version.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
