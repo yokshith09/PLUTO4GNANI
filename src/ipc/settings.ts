@@ -31,6 +31,8 @@ export interface Settings {
   /** macOS: also read Safari (can't tell private windows apart). */
   "tracking.safari": boolean;
   "advanced.log_level": "trace" | "debug" | "info" | "warn" | "error";
+  /** Show only the product pages (Today, Tasks, Notes, Projects, Meetings, Voice, Settings). */
+  "advanced.demo_pages_only": boolean;
   /** Cloud voice is opt-in: audio goes to Gnani and transcript text to Gemini/Groq only when on. */
   "voice.cloud_enabled": boolean;
   /** Up to 4 language codes such as `hi-IN`; empty = detect automatically. */

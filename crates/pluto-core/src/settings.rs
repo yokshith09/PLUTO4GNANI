@@ -87,6 +87,9 @@ pub enum SettingsKey {
     // advanced
     #[serde(rename = "advanced.log_level")]
     AdvancedLogLevel,
+    /// Show only the product pages (Today, Tasks, Notes, Projects, Meetings, Voice, Settings). Off by default.
+    #[serde(rename = "advanced.demo_pages_only")]
+    AdvancedDemoPagesOnly,
 
     // voice and language models (T-105/T-401; API keys are never settings, see secrets.rs)
     #[serde(rename = "voice.cloud_enabled")]
@@ -164,6 +167,7 @@ impl SettingsKey {
             Self::TrackingSites => "tracking.sites",
             Self::TrackingSafari => "tracking.safari",
             Self::AdvancedLogLevel => "advanced.log_level",
+            Self::AdvancedDemoPagesOnly => "advanced.demo_pages_only",
             Self::VoiceCloudEnabled => "voice.cloud_enabled",
             Self::VoiceLanguages => "voice.languages",
             Self::VoiceSttFormat => "voice.stt_format",
@@ -200,6 +204,7 @@ impl SettingsKey {
             "tracking.sites" => Some(Self::TrackingSites),
             "tracking.safari" => Some(Self::TrackingSafari),
             "advanced.log_level" => Some(Self::AdvancedLogLevel),
+            "advanced.demo_pages_only" => Some(Self::AdvancedDemoPagesOnly),
             "voice.cloud_enabled" => Some(Self::VoiceCloudEnabled),
             "voice.languages" => Some(Self::VoiceLanguages),
             "voice.stt_format" => Some(Self::VoiceSttFormat),
@@ -237,6 +242,7 @@ impl SettingsKey {
             Self::TrackingSites => json!(false),
             Self::TrackingSafari => json!(false),
             Self::AdvancedLogLevel => json!("info"),
+            Self::AdvancedDemoPagesOnly => json!(false),
             Self::VoiceCloudEnabled => json!(false),
             Self::VoiceLanguages => json!([]),
             Self::VoiceSttFormat => json!("codemix"),
@@ -264,7 +270,8 @@ impl SettingsKey {
             | Self::TrackingSafari
             | Self::VoiceCloudEnabled
             | Self::VoiceAudioTags
-            | Self::VoiceAlwaysOn => {
+            | Self::VoiceAlwaysOn
+            | Self::AdvancedDemoPagesOnly => {
                 if !value.is_boolean() {
                     return Err(AppError::validation(self.as_str(), "must be a boolean"));
                 }
@@ -453,6 +460,7 @@ pub fn all_defaults() -> BTreeMap<String, Value> {
         SettingsKey::TrackingSites,
         SettingsKey::TrackingSafari,
         SettingsKey::AdvancedLogLevel,
+        SettingsKey::AdvancedDemoPagesOnly,
         SettingsKey::VoiceCloudEnabled,
         SettingsKey::VoiceLanguages,
         SettingsKey::VoiceSttFormat,
@@ -509,7 +517,12 @@ mod tests {
     #[test]
     fn all_defaults_exist() {
         let defaults = all_defaults();
-        assert_eq!(defaults.len(), 30);
+        assert_eq!(defaults.len(), 31);
+        assert_eq!(
+            defaults["advanced.demo_pages_only"],
+            json!(false),
+            "all pages show unless asked"
+        );
         assert_eq!(
             defaults["voice.cloud_enabled"],
             json!(false),
