@@ -1,0 +1,19 @@
+{
+  "contract_version": 1,
+  "data": {
+    "cloud_voice_enabled": true,
+    "languages": [
+      "hi-IN",
+      "en-IN"
+    ],
+    "stt_format": "codemix",
+    "tts_voice": "Arya",
+    "tts_model": "timbre-v3",
+    "hotkey": "Ctrl+Shift+Space",
+    "audio_tags": true,
+    "always_on_enabled": false,
+    "has_gnani_key": true,
+    "has_gemini_key": true,
+    "has_groq_key": true
+  }
+}

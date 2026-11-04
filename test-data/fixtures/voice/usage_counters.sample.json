@@ -1,0 +1,10 @@
+{
+  "contract_version": 1,
+  "data": {
+    "stt_seconds_today": 42.5,
+    "batch_seconds_today": 180.5,
+    "tts_chars_today": 520,
+    "gemini_calls_today": 6,
+    "groq_calls_today": 11
+  }
+}

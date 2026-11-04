@@ -2,6 +2,7 @@
 import { daysAgo, ymd } from "../lib/dates";
 import { repeatDays, taskOccurs } from "../lib/repeat";
 import { remainingMs } from "../lib/focus";
+import { createVoiceMock } from "./mockVoice";
 import type {
   AppUsage, DomainUsage, TimeRange, UsageSummary,
   AppError, BinNote, DailyLog, LogEntry, Meeting, MeetingInput, MeetingSummary, Reminder, Label, PlutoEvent, Note, NoteColor, NoteSummary, Task, TaskEvent, TaskRow, TaskStatus, WorkUpdate, FocusSession,
@@ -740,6 +741,9 @@ export function createMock() {
       emit("TaskStatusChanged", { id: x.id, from, to }); return x;
     },
   };
+
+  // Voice and meeting-AI commands (T-006), from their own file.
+  Object.assign(handlers, createVoiceMock({ now, getMeeting: (id) => withStatus(findMeeting(id)) }));
 
   return {
     call: async (cmd: string, args: Args) => {
