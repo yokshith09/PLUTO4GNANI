@@ -558,8 +558,10 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(40)).await;
     }
 
+    /// Waits up to 15 s (CI runners, especially under coverage instrumentation, can be far slower
+    /// than a laptop) for `check` to hold.
     async fn eventually<F: std::future::Future<Output = bool>>(mut check: impl FnMut() -> F) {
-        for _ in 0..500 {
+        for _ in 0..1_500 {
             if check().await {
                 return;
             }
@@ -814,11 +816,14 @@ mod tests {
         f.platform.set_idle(0);
         f.platform.held.store(true, Ordering::Relaxed);
         settle().await;
-        // Forty minutes without touching the keyboard or the mouse, looked at every minute.
+        // Forty minutes without touching the keyboard or the mouse, looked at every minute. Each
+        // minute waits until the collector has counted it: a fixed sleep raced the 15 ms poll on a
+        // slow CI runner and dropped minutes (2160 s instead of 2400 s, 4 Nov 2026).
         for minute in 1..=40u64 {
             f.clock.advance_ms(MIN);
             f.platform.set_idle(minute * MIN as u64);
-            settle().await;
+            let want = i64::try_from(minute).unwrap() * 60;
+            eventually(|| async { total(&f).await >= want }).await;
         }
         assert_eq!(total(&f).await, 40 * 60);
         f.settings.set("tracking.apps", json!(false)).await.unwrap();
