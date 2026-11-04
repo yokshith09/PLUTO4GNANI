@@ -9,20 +9,21 @@ import { voiceErrorMessage } from "@/ipc/voiceClient";
 import type { AiStatus, SpeakerMapping, TranscriptSegment } from "@/ipc/generated";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
+import { ReviewPanel } from "./ReviewPanel";
 import { AI_STATUS_LABEL, aiStatusFor, jobStep, speakersOf, timeLabel } from "./aiStatus";
 
-type Tab = "transcript" | "speakers";
+type Tab = "transcript" | "speakers" | "review";
 
 export function StatusChip({ status }: { status: AiStatus }) {
   const variant = status === "failed" ? "destructive" : status === "done" ? "success" : status === "needs_speakers" || status === "needs_review" ? "primary" : "default";
   return <Badge variant={variant}>{status === "transcribing" && <Loader2 className="size-3 animate-spin" />}{AI_STATUS_LABEL[status]}</Badge>;
 }
 
-function Transcript({ segments, speakerName }: { segments: TranscriptSegment[]; speakerName: (s: TranscriptSegment) => string }) {
+function Transcript({ segments, speakerName, highlight }: { segments: TranscriptSegment[]; speakerName: (s: TranscriptSegment) => string; highlight: string | null }) {
   return (
     <ol aria-label="Transcript" className="max-h-96 divide-y overflow-y-auto rounded-lg border bg-card">
       {segments.map((s) => (
-        <li key={s.id} className="flex gap-3 px-3 py-2 text-[13px]">
+        <li key={s.id} id={`seg-${s.id}`} aria-current={s.id === highlight ? "true" : undefined} className={cn("flex gap-3 px-3 py-2 text-[13px]", s.id === highlight && "bg-primary/10")}>
           <span className="w-10 shrink-0 pt-0.5 text-right text-[11px] tabular-nums text-muted-foreground">{timeLabel(s.start_ms)}</span>
           <span className="min-w-0 flex-1">
             <span className="mr-2 font-medium">{speakerName(s)}</span>
@@ -89,6 +90,7 @@ export function AiPanel({ meetingId, participants }: { meetingId: string; partic
   const ready = job?.status === "completed" || job?.status === "partial_failure";
   const { data: segments } = useTranscript(meetingId, ready);
   const [tab, setTab] = useState<Tab>("transcript");
+  const [highlight, setHighlight] = useState<string | null>(null);
   const status = aiStatusFor(job, segments);
   if (!status || !job) return null;
   const step = jobStep(job);
@@ -124,19 +126,24 @@ export function AiPanel({ meetingId, participants }: { meetingId: string; partic
       {ready && segments && (
         <>
           <div role="tablist" aria-label="Transcript views" className="flex gap-1">
-            {(["transcript", "speakers"] as const).map((t) => (
+            {(["transcript", "speakers", "review"] as const).map((t) => (
               <button
                 key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => setTab(t)}
                 className={cn("flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[13px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring", tab === t ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/60")}
               >
-                {t === "speakers" && <Users className="size-3.5" />}{t === "transcript" ? "Transcript" : "Speakers"}
+                {t === "speakers" && <Users className="size-3.5" />}{t === "transcript" ? "Transcript" : t === "speakers" ? "Speakers" : "Review"}
               </button>
             ))}
           </div>
           <div role="tabpanel">
-            {tab === "transcript"
-              ? <Transcript segments={segments} speakerName={name} />
-              : <Speakers meetingId={meetingId} segments={segments} participants={participants} />}
+            {tab === "transcript" && <Transcript segments={segments} speakerName={name} highlight={highlight} />}
+            {tab === "speakers" && <Speakers meetingId={meetingId} segments={segments} participants={participants} />}
+            {tab === "review" && (
+              <ReviewPanel
+                meetingId={meetingId} participants={participants}
+                onShowSegment={(id) => { setHighlight(id); setTab("transcript"); setTimeout(() => document.getElementById(`seg-${id}`)?.scrollIntoView?.({ block: "center" }), 0); }}
+              />
+            )}
           </div>
         </>
       )}

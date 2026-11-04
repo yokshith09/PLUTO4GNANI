@@ -32,7 +32,7 @@
         "id": "x3",
         "kind": "action_item",
         "body": "Confirm the vendor contract with legal.",
-        "owner": "Meena",
+        "owner": null,
         "due_phrase": "Monday",
         "due_date": "2026-11-09",
         "priority": "MEDIUM",
@@ -56,7 +56,7 @@
     "warnings": [
       {
         "kind": "action_item_without_owner",
-        "item_id": "x9"
+        "item_id": "x3"
       }
     ]
   }

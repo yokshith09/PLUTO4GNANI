@@ -115,16 +115,29 @@ export function MeetingEditor({ meetingId, onBack, onCreated }: { meetingId: str
   const idRef = useRef(id);
   idRef.current = id;
 
+  const fromSaved = (m: NonNullable<typeof saved>): MeetingInput => ({
+    title: m.title, starts_at: m.starts_at, notes: m.notes, follow_up_date: m.follow_up_date,
+    participants: m.participants,
+    decisions: m.decisions.map((d) => ({ id: d.id, body: d.body })),
+    action_items: m.action_items.map((a) => ({ id: a.id, body: a.body, assignee: a.assignee })),
+  });
+
   // Fill the editor once from the stored meeting.
   useEffect(() => {
     if (loaded || !saved) return;
-    setDraft({
-      title: saved.title, starts_at: saved.starts_at, notes: saved.notes, follow_up_date: saved.follow_up_date,
-      participants: saved.participants,
-      decisions: saved.decisions.map((d) => ({ id: d.id, body: d.body })),
-      action_items: saved.action_items.map((a) => ({ id: a.id, body: a.body, assignee: a.assignee })),
-    });
+    setDraft(fromSaved(saved));
     setLoaded(true);
+  }, [saved, loaded]);
+
+  // Rows added from outside (the audio review applies decisions and action items) must reach the
+  // editor, otherwise the next autosave would delete them. Only when nothing is unsaved; blank
+  // rows being typed don't count.
+  useEffect(() => {
+    if (!loaded || !saved || dirty.current || inFlight.current) return;
+    const ids = (rows: { id?: string | null; body: string }[]) => rows.filter((r) => r.body.trim()).map((r) => r.id ?? "").sort().join();
+    const d = draftRef.current;
+    const same = ids(saved.decisions) === ids(d.decisions) && ids(saved.action_items) === ids(d.action_items);
+    if (!same) setDraft(fromSaved(saved));
   }, [saved, loaded]);
 
   /** Save now if anything changed. Resolves to the meeting's id (null while it has no title). */

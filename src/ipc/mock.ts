@@ -752,7 +752,17 @@ export function createMock() {
     (voiceLoaded ??= import("./mockVoice").then(({ createVoiceMock }) => {
       Object.assign(handlers, createVoiceMock({
         now,
-        getMeeting: (id) => withStatus(findMeeting(id)),
+        applyItems: (meetingId, decisions, actions) => {
+          const m = findMeeting(meetingId);
+          for (const body of decisions) if (!m.decisions.some((d) => d.body === body)) m.decisions.push({ id: `d${++seq}`, body });
+          for (const a of actions) {
+            let item = m.action_items.find((x) => x.body === a.body);
+            if (!item) { item = { id: `a${++seq}`, body: a.body, assignee: a.assignee, task_id: null }; m.action_items.push(item); }
+            if (a.createTask && !item.task_id) void handlers.action_item_convert?.({ actionItemId: item.id });
+          }
+          m.updated_at = now(); emit("MeetingUpdated", { meeting: withStatus(m) });
+          return withStatus(m);
+        },
         createMeeting: (title, participants) => {
           const m: StoredMeeting = { id: `mi${++audioMeetingSeq}`, starts_at: now(), created_at: now(), updated_at: now(), ...meetingParts({ title: title.trim() || "Imported meeting", starts_at: null, notes: "", follow_up_date: null, participants, decisions: [], action_items: [] }) };
           meetings.push(m); emit("MeetingCreated", { meeting: withStatus(m) }); return m.id;

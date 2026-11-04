@@ -3,7 +3,7 @@
 // UI and the Rust side agree. Every state is reachable, including the errors.
 import { emitNamed } from "./namedEvents";
 import type {
-  Commitment, ExtractionResult, PrivacyLogEntry, Proposal, ProposalResponse, RecallAnswer, RecordingSession, SpeakerMapping, ToolResult,
+  ApplyExtraction, Commitment, ExtractionResult, PrivacyLogEntry, Proposal, ProposalResponse, RecallAnswer, RecordingSession, SpeakerMapping, ToolResult,
   TranscriptionJob, TranscriptSegment, UsageCounters, VoiceError, VoiceErrorCode, VoiceSettings, VoiceSettingsPatch, VoiceStatus,
 } from "./generated";
 import type { Meeting } from "./types";
@@ -21,10 +21,10 @@ const KEY_FLAGS = { gnani: "has_gnani_key", gemini: "has_gemini_key", groq: "has
 
 export interface VoiceMockDeps {
   now: () => number;
-  /** The base's meeting by id (throws NOT_FOUND like the real command). */
-  getMeeting: (id: string) => Meeting;
   /** Create the meeting row an import or recording makes; returns its id. */
   createMeeting: (title: string, participants: string[]) => string;
+  /** Add decisions and action items to a base meeting, and make tasks for the ones asked; returns the meeting. */
+  applyItems: (meetingId: string, decisions: string[], actions: { body: string; assignee: string | null; createTask: boolean }[]) => Meeting;
   /** Delay before simulated pipeline steps; tests pass 0. */
   delayMs?: number;
 }
@@ -36,7 +36,7 @@ const voiceError = (code: VoiceErrorCode, message: string, retryable = false): n
 // Module-level so ids stay unique across mock instances (window events are shared by all of them).
 let seq = 0;
 
-export function createVoiceMock({ now, getMeeting, createMeeting, delayMs = 250 }: VoiceMockDeps) {
+export function createVoiceMock({ now, createMeeting, applyItems, delayMs = 250 }: VoiceMockDeps) {
   const id = (p: string) => `${p}-${++seq}`;
   const settings: VoiceSettings = structuredClone(settingsDefault.data) as VoiceSettings;
   let status: VoiceStatus = structuredClone(statusIdle.data) as VoiceStatus;
@@ -187,8 +187,18 @@ export function createVoiceMock({ now, getMeeting, createMeeting, delayMs = 250 
       }));
     },
     meeting_speakers_set: (a: Args) => { mappings.set(String(a.meetingId), a.mapping as SpeakerMapping[]); return null; },
-    meeting_extract: () => structuredClone(extractionAs1.data) as ExtractionResult,
-    meeting_extraction_apply: (a: Args) => getMeeting(String((a.input as { meeting_id: string }).meeting_id)),
+    meeting_extract: (a: Args) => ({ ...(structuredClone(extractionAs1.data) as ExtractionResult), meeting_id: String(a.meetingId) }),
+    meeting_extraction_apply: (a: Args) => {
+      const input = a.input as ApplyExtraction;
+      const byId = new Map(items().map((i) => [i.id, i]));
+      const picked = input.accepted.flatMap((e) => { const o = byId.get(e.item_id); return o ? [{ e, o }] : []; });
+      if (!picked.length && input.accepted.length) voiceError("core", "Those items are no longer in this review.");
+      return applyItems(
+        input.meeting_id,
+        picked.filter((p) => p.o.kind === "decision").map((p) => p.e.body),
+        picked.filter((p) => p.o.kind === "action_item").map((p) => ({ body: p.e.body, assignee: p.e.owner, createTask: p.e.create_task })),
+      );
+    },
     meeting_items_get: () => structuredClone(items()),
     meeting_recall: (a: Args): RecallAnswer => {
       if (!String(a.question).trim()) voiceError("core", "Ask a question first.");
