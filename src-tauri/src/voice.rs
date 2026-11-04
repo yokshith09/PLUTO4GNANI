@@ -5,8 +5,9 @@
 //!   through `pluto_core::secrets`), `privacy_log_list` / `privacy_log_clear` (`voice_store`).
 //! - Push-to-talk is a stub that **records each press to a WAV file** (`<data>/voice-check/
 //!   last-ptt.wav`) so the mic path can be checked end to end (T-011); it goes Listening → Idle.
-//! - `voice_speak` streams a 1 s test tone (PCM16 24 kHz) over the `playback` Channel instead of
-//!   Timbre (T-102 replaces it); `voice_stop_speaking` stops it (barge-in).
+//! - `voice_speak` speaks with **Timbre** (T-102) when Cloud voice is on — nothing leaves the device
+//!   otherwise (NF-02) — and plays a local 1 s test tone when it is off (kept for the mic check,
+//!   T-011). `voice_stop_speaking` stops either (barge-in).
 //! - Everything else returns the shared fixtures in `test-data/fixtures/voice/`, so the UI can be
 //!   built against the real shell before the runtime (T-301) and assistant (T-303) land.
 //!
@@ -21,8 +22,12 @@ use pluto_contracts::voice::{
     AssistantTurn, Destination, PrivacyLogEntry, ProposalResponse, ToolResult, UsageCounters,
     VoiceMode, VoiceSettings, VoiceSettingsPatch, VoiceState, VoiceStatus,
 };
+use pluto_core::clock::Clock;
+use pluto_core::db::Database;
 use pluto_core::secrets::{Account, KeychainSecrets, SecretStore};
 use pluto_core::voice_store;
+use pluto_gnani::http::{ApiKeySource, GnaniHttp, OutboundLog, OutboundRecord, DEFAULT_BASE_URL};
+use pluto_gnani::tts::{TimbreClient, DEFAULT_WS_URL};
 use pluto_voice::audio::{AudioRouter, WavSink};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -87,10 +92,56 @@ pub(crate) mod fixtures {
 
 // ---- state ---------------------------------------------------------------------------------
 
+/// The Gnani key, read from the OS keychain on every call (so a newly saved key works at once).
+struct KeychainKey(Arc<dyn SecretStore>);
+
+impl ApiKeySource for KeychainKey {
+    fn gnani_key(&self) -> Option<String> {
+        self.0.get(Account::Gnani).ok().flatten()
+    }
+}
+
+/// Writes outbound requests to `privacy_log` (T-PR-02). `record` must not block, so the write runs
+/// on the async runtime.
+struct DbLog {
+    db: Arc<Database>,
+    clock: Arc<dyn Clock>,
+}
+
+impl OutboundLog for DbLog {
+    fn record(&self, record: OutboundRecord) {
+        let Ok(serde_json::Value::String(destination)) = serde_json::to_value(record.destination)
+        else {
+            return;
+        };
+        let (db, at) = (self.db.clone(), self.clock.now_ms());
+        let bytes = i64::try_from(record.bytes).unwrap_or(i64::MAX);
+        tauri::async_runtime::spawn(async move {
+            let written = db
+                .write(move |tx| {
+                    voice_store::log_outbound(
+                        tx,
+                        at,
+                        &destination,
+                        &record.purpose,
+                        bytes,
+                        record.ref_id.as_deref(),
+                    )?;
+                    Ok(((), vec![]))
+                })
+                .await;
+            if let Err(e) = written {
+                tracing::warn!(code = ?e.code, "couldn't write the privacy log");
+            }
+        });
+    }
+}
+
 /// What the voice shell keeps between calls. Managed by Tauri (`app.manage`).
 pub(crate) struct VoiceShell {
     pub(crate) router: Arc<AudioRouter>,
     secrets: Arc<dyn SecretStore>,
+    tts: Arc<TimbreClient>,
     inner: Mutex<Inner>,
 }
 
@@ -105,10 +156,16 @@ struct Inner {
 }
 
 impl VoiceShell {
-    pub(crate) fn new() -> VoiceResult<Self> {
+    pub(crate) fn new(db: Arc<Database>, clock: Arc<dyn Clock>) -> VoiceResult<Self> {
+        let secrets: Arc<dyn SecretStore> = Arc::new(KeychainSecrets);
+        let keys: Arc<dyn ApiKeySource> = Arc::new(KeychainKey(secrets.clone()));
+        let log: Arc<dyn OutboundLog> = Arc::new(DbLog { db, clock });
+        let http = Arc::new(GnaniHttp::new(DEFAULT_BASE_URL, keys.clone(), log.clone())?);
+        let tts = Arc::new(TimbreClient::new(DEFAULT_WS_URL, http, keys, log));
         Ok(Self {
             router: Arc::new(AudioRouter::new()),
-            secrets: Arc::new(KeychainSecrets),
+            secrets,
+            tts,
             inner: Mutex::new(Inner {
                 status: VoiceStatus::new(VoiceState::Idle),
                 settings: fixture(fixtures::SETTINGS_DEFAULT)?,
@@ -337,8 +394,10 @@ pub async fn voice_proposal_respond(
     fixture(fixtures::TOOL_RESULT_OK)
 }
 
-/// Stub: streams a 1 s 440 Hz test tone (PCM16 24 kHz) to `playback`, reporting Speaking then
-/// Idle. Returns when the tone ends or `voice_stop_speaking` cuts it off. T-102 swaps in Timbre.
+/// Speaks `text` to `playback` (PCM16 24 kHz chunks), reporting Speaking then Idle. With Cloud
+/// voice on it is Timbre in the settings' voice; with it off, a local 1 s test tone (nothing is
+/// sent anywhere). Returns when speech ends or `voice_stop_speaking` cuts it off. A Timbre failure
+/// is returned and emitted as `voice://error` (the UI shows the reply as text instead, B5.7).
 #[tauri::command]
 pub async fn voice_speak(
     text: String,
@@ -351,16 +410,22 @@ pub async fn voice_speak(
         old.abort();
     }
     shell.set_status(&app, VoiceStatus::new(VoiceState::Speaking));
+    let settings = shell.settings();
     let request = TtsRequest {
         text,
         language: language.unwrap_or_else(|| "auto".into()),
-        voice: None,
+        voice: Some(settings.tts_voice.clone()).filter(|v| !v.trim().is_empty()),
+        // The client's documented default until the voice settings are real (T-105 / T-401).
         model: None,
         speed: None,
     };
+    let tts: Arc<dyn TextToSpeech> = if settings.cloud_voice_enabled {
+        shell.tts.clone()
+    } else {
+        Arc::new(pluto_gnani::mock::MockTts::new())
+    };
     let task = tokio::spawn(async move {
         let (tx, mut rx) = tokio::sync::mpsc::channel::<Vec<u8>>(16);
-        let tts = pluto_gnani::mock::MockTts::new();
         let produce = tts.stream(request, tx);
         let forward = async {
             while let Some(chunk) = rx.recv().await {
@@ -369,13 +434,13 @@ pub async fn voice_speak(
                 }
             }
         };
-        let (_, ()) = tokio::join!(produce, forward);
+        let (spoken, ()) = tokio::join!(produce, forward);
+        spoken
     });
     let id = task.id();
     shell.lock().speaking = Some(task.abort_handle());
-    // Ends when the tone finishes, or with a cancellation error when voice_stop_speaking or
-    // voice_cancel aborts it. Either way it is not an error for the caller.
-    let _ = task.await;
+    // A cancellation (voice_stop_speaking / voice_cancel) is not an error for the caller.
+    let spoken = task.await.unwrap_or(Ok(()));
     let was_current = {
         let mut inner = shell.lock();
         let current = inner.speaking.as_ref().is_some_and(|t| t.id() == id);
@@ -387,7 +452,10 @@ pub async fn voice_speak(
     if was_current {
         shell.set_status(&app, VoiceStatus::new(VoiceState::Idle));
     }
-    Ok(())
+    if let Err(e) = &spoken {
+        emit(&app, events::ERROR, e);
+    }
+    spoken
 }
 
 #[tauri::command]
