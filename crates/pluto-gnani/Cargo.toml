@@ -25,5 +25,6 @@ tracing.workspace = true
 mock = []
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["rt-multi-thread", "test-util"] }
+hound.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "test-util", "net", "macros"] }
 wiremock.workspace = true

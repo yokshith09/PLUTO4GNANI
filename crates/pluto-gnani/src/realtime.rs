@@ -1,3 +1,482 @@
-//! Prisma Realtime client (`wss://api.vachana.ai/stt/v3/stream`): frames, `commit`, reconnect, 14-minute rotation.
+//! Prisma Realtime client (`wss://api.vachana.ai/stt/v3/stream`, API_CONTRACTS §2.1).
+//! Owner: **D1** (T-101). Implements `SpeechToText`; used by the voice runtime (T-301) and the
+//! recorder's live captions (T-501).
 //!
-//! Owner: **D1**. Filled in by T-101. Placeholder from T-003 so nobody edits `lib.rs` later.
+//! One [`RtSession`] is one logical session; underneath it the client may use several WebSocket
+//! connections:
+//! - **Rotation:** Gnani ends a session at 15 minutes (close code 1001), so the client reconnects
+//!   on its own after [`RealtimePolicy::rotate_after`] (14 min).
+//! - **Reconnect:** a dropped connection or a 1001 is retried after 0.5 / 1 / 2 / 4 s. Meanwhile
+//!   frames are buffered (the newest 10 s; older ones are dropped) and sent once connected again;
+//!   a `commit` asked for meanwhile is sent after them. The caller sees `Reconnecting`, then
+//!   `Connected`.
+//! - **Ends:** `RtInput::Close`, dropping `input`, Gnani's own normal close (idle timeout), or
+//!   running out of reconnect attempts (then an `Error` first). `events` always ends with `Closed`.
+//!
+//! There are no partial transcripts: each `transcript` message is final. Segment numbers are our
+//! own, continuous across reconnects. Every connection is written to the privacy log when it ends,
+//! with the bytes sent over it. Gnani's own error text is never copied into a message.
+
+use std::collections::VecDeque;
+use std::sync::Arc;
+use std::time::Duration;
+
+use futures_util::{SinkExt, StreamExt};
+use pluto_contracts::error::{VoiceError, VoiceErrorCode, VoiceResult};
+use pluto_contracts::speech::{
+    RtConfig, RtEvent, RtInput, RtSession, RtTranscript, SpeechToText, CAPTURE_SAMPLE_RATE,
+};
+use pluto_contracts::voice::Destination;
+use serde::Deserialize;
+use tokio::net::TcpStream;
+use tokio::sync::mpsc;
+use tokio::time::{sleep, sleep_until, timeout, Instant};
+use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+use tokio_tungstenite::tungstenite::handshake::client::Request;
+use tokio_tungstenite::tungstenite::http::HeaderValue;
+use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
+use tokio_tungstenite::tungstenite::{Error as WsError, Message};
+use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
+
+use crate::http::{map_status, ApiKeySource, Family, OutboundLog, OutboundRecord};
+
+/// Prisma Realtime endpoint.
+pub const DEFAULT_URL: &str = "wss://api.vachana.ai/stt/v3/stream";
+/// The model, sent as both `model` and `x-model` (the docs use both spellings).
+pub const MODEL: &str = "prisma-v3.0";
+/// What the privacy log says each connection was for.
+pub const PURPOSE: &str = "live speech to text";
+
+type Ws = WebSocketStream<MaybeTlsStream<TcpStream>>;
+
+/// Timing of rotation and reconnects. [`RealtimePolicy::default`] is the production schedule.
+#[derive(Debug, Clone)]
+pub struct RealtimePolicy {
+    /// Reconnect proactively after this long (Gnani's cap is 15 min).
+    pub rotate_after: Duration,
+    /// Wait before each reconnect attempt; its length is the number of attempts.
+    pub reconnect_delays: Vec<Duration>,
+    /// Frames kept while disconnected (the newest win). 313 frames ≈ 10 s.
+    pub buffer_frames: usize,
+    /// How long one connection attempt (TCP + TLS + handshake) may take.
+    pub connect_timeout: Duration,
+}
+
+impl Default for RealtimePolicy {
+    fn default() -> Self {
+        Self {
+            rotate_after: Duration::from_secs(14 * 60),
+            reconnect_delays: [500, 1_000, 2_000, 4_000]
+                .into_iter()
+                .map(Duration::from_millis)
+                .collect(),
+            buffer_frames: 313,
+            connect_timeout: Duration::from_secs(10),
+        }
+    }
+}
+
+/// The Prisma Realtime client. Cheap to share (`Arc`); each `open` starts an independent session.
+pub struct RealtimeClient {
+    url: String,
+    keys: Arc<dyn ApiKeySource>,
+    log: Arc<dyn OutboundLog>,
+    policy: RealtimePolicy,
+}
+
+impl RealtimeClient {
+    /// A client for `url` (normally [`DEFAULT_URL`]).
+    pub fn new(
+        url: impl Into<String>,
+        keys: Arc<dyn ApiKeySource>,
+        log: Arc<dyn OutboundLog>,
+    ) -> Self {
+        Self {
+            url: url.into(),
+            keys,
+            log,
+            policy: RealtimePolicy::default(),
+        }
+    }
+
+    pub fn with_policy(mut self, policy: RealtimePolicy) -> Self {
+        self.policy = policy;
+        self
+    }
+
+    fn key(&self) -> VoiceResult<String> {
+        self.keys
+            .gnani_key()
+            .filter(|k| !k.trim().is_empty())
+            .ok_or_else(|| {
+                VoiceError::new(
+                    VoiceErrorCode::MissingApiKey,
+                    "Add your Gnani API key in Settings → Voice & privacy.",
+                )
+            })
+    }
+}
+
+#[async_trait::async_trait]
+impl SpeechToText for RealtimeClient {
+    async fn open(&self, config: RtConfig) -> VoiceResult<RtSession> {
+        let key = self.key()?;
+        let request = handshake(&self.url, &key, &config)?;
+        // The first connection is not retried: the person just pressed the key and should hear
+        // about a problem at once.
+        let ws = connect(request, self.policy.connect_timeout).await?;
+        let id = pluto_core::ids::new_id();
+        let (input_tx, input_rx) = mpsc::channel::<RtInput>(256);
+        let (event_tx, event_rx) = mpsc::channel::<RtEvent>(256);
+        let driver = Driver {
+            session_id: id.clone(),
+            url: self.url.clone(),
+            key,
+            config,
+            policy: self.policy.clone(),
+            log: self.log.clone(),
+            input: input_rx,
+            events: event_tx,
+            buffer: VecDeque::new(),
+            pending_commit: false,
+            next_segment: 0,
+            bytes_this_connection: 0,
+        };
+        tokio::spawn(driver.run(ws));
+        Ok(RtSession {
+            id,
+            input: input_tx,
+            events: event_rx,
+        })
+    }
+}
+
+// ---- handshake ------------------------------------------------------------------------------
+
+/// JSON for a header: non-ASCII characters become `\uXXXX` escapes (HTTP headers are ASCII;
+/// API_CONTRACTS §0). Surrogate pairs are used above U+FFFF.
+pub fn ascii_json(terms: &[String]) -> String {
+    let json = serde_json::to_string(terms).unwrap_or_else(|_| "[]".into());
+    let mut out = String::with_capacity(json.len());
+    for c in json.chars() {
+        if c.is_ascii() {
+            out.push(c);
+        } else {
+            let mut units = [0u16; 2];
+            for unit in c.encode_utf16(&mut units) {
+                out.push_str(&format!("\\u{unit:04x}"));
+            }
+        }
+    }
+    out
+}
+
+fn header(value: &str) -> VoiceResult<HeaderValue> {
+    HeaderValue::from_str(value).map_err(|_| {
+        VoiceError::new(
+            VoiceErrorCode::GnaniBadRequest,
+            "A speech setting contains characters Gnani can't accept.",
+        )
+    })
+}
+
+/// The handshake request with every header from API_CONTRACTS §2.1.
+pub fn handshake(url: &str, key: &str, config: &RtConfig) -> VoiceResult<Request> {
+    let mut request = url.into_client_request().map_err(|_| {
+        VoiceError::new(
+            VoiceErrorCode::Core,
+            "The speech service address is invalid.",
+        )
+    })?;
+    let h = request.headers_mut();
+    h.insert("x-api-key-id", header(key)?);
+    h.insert("model", HeaderValue::from_static(MODEL));
+    h.insert("x-model", HeaderValue::from_static(MODEL));
+    let language = if config.language_code.trim().is_empty() {
+        "indic-auto"
+    } else {
+        config.language_code.trim()
+    };
+    h.insert("language_code", header(language)?);
+    h.insert("format", HeaderValue::from_static(config.format.as_gnani()));
+    h.insert("x-sample-rate", header(&CAPTURE_SAMPLE_RATE.to_string())?);
+    if !config.keyterms.is_empty() {
+        let terms: Vec<String> = config.keyterms.iter().take(200).cloned().collect();
+        h.insert("keyterms", header(&ascii_json(&terms))?);
+    }
+    if let Some(secs) = config.idle_timeout_sec {
+        h.insert(
+            "x-idle-timeout-sec",
+            header(&secs.clamp(5, 900).to_string())?,
+        );
+    }
+    if let Some(ms) = config.min_silence_ms {
+        h.insert("x-min-silence-ms", header(&ms.to_string())?);
+    }
+    Ok(request)
+}
+
+/// One connection attempt, with Gnani's HTTP answers mapped like the REST calls (T-103).
+async fn connect(request: Request, limit: Duration) -> VoiceResult<Ws> {
+    match timeout(limit, tokio_tungstenite::connect_async(request)).await {
+        Err(_) => Err(VoiceError::new(
+            VoiceErrorCode::NetworkOffline,
+            "Can't reach Gnani. Check your internet connection.",
+        )),
+        Ok(Ok((ws, _response))) => Ok(ws),
+        Ok(Err(WsError::Http(response))) => {
+            let status = reqwest::StatusCode::from_u16(response.status().as_u16())
+                .unwrap_or(reqwest::StatusCode::BAD_GATEWAY);
+            let body = response
+                .body()
+                .as_deref()
+                .map(String::from_utf8_lossy)
+                .unwrap_or_default();
+            Err(map_status(Family::SttRest, status, &body))
+        }
+        Ok(Err(_)) => Err(VoiceError::new(
+            VoiceErrorCode::NetworkOffline,
+            "Can't reach Gnani. Check your internet connection.",
+        )),
+    }
+}
+
+// ---- server messages ------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+struct ServerMessage {
+    #[serde(rename = "type")]
+    kind: String,
+    request_id: Option<String>,
+    text: Option<String>,
+    detected_language_code: Option<String>,
+    audio_duration_ms: Option<f64>,
+    latency: Option<f64>,
+}
+
+/// Gnani's `latency` unit is not documented. Values under 30 are taken as seconds, larger ones as
+/// milliseconds (to confirm on the live check, T-GN-01).
+fn latency_ms(v: f64) -> u32 {
+    let ms = if v < 30.0 { v * 1000.0 } else { v };
+    ms.round().clamp(0.0, f64::from(u32::MAX)) as u32
+}
+
+/// How a connection ended.
+enum Ended {
+    /// The caller closed the session (or dropped `input`).
+    ByCaller,
+    /// Gnani closed normally (e.g. idle timeout): the session is over.
+    ByServer,
+    /// Dropped, 1001, an error, or time to rotate: reconnect.
+    Reconnect,
+}
+
+struct Driver {
+    session_id: String,
+    /// What each reconnect rebuilds its handshake from (`http::Request` can't be cloned).
+    url: String,
+    key: String,
+    config: RtConfig,
+    policy: RealtimePolicy,
+    log: Arc<dyn OutboundLog>,
+    input: mpsc::Receiver<RtInput>,
+    events: mpsc::Sender<RtEvent>,
+    buffer: VecDeque<Vec<u8>>,
+    pending_commit: bool,
+    next_segment: u32,
+    bytes_this_connection: u64,
+}
+
+impl Driver {
+    async fn emit(&self, event: RtEvent) -> bool {
+        self.events.send(event).await.is_ok()
+    }
+
+    fn keep(&mut self, frame: Vec<u8>) {
+        self.buffer.push_back(frame);
+        while self.buffer.len() > self.policy.buffer_frames {
+            self.buffer.pop_front();
+        }
+    }
+
+    fn log_connection(&mut self) {
+        self.log.record(OutboundRecord {
+            destination: Destination::GnaniRealtime,
+            purpose: PURPOSE.into(),
+            bytes: std::mem::take(&mut self.bytes_this_connection),
+            ref_id: Some(self.session_id.clone()),
+        });
+    }
+
+    async fn run(mut self, first: Ws) {
+        let mut ws = first;
+        loop {
+            let ended = self.serve(&mut ws).await;
+            self.log_connection();
+            match ended {
+                Ended::ByCaller => {
+                    let _ = ws.close(None).await;
+                    break;
+                }
+                Ended::ByServer => break,
+                Ended::Reconnect => {
+                    let _ = ws.close(None).await;
+                    match self.reconnect().await {
+                        Some(next) => ws = next,
+                        None => break,
+                    }
+                }
+            }
+        }
+        let _ = self.emit(RtEvent::Closed).await;
+    }
+
+    /// Runs one connection until it ends.
+    async fn serve(&mut self, ws: &mut Ws) -> Ended {
+        let rotate_at = Instant::now() + self.policy.rotate_after;
+        // Audio buffered while disconnected goes first, then a commit asked for meanwhile.
+        while let Some(frame) = self.buffer.pop_front() {
+            let n = frame.len() as u64;
+            if ws.send(Message::Binary(frame.into())).await.is_err() {
+                return Ended::Reconnect;
+            }
+            self.bytes_this_connection += n;
+        }
+        if std::mem::take(&mut self.pending_commit) && ws.send(commit()).await.is_err() {
+            self.pending_commit = true;
+            return Ended::Reconnect;
+        }
+        loop {
+            tokio::select! {
+                input = self.input.recv() => match input {
+                    Some(RtInput::Frame(frame)) => {
+                        let n = frame.len() as u64;
+                        if let Err(e) = ws.send(Message::Binary(frame.clone().into())).await {
+                            tracing::debug!(error = %e, "realtime send failed; reconnecting");
+                            self.keep(frame);
+                            return Ended::Reconnect;
+                        }
+                        self.bytes_this_connection += n;
+                    }
+                    Some(RtInput::Commit) => {
+                        if ws.send(commit()).await.is_err() {
+                            self.pending_commit = true;
+                            return Ended::Reconnect;
+                        }
+                    }
+                    Some(RtInput::Close) | None => return Ended::ByCaller,
+                },
+                message = ws.next() => match message {
+                    Some(Ok(Message::Text(text))) => {
+                        if !self.handle(text.as_str()).await {
+                            return Ended::ByCaller; // nobody is listening any more
+                        }
+                    }
+                    Some(Ok(Message::Close(frame))) => {
+                        let code = frame.map(|f| f.code);
+                        return match code {
+                            None | Some(CloseCode::Normal) => Ended::ByServer,
+                            Some(_) => Ended::Reconnect, // 1001 (15-min cap) and errors
+                        };
+                    }
+                    Some(Ok(_)) => {} // binary, ping, pong: nothing for us
+                    Some(Err(_)) | None => return Ended::Reconnect,
+                },
+                () = sleep_until(rotate_at) => {
+                    tracing::debug!("rotating the realtime connection before Gnani's 15-minute cap");
+                    return Ended::Reconnect;
+                }
+            }
+        }
+    }
+
+    /// One server message. Returns false when the event receiver is gone.
+    async fn handle(&mut self, text: &str) -> bool {
+        let Ok(msg) = serde_json::from_str::<ServerMessage>(text) else {
+            tracing::debug!("ignored an unreadable realtime message");
+            return true;
+        };
+        let event = match msg.kind.as_str() {
+            "connected" => RtEvent::Connected {
+                request_id: msg.request_id,
+            },
+            "speech_start" => RtEvent::SpeechStart,
+            "processing" => RtEvent::Processing,
+            "transcript" => {
+                let segment_index = self.next_segment;
+                self.next_segment += 1;
+                RtEvent::Transcript(RtTranscript {
+                    text: msg.text.unwrap_or_default(),
+                    segment_index,
+                    language: msg.detected_language_code.filter(|l| !l.trim().is_empty()),
+                    audio_duration_ms: msg
+                        .audio_duration_ms
+                        .map(|v| v.round().clamp(0.0, f64::from(u32::MAX)) as u32),
+                    latency_ms: msg.latency.map(latency_ms),
+                })
+            }
+            "error" => RtEvent::Error(VoiceError::new(
+                VoiceErrorCode::GnaniUpstream,
+                "Gnani's speech service reported a problem. Try again.",
+            )),
+            _ => return true,
+        };
+        self.emit(event).await
+    }
+
+    /// Tries to connect again, buffering input meanwhile. `None` when the session should end.
+    async fn reconnect(&mut self) -> Option<Ws> {
+        let delays = self.policy.reconnect_delays.clone();
+        let mut last = VoiceError::new(
+            VoiceErrorCode::NetworkOffline,
+            "Lost the connection to Gnani. Check your internet connection.",
+        );
+        for (i, delay) in delays.iter().enumerate() {
+            let attempt = u32::try_from(i + 1).unwrap_or(u32::MAX);
+            if !self.emit(RtEvent::Reconnecting { attempt }).await {
+                return None;
+            }
+            // Keep taking input while waiting, so nothing the caller sends is lost or blocked.
+            let wait = sleep(*delay);
+            tokio::pin!(wait);
+            loop {
+                tokio::select! {
+                    () = &mut wait => break,
+                    input = self.input.recv() => match input {
+                        Some(RtInput::Frame(frame)) => self.keep(frame),
+                        Some(RtInput::Commit) => self.pending_commit = true,
+                        Some(RtInput::Close) | None => return None,
+                    },
+                }
+            }
+            let attempt_result = match handshake(&self.url, &self.key, &self.config) {
+                Ok(request) => connect(request, self.policy.connect_timeout).await,
+                Err(e) => Err(e),
+            };
+            match attempt_result {
+                Ok(ws) => return Some(ws),
+                Err(e) => {
+                    let fatal = matches!(
+                        e.code,
+                        VoiceErrorCode::InvalidApiKey
+                            | VoiceErrorCode::MissingApiKey
+                            | VoiceErrorCode::InsufficientCredit
+                    );
+                    last = e;
+                    if fatal {
+                        break;
+                    }
+                }
+            }
+        }
+        let _ = self.emit(RtEvent::Error(last)).await;
+        None
+    }
+}
+
+fn commit() -> Message {
+    Message::Text(r#"{"type":"commit"}"#.into())
+}
+
+#[cfg(test)]
+mod tests;
