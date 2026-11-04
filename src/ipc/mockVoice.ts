@@ -3,7 +3,7 @@
 // UI and the Rust side agree. Every state is reachable, including the errors.
 import { emitNamed } from "./namedEvents";
 import type {
-  ApplyExtraction, Commitment, ExtractionResult, PrivacyLogEntry, Proposal, ProposalResponse, RecallAnswer, RecordingSession, SpeakerMapping, ToolResult,
+  ApplyExtraction, AssistantTurn, Commitment, ExtractionResult, PrivacyLogEntry, Proposal, ProposalResponse, RecallAnswer, RecordingSession, SpeakerMapping, ToolResult,
   TranscriptionJob, TranscriptSegment, UsageCounters, VoiceError, VoiceErrorCode, VoiceSettings, VoiceSettingsPatch, VoiceStatus,
 } from "./generated";
 import type { Meeting } from "./types";
@@ -39,8 +39,10 @@ let seq = 0;
 export function createVoiceMock({ now, createMeeting, applyItems, delayMs = 250 }: VoiceMockDeps) {
   const id = (p: string) => `${p}-${++seq}`;
   const settings: VoiceSettings = structuredClone(settingsDefault.data) as VoiceSettings;
-  let status: VoiceStatus = structuredClone(statusIdle.data) as VoiceStatus;
+  // Starts off while cloud voice is off, like the real runtime.
+  let status: VoiceStatus = { ...(structuredClone(statusIdle.data) as VoiceStatus), state: settings.cloud_voice_enabled ? "idle" : "disabled" };
   const pending = new Map<string, Proposal>();
+  const turns: AssistantTurn[] = [];
   const sessions = new Map<string, RecordingSession>();
   const jobs = new Map<string, TranscriptionJob>();
   const mappings = new Map<string, SpeakerMapping[]>();
@@ -115,6 +117,14 @@ export function createVoiceMock({ now, createMeeting, applyItems, delayMs = 250 
       later(() => {
         const p = proposeTask();
         pending.set(p.id, p);
+        const turn: AssistantTurn = {
+          interaction_id: p.interaction_id, transcript: "Kal tak budget report bhejna hai, task add karo", language: "hi-IN",
+          decision: { intent: "task", tool: "task_create", args: p.args, confidence: 0.92, source: "llm", latency_ms: 840 },
+          reply_text: p.summary_text, proposal: p, result: null,
+        };
+        turns.unshift(turn);
+        emitNamed("voice://transcript", { id: `heard-${turn.interaction_id}`, meeting_id: null, source: "realtime", index: 0, start_ms: null, end_ms: null, speaker_label: null, participant: null, text: turn.transcript, language: "hi-IN", relevance: null });
+        emitNamed("voice://turn", turn);
         emitNamed("voice://proposal", p);
         setStatus({ state: "awaiting_approval", detail: null });
       });
@@ -136,11 +146,16 @@ export function createVoiceMock({ now, createMeeting, applyItems, delayMs = 250 
       }
       const response = a.response as ProposalResponse;
       setStatus(idle);
-      if (response.kind === "reject") return { tool: p.tool, ok: false, message: "Okay, I didn't change anything.", record_id: null };
-      return structuredClone(toolOk.data) as ToolResult;
+      const result: ToolResult = response.kind === "reject"
+        ? { tool: p.tool, ok: false, message: "Okay, I didn't change anything.", record_id: null }
+        : structuredClone(toolOk.data) as ToolResult;
+      const turn = turns.find((t) => t.interaction_id === p.interaction_id);
+      if (turn) { turn.result = result; emitNamed("voice://turn", structuredClone(turn)); }
+      return result;
     },
     voice_speak: () => null,
     voice_stop_speaking: () => null,
+    voice_history: (a: Args) => structuredClone(turns.slice(0, Number(a.limit ?? 50))),
     voice_usage: () => structuredClone(usageSample.data) as UsageCounters,
     privacy_log_list: (a: Args) => privacy.slice(0, Number(a.limit ?? 100)),
     privacy_log_clear: () => { privacy.length = 0; return null; },

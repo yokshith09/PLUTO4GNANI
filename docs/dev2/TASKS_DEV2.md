@@ -25,10 +25,10 @@ Work top to bottom. **Wait** = a task of the other developer that must be merged
 | 13 | T-206 | Integration C2 | S | P0a | 3 | — | To do |
 | 14 | T-207 | Recorder | L | P0b | 3–4 | T-013 | To do |
 | 15 | T-302 | Decisions | M | P0a | 3 | — | Done (merged, PR #14; routing accuracy on the real model (T-ML-04) needs keys) |
-| 16 | T-304 | Voice UI | M | P0a | 3–4 | — | To do |
+| 16 | T-304 | Voice UI | M | P0a | 3–4 | — | In review (voice bar, approval card with countdown and edit, history, push-to-talk and playback wiring built on the mock; live with D1's runtime T-301) |
 | 17 | T-305 | Recall | L | P0a | 4 | — | In progress (recall merged, PR #19; spoken answer and the follow-up proposal wait for T-303) |
 | 18 | T-401 | Voice settings | M | P0a | 4–5 | — | In progress (Voice and privacy section merged, PR #21; hotkey row and voice preview wait for D1's runtime) |
-| 19 | T-402 | Demo build | S | P0a | 4 | — | In review (PR; one setting hides Time, Study, Character, MCP and Archive; Bin stays so a deleted note can be restored) |
+| 19 | T-402 | Demo build | S | P0a | 4 | — | Done (merged, PR #22) |
 | 20 | T-405 | Measurement | M | P0b | 5 | T-306 | To do |
 | 21 | T-406 | Integration C4 | S | P0a | 5 | — | To do |
 | 22 | T-602 | Rehearsal | M | P0a | 5 | T-601 | To do |

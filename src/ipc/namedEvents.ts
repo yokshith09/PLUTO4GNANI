@@ -3,11 +3,12 @@
 // browser preview, the mock and the tests can send them too.
 import { isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import type { ExtractedItem, Proposal, TranscriptionJob, TranscriptSegment, VoiceError, VoiceStatus } from "./generated";
+import type { AssistantTurn, ExtractedItem, Proposal, TranscriptionJob, TranscriptSegment, VoiceError, VoiceStatus } from "./generated";
 
 export interface NamedEvents {
   "voice://status": VoiceStatus;
   "voice://transcript": TranscriptSegment;
+  "voice://turn": AssistantTurn;
   "voice://proposal": Proposal;
   "voice://error": VoiceError;
   "meeting://caption": TranscriptSegment;
