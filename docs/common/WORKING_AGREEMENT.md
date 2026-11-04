@@ -112,7 +112,7 @@ pluto-voice and pluto-intel never depend on each other. src-tauri depends on all
 - Title starts with the task IDs it completes. Target 400 changed lines or fewer; split larger work into several PRs from the same branch.
 - Fill in the PR template (`.github/pull_request_template.md`): tasks, acceptance criteria ticked, tests run, contract impact, screenshots for UI.
 - Review focus: does it match the contract, are errors handled, does it break the other side's mock or fixtures.
-- **CI checks** (`.github/workflows/ci.yml` and `e2e.yml`, run on every PR and on pushes to `main`, `D1`, `D2`): `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test --workspace`, `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm check:core-deps` (no `tauri` outside `src-tauri`), generated types up to date.
+- **CI checks** (`.github/workflows/ci.yml` and `e2e.yml`, run on every PR and on pushes to `main`; not on `D1`/`D2` pushes, not for docs-only changes; macOS, the release build and the full coverage report run on `main` only — TESTING_STRATEGY §9): `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test --workspace`, `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm check:core-deps` (no `tauri` outside `src-tauri`), generated types up to date.
 
 ### GitHub settings (repository owner sets once)
 - Add Developer 1 as a collaborator with write access.
