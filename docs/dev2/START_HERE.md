@@ -22,7 +22,7 @@ git merge origin/main
 
 ## 4. First tasks, in order
 1. **T-001** — build and run the shell locally on Windows; record the result.
-2. **T-009** — prove Gemini and Groq return valid JSON for the extraction schema; record limits and 429 behaviour.
+2. **T-009** — prove Gemini and Groq return valid JSON for the extraction schema; record limits and 429 behaviour. Put the keys in the repo-root `.env` (git-ignored), then run `cargo run -p pluto-intel --example llm_check` and paste the output into `docs/results/d2-llm-check.md`.
 3. **T-008** — secrets storage (keychain) in the shell.
 4. **T-005** — meeting, LLM and decision types in `crates/pluto-contracts/src/{meeting,llm,decide}.rs`; traits `Llm`, `Decider`; `MockLlm` in `pluto-intel`. Use `#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]`, then `pnpm gen:types`.
 5. **T-006** — `src/ipc/voiceClient.ts`, `meetingAi.ts`, mock handlers in `src/ipc/mock.ts` (keyed by command name), the `voice` page entry, fixtures in `test-data/fixtures/`.

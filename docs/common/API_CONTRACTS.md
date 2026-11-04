@@ -255,8 +255,8 @@ These are the only way `voice` and `intel` talk to each other. `app` creates the
 | `ToolExecutor` | `voice.rs` (D1) | `pluto-voice::assistant` | `pluto-intel` (recall follow-up proposals) |
 
 ```rust
-#[async_trait] trait Llm { async fn complete_json(&self, req: LlmRequest) -> Result<LlmResponse, AppError>; }
-trait Decider { fn decide(&self, text: &str, ctx: &DecideContext) -> Decision; }     // may call Llm internally; blocking-free via block_in_place or an async variant agreed in the T-004 PR
+#[async_trait] trait Llm { async fn complete_json(&self, req: LlmRequest) -> VoiceResult<LlmResponse>; }
+#[async_trait] trait Decider { async fn decide(&self, text: &str, ctx: &DecideContext) -> VoiceResult<Decision>; }   // rules first, then Llm; can fail with llm_unavailable
 ```
 **D1's traits (agreed in T-004, `speech.rs` / `voice.rs`).** They return `VoiceError` (`VoiceResult<T>`), not `AppError`, so Gnani failures such as `InvalidApiKey`, `RateLimited` or `InsufficientCredit` reach the commands unchanged. These types are Rust only (not exported to TypeScript).
 ```rust

@@ -71,7 +71,7 @@ Audio capture and playback · speech-to-text · text-to-speech · any LLM · key
 | # | Feature | Status | Builder | Tasks |
 |---|---|---|---|---|
 | 1 | Run the base on a real Windows machine | In progress (CI is green; local run pending) | D2 | T-001 |
-| 2 | CI, end-to-end and release workflows | **Done** (PR #4); D1 still verifies on their machine | D2 imported; D1 verifies | T-002 |
+| 2 | CI, end-to-end and release workflows | **Done** (PR #4); verified on D1's machine (PR #6) | D2 imported; D1 verifies | T-002 |
 | 3 | Skeleton: crates, placeholders, dependencies, migration slots | **Done** (PR #3) | D1 | T-003 |
 | 4 | Contracts A: voice, speech, error types; speech, tool and frame traits | To build | D1 | T-004 |
 | 5 | Contracts B: meeting, LLM and decision types; LLM and decider traits; mock LLM | To build | D2 | T-005 |
