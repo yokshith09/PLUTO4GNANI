@@ -20,7 +20,7 @@ Work top to bottom. **Wait** = a task of the other developer that must be merged
 | 8 | T-013 | Rust audio IPC | M | P0a | 1 | — | Done (merged, PR #10; shell wiring with T-007) |
 | 9 | T-101 | Prisma Realtime | L | P0a | 2 | — | To do |
 | 10 | T-102 | Timbre | M | P0a | 2 | — | To do |
-| 11 | T-103 | Gnani base | M | P0a | 2 | — | To do |
+| 11 | T-103 | Gnani base | M | P0a | 2 | — | In review |
 | 12 | T-107 | Migration 013 | S | P0a | 2 | — | In review |
 | 13 | T-201 | Batch | L | P0a | 3 | T-106 | To do |
 | 14 | T-301 | Voice runtime | L | P0a | 3–4 | — | To do |
