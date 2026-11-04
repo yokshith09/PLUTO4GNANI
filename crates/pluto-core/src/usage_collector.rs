@@ -451,6 +451,8 @@ mod tests {
         idle: Mutex<Option<u64>>,
         fail_start: AtomicBool,
         held: AtomicBool,
+        /// How many times the collector has read the idle time: one per look.
+        looks: AtomicUsize,
         screen: Mutex<Option<Option<String>>>,
         /// When set, the idle time is the fake clock minus this last-input time, so it moves in
         /// step with the clock instead of being set separately (two steps a look could fall between).
@@ -487,6 +489,7 @@ mod tests {
             *self.sink.lock().unwrap() = None;
         }
         fn idle_ms(&self) -> Option<u64> {
+            self.looks.fetch_add(1, Ordering::SeqCst);
             if let Some((clock, at)) = &*self.last_input.lock().unwrap() {
                 return Some(u64::try_from(clock.now_ms() - at).unwrap_or(0));
             }
@@ -813,15 +816,18 @@ mod tests {
         f.settings.set("tracking.apps", json!(true)).await.unwrap();
         running(&c, true).await;
         f.platform.focus(Some("Zoom.exe"));
-        f.platform.set_idle(0);
         f.platform.held.store(true, Ordering::Relaxed);
         settle().await;
-        // Forty minutes without touching the keyboard or the mouse, looked at every minute. Each
-        // minute waits until the collector has counted it: a fixed sleep raced the 15 ms poll on a
-        // slow CI runner and dropped minutes (2160 s instead of 2400 s, 4 Nov 2026).
+        // Forty minutes without touching the keyboard or the mouse, looked at every minute. The idle
+        // time follows the clock (one value, not two steps a look could fall between), and each
+        // minute waits for two whole looks after the clock moved. Without that the clock could jump
+        // two minutes between looks, which the tracker reads as "the machine slept" (a gap over
+        // 150 s) and drops the time: the 25% failure seen on 4 Nov 2026.
+        f.platform.last_input_at(&f.clock, T0);
         for minute in 1..=40u64 {
+            let before = f.platform.looks.load(Ordering::SeqCst);
             f.clock.advance_ms(MIN);
-            f.platform.set_idle(minute * MIN as u64);
+            eventually(|| async { f.platform.looks.load(Ordering::SeqCst) >= before + 2 }).await;
             let want = i64::try_from(minute).unwrap() * 60;
             eventually(|| async { total(&f).await >= want }).await;
         }
