@@ -3290,6 +3290,7 @@ name = "pluto-intel"
 version = "0.5.7"
 dependencies = [
  "async-trait",
+ "chrono",
  "pluto-contracts",
  "pluto-core",
  "pluto-gnani",

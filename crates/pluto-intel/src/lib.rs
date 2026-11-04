@@ -8,6 +8,7 @@
 //! | `decide` (rules → LLM) | T-302 |
 //! | `meeting` (extraction, dates, recall, recap, recorder, commitments) | T-203.. |
 
+pub mod dates;
 pub mod decide;
 pub mod llm;
 pub mod meeting;
