@@ -1,0 +1,11 @@
+{
+  "contract_version": 1,
+  "data": {
+    "id": "job-1",
+    "meeting_id": "m-as1",
+    "gnani_job_id": "g-abc123",
+    "status": "completed",
+    "error": null,
+    "updated_at": 1762243200000
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "id": "AS-2",
+  "meeting_date": "2026-11-02",
+  "timezone": "Asia/Kolkata",
+  "participants": [
+    "Karthik",
+    "Divya",
+    "Priya"
+  ],
+  "decisions": [
+    {
+      "body": "Mobile app release on 1 December",
+      "quote": "mobile app release December 1st-ku thaan"
+    },
+    {
+      "body": "If gateway approval is late, release with UPI only",
+      "quote": "UPI mattum vechu release pannalam"
+    }
+  ],
+  "action_items": [
+    {
+      "body": "Prepare the release notes",
+      "owner": "Divya",
+      "due_phrase": "Wednesday",
+      "due_date": "2026-11-04",
+      "quote": "Release notes naan Wednesday kulla ready pannidren"
+    },
+    {
+      "body": "Write all test cases",
+      "owner": "Priya",
+      "due_phrase": "Friday",
+      "due_date": "2026-11-06",
+      "quote": "test cases ellaam Friday-kulla ezhudhi mudichidu"
+    },
+    {
+      "body": "Share the payment gateway sandbox key with Priya",
+      "owner": "Divya",
+      "due_phrase": "Thursday",
+      "due_date": "2026-11-05",
+      "quote": "Priya-kku Thursday-kulla share pannu"
+    }
+  ],
+  "questions": [
+    {
+      "body": "Who has the payment gateway sandbox key?",
+      "quote": "sandbox key yaar kitta irukku"
+    }
+  ],
+  "risks": [
+    {
+      "body": "Release may slip if gateway approval is late",
+      "quote": "payment gateway approval late aana release delay aagum"
+    }
+  ],
+  "chitchat": [
+    "Coffee break edukalama?"
+  ]
+}

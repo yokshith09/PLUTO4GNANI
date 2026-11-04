@@ -1,0 +1,63 @@
+{
+  "contract_version": 1,
+  "data": {
+    "meeting_id": "m-as1",
+    "dominant_language": "hi-IN",
+    "items": [
+      {
+        "id": "x1",
+        "kind": "decision",
+        "body": "Start with the annual plan.",
+        "owner": null,
+        "due_phrase": null,
+        "due_date": null,
+        "priority": null,
+        "source_segment_id": "seg-2",
+        "quote": "Decision: hum annual plan se start karenge.",
+        "duplicate_of_task_id": null
+      },
+      {
+        "id": "x2",
+        "kind": "action_item",
+        "body": "Finish the pricing page copy.",
+        "owner": "Ravi",
+        "due_phrase": "Thursday",
+        "due_date": "2026-11-05",
+        "priority": "HIGH",
+        "source_segment_id": "seg-1",
+        "quote": "Main Thursday tak copy complete kar dunga, Asha.",
+        "duplicate_of_task_id": null
+      },
+      {
+        "id": "x3",
+        "kind": "action_item",
+        "body": "Confirm the vendor contract with legal.",
+        "owner": "Meena",
+        "due_phrase": "Monday",
+        "due_date": "2026-11-09",
+        "priority": "MEDIUM",
+        "source_segment_id": "seg-4",
+        "quote": "Meena, tum legal se baat karke Monday tak confirm karo.",
+        "duplicate_of_task_id": null
+      },
+      {
+        "id": "x4",
+        "kind": "risk",
+        "body": "Launch may be missed if legal is late.",
+        "owner": null,
+        "due_phrase": null,
+        "due_date": null,
+        "priority": null,
+        "source_segment_id": "seg-5",
+        "quote": "Risk yeh hai ki legal late hua toh launch miss ho sakta hai.",
+        "duplicate_of_task_id": null
+      }
+    ],
+    "warnings": [
+      {
+        "kind": "action_item_without_owner",
+        "item_id": "x9"
+      }
+    ]
+  }
+}

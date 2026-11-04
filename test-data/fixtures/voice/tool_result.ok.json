@@ -1,0 +1,9 @@
+{
+  "contract_version": 1,
+  "data": {
+    "tool": "task_create",
+    "ok": true,
+    "message": "Added “Send the revised budget” for Friday.",
+    "record_id": "t-101"
+  }
+}

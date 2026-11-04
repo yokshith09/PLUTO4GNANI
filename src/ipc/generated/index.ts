@@ -5,6 +5,7 @@ export type { AiStatus } from "./AiStatus";
 export type { AppError } from "./AppError";
 export type { ApplyExtraction } from "./ApplyExtraction";
 export type { AppUsage } from "./AppUsage";
+export type { AssistantDecision } from "./AssistantDecision";
 export type { BinNote } from "./BinNote";
 export type { Citation } from "./Citation";
 export type { Commitment } from "./Commitment";

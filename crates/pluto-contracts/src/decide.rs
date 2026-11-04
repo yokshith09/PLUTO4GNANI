@@ -1,4 +1,4 @@
-//! `Decision`, `Intent`, `DecideContext` and the `Decider` trait (API_CONTRACTS §3.4, §3.7).
+//! `AssistantDecision`, `Intent`, `DecideContext` and the `Decider` trait (API_CONTRACTS §3.4, §3.7).
 //!
 //! Owner: **D2** (T-005).
 
@@ -33,7 +33,7 @@ pub enum DecisionSource {
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Decision {
+pub struct AssistantDecision {
     pub intent: Intent,
     pub tool: Option<String>,
     #[cfg_attr(feature = "ts", ts(type = "unknown"))]
@@ -58,5 +58,5 @@ pub struct DecideContext {
 /// Rules first, then the LLM. Async and fallible: the LLM call can fail (`llm_unavailable`).
 #[async_trait]
 pub trait Decider: Send + Sync {
-    async fn decide(&self, text: &str, ctx: &DecideContext) -> VoiceResult<Decision>;
+    async fn decide(&self, text: &str, ctx: &DecideContext) -> VoiceResult<AssistantDecision>;
 }

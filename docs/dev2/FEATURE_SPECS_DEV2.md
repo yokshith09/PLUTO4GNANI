@@ -20,7 +20,7 @@ Specs for the features **Developer 2** owns. Tasks and acceptance criteria: [`..
 ## Decisions [T-302]
 - **Rules** (zero cost): yes / no / cancel / stop in Hindi, Tamil, Kannada and English; fixed phrases such as "focus N minute".
 - **Otherwise** one intent call returns `{intent, tool, args}` validated against a JSON schema.
-- **Dates:** the LLM returns the phrase plus a hint; Rust resolves the date against now and the user's timezone, so `Decision.args` carry resolved values (`due_date`, `remind_at`) plus the original phrase.
+- **Dates:** the LLM returns the phrase plus a hint; Rust resolves the date against now and the user's timezone, so `AssistantDecision.args` carry resolved values (`due_date`, `remind_at`) plus the original phrase.
 
 ## Meeting pipeline
 **Migration 012 [T-106]:** tables in DATA_SCHEMA §2, with `meeting_ai_store` functions; data export/import extended.

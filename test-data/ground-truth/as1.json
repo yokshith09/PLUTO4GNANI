@@ -1,0 +1,81 @@
+{
+  "id": "AS-1",
+  "meeting_date": "2026-11-02",
+  "timezone": "Asia/Kolkata",
+  "participants": [
+    "Asha",
+    "Ravi",
+    "Meena"
+  ],
+  "decisions": [
+    {
+      "body": "Launch on 20 November",
+      "quote": "hum 20 November ko launch karenge, yeh final hai"
+    },
+    {
+      "body": "Start with the annual plan",
+      "quote": "hum annual plan se start karenge"
+    },
+    {
+      "body": "Code freeze on 13 November",
+      "quote": "Code freeze 13 November ko hoga"
+    },
+    {
+      "body": "Send beta invites to fifty users first",
+      "quote": "beta invites pehle sirf pachaas users ko bhejenge"
+    }
+  ],
+  "action_items": [
+    {
+      "body": "Book the demo room",
+      "owner": "Meena",
+      "due_phrase": "Friday",
+      "due_date": "2026-11-06",
+      "quote": "tum demo room Friday tak book kar do"
+    },
+    {
+      "body": "Complete the pricing page copy",
+      "owner": "Ravi",
+      "due_phrase": "Thursday",
+      "due_date": "2026-11-05",
+      "quote": "pricing page ka copy main Thursday tak complete kar dunga"
+    },
+    {
+      "body": "Confirm the vendor contract with legal",
+      "owner": "Meena",
+      "due_phrase": "next Monday",
+      "due_date": "2026-11-09",
+      "quote": "legal se baat karke next Monday tak vendor contract confirm karo"
+    },
+    {
+      "body": "Fix the signup bug before code freeze",
+      "owner": "Ravi",
+      "due_phrase": "13 November",
+      "due_date": "2026-11-13",
+      "quote": "13 November se pehle fix kar dunga"
+    },
+    {
+      "body": "Share the launch checklist with everyone",
+      "owner": "Asha",
+      "due_phrase": "kal (tomorrow)",
+      "due_date": "2026-11-03",
+      "quote": "launch checklist kal tak sabke saath share kar dungi"
+    }
+  ],
+  "questions": [
+    {
+      "body": "Who owns the vendor contract?",
+      "quote": "vendor contract ka owner kaun hai"
+    }
+  ],
+  "risks": [
+    {
+      "body": "Launch may be missed if legal is late",
+      "quote": "agar legal late hua toh launch miss ho sakta hai"
+    }
+  ],
+  "chitchat": [
+    "Chai break lein?"
+  ],
+  "notes": "'next Monday' is read as the Monday after the meeting week (9 Nov)."
+}

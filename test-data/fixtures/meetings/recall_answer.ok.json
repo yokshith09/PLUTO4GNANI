@@ -1,0 +1,18 @@
+{
+  "contract_version": 1,
+  "data": {
+    "answer_text": "Ravi will finish the pricing page copy by Thursday.",
+    "language": "en-IN",
+    "citations": [
+      {
+        "meeting_id": "m-as1",
+        "meeting_title": "Launch sync",
+        "segment_id": "seg-1",
+        "speaker": "Ravi",
+        "quote": "Main Thursday tak copy complete kar dunga, Asha.",
+        "starts_at": 1762243200000
+      }
+    ],
+    "proposal": null
+  }
+}

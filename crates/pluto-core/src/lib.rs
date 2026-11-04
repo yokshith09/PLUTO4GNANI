@@ -27,6 +27,7 @@ pub mod pets;
 pub mod reminders;
 pub mod retention;
 pub mod scheduler;
+pub mod secrets;
 pub mod settings;
 pub mod settings_service;
 pub mod sites;

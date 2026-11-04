@@ -11,9 +11,9 @@
 | `pluto-gnani::{http,realtime,tts}` | D1 | Frames, text | Segments, PCM | Gnani key | `MockStt`, `MockTts`, fixture WS server, `wiremock` | Contract tests; T-GN-01 |
 | `pluto-gnani::batch` | D1 | Files, config | Segments in the database; `meeting://job` | http base, migration 012 | `wiremock` job lifecycle | Contract; T-ML-01 |
 | `pluto-voice::runtime` | D1 | Hotkey, commands, frames | `voice://status` | gnani, contracts | `MockStt`, `MockTts` | Transition tests |
-| `pluto-voice::assistant` | D1 | `Decision` from a `Decider` | `Proposal`, `ToolResult` | core, contracts | `MockDecider` | T-AS-05; B1/B2 |
+| `pluto-voice::assistant` | D1 | `AssistantDecision` from a `Decider` | `Proposal`, `ToolResult` | core, contracts | `MockDecider` | T-AS-05; B1/B2 |
 | `pluto-intel::llm` | D2 | `LlmRequest` | `LlmResponse` | Keys | `MockLlm` | T-LLM-01; T-FH-07/08 |
-| `pluto-intel::decide` | D2 | Transcript | `Decision` | llm | Rules need none | Rule tests; T-ML-04 |
+| `pluto-intel::decide` | D2 | Transcript | `AssistantDecision` | llm | Rules need none | Rule tests; T-ML-04 |
 | `pluto-intel::meeting` (extraction, dates, recall, recap, recorder) | D2 | Segments, participants | `ExtractionResult`, `RecallAnswer` | llm, core, `TextToSpeech` | AS-1 segment fixture; `MockTts` | T-ML-02; flows A1, B2 |
 | Migrations 012 (D2) and 013 (D1) | D2 / D1 | — | Tables | `pluto-core` db | In-memory DB | T-DB-01..05 |
 | `src-tauri` new commands | D1 (stubs), D2 (`meeting_ai.rs`) | IPC | Results, `voice://` / `meeting://` events | all crates | Stub commands | Smoke test |
@@ -39,7 +39,7 @@ In this order. Each step is merged to `main` before anything that depends on it 
 | Stub commands | `src-tauri/src/voice.rs`, `meeting_ai.rs` | Return fixture data until the real implementation lands |
 | `MockStt` / `MockTts` | `pluto-gnani` | Fixture transcripts with delays and errors (incl. close code 1001); a 1 s sine wave |
 | `MockLlm` | `pluto-intel::llm` | Fixture JSON per task; can simulate 429 and timeouts |
-| `MockDecider` | `pluto-voice::assistant` | Scripted `Decision`s so the assistant is tested without `pluto-intel` |
+| `MockDecider` | `pluto-voice::assistant` | Scripted `AssistantDecision`s so the assistant is tested without `pluto-intel` |
 | Fixtures | `test-data/fixtures/` | One shared set, `<type>.<case>.json` with `contract_version`; used by the UI mock **and** by Rust tests |
 
 Fixtures follow the documented API shapes. If a live response differs, fix the fixture **and** `API_CONTRACTS.md` in a contract PR.

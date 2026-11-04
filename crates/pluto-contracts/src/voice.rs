@@ -3,7 +3,7 @@
 //!
 //! Owner: **D1** (T-004). Changes go through a `contract` PR that D2 approves.
 //!
-//! `AssistantTurn` (§3.5) embeds D2's `Decision` and is added once T-005 is on `main`.
+//! `AssistantTurn` (§3.5) embeds D2's `AssistantDecision` and is added once T-005 is on `main`.
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
