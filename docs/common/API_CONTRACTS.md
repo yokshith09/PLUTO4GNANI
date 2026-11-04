@@ -26,7 +26,7 @@ Other documents link here and never redefine these.
 | Speakers | `speaker_label` stores Gnani's `speaker_id` exactly as returned (the docs' example starts at 1). The UI shows "Speaker N". `participant` is the mapped name or null |
 | Segment order | `index` is our own 0-based order across all chunks of a meeting, after chunk offsets are applied. Gnani's `segment_id` is not stored |
 | Audio formats | **Mic → Rust:** PCM16 little-endian, mono, 16 kHz, frames of exactly 1,024 bytes. **Rust → speaker:** PCM16 little-endian, mono, 24 kHz. These never change without a contract PR |
-| Natural-language dates | Resolved in `intel` before they leave it. `Decision.args` therefore carries resolved fields (`due_date` as `YYYY-MM-DD`, `remind_at` as ms) alongside the original phrase (`due_phrase`, `when_phrase`) for display. `voice` and `core` accept only resolved values |
+| Natural-language dates | Resolved in `intel` before they leave it. `AssistantDecision.args` therefore carries resolved fields (`due_date` as `YYYY-MM-DD`, `remind_at` as ms) alongside the original phrase (`due_phrase`, `when_phrase`) for display. `voice` and `core` accept only resolved values |
 | Errors | **Existing commands** return core's `AppError {code, message, field}`. **New voice and meeting commands** return `VoiceError` (§6) because core's `ErrorCode` has only 7 fixed values. Crates use their own error types internally and convert at the command boundary |
 | Fixtures | One shared set in `test-data/fixtures/` (the UI mock in `src/ipc/` imports them). Each file is named `<type>.<case>.json` and includes `"contract_version": 1`. The UI mocks and the Rust tests use the same files |
 
@@ -199,7 +199,7 @@ enum CommitmentStatus { Open, Done, Overdue, NoTask }
 ```rust
 enum Intent { MeetingQuery, Task, Reminder, Note, Focus, Project, Approval, Reject, Cancel, Noise }
 enum DecisionSource { Rules, Llm }
-struct Decision { intent: Intent, tool: Option<String>, args: serde_json::Value, confidence: Option<f32>, source: DecisionSource, latency_ms: u32 }
+struct AssistantDecision { intent: Intent, tool: Option<String>, args: serde_json::Value, confidence: Option<f32>, source: DecisionSource, latency_ms: u32 }
 ```
 
 ### 3.5 Tools and proposals
@@ -227,8 +227,8 @@ struct Proposal { id: String, interaction_id: String, tool: String, args: serde_
 // Tagged by "kind": {"kind":"approve"} | {"kind":"reject"} | {"kind":"edit","args":{…}}
 enum ProposalResponse { Approve, Reject, Edit { args: serde_json::Value } }
 struct ToolResult { tool: String, ok: bool, message: String, record_id: Option<String> }
-struct AssistantTurn { interaction_id: String, transcript: String, language: Option<String>, decision: Decision,
-  reply_text: Option<String>, proposal: Option<Proposal>, result: Option<ToolResult> }   // added once T-005 (Decision) is on main
+struct AssistantTurn { interaction_id: String, transcript: String, language: Option<String>, decision: AssistantDecision,
+  reply_text: Option<String>, proposal: Option<Proposal>, result: Option<ToolResult> }   // added once T-005 (AssistantDecision) is on main
 // Rust only: what a caller asks ToolExecutor::propose to create.
 struct ProposalRequest { interaction_id: Option<String> /* None → a new interaction is logged */, tool: String,
   args: serde_json::Value, summary_text: String, language: String }
@@ -256,7 +256,7 @@ These are the only way `voice` and `intel` talk to each other. `app` creates the
 
 ```rust
 #[async_trait] trait Llm { async fn complete_json(&self, req: LlmRequest) -> VoiceResult<LlmResponse>; }
-#[async_trait] trait Decider { async fn decide(&self, text: &str, ctx: &DecideContext) -> VoiceResult<Decision>; }   // rules first, then Llm; can fail with llm_unavailable
+#[async_trait] trait Decider { async fn decide(&self, text: &str, ctx: &DecideContext) -> VoiceResult<AssistantDecision>; }   // rules first, then Llm; can fail with llm_unavailable
 ```
 **D1's traits (agreed in T-004, `speech.rs` / `voice.rs`).** They return `VoiceError` (`VoiceResult<T>`), not `AppError`, so Gnani failures such as `InvalidApiKey`, `RateLimited` or `InsufficientCredit` reach the commands unchanged. These types are Rust only (not exported to TypeScript).
 ```rust

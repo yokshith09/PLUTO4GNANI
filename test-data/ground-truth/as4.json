@@ -1,0 +1,530 @@
+{
+  "id": "AS-4",
+  "reference_now": "2026-11-04T09:00:00+05:30",
+  "timezone": "Asia/Kolkata",
+  "note": "Dates in args are resolved against reference_now (a Wednesday). Say each command naturally; the text is a guide. 'tool' is null for approval, rejection, cancel and noise. Open tasks assumed for matching: budget report, pull request review, invoice, report, client call, flights.",
+  "tools_covered": [
+    "commitments_list",
+    "focus_start",
+    "focus_stop",
+    "meeting_search",
+    "note_create",
+    "notes_search",
+    "projects_list",
+    "reminder_create",
+    "reminder_done",
+    "reminders_list",
+    "task_complete",
+    "task_create",
+    "task_update",
+    "tasks_list"
+  ],
+  "commands": [
+    {
+      "language": "hi-en",
+      "text": "Aaj ke tasks dikhao",
+      "intent": "task",
+      "tool": "tasks_list",
+      "args": {
+        "view": "today"
+      },
+      "id": "c01"
+    },
+    {
+      "language": "en",
+      "text": "What are my tasks for today",
+      "intent": "task",
+      "tool": "tasks_list",
+      "args": {
+        "view": "today"
+      },
+      "id": "c02"
+    },
+    {
+      "language": "ta-en",
+      "text": "Inniku enna tasks irukku",
+      "intent": "task",
+      "tool": "tasks_list",
+      "args": {
+        "view": "today"
+      },
+      "id": "c03"
+    },
+    {
+      "language": "kn-en",
+      "text": "Indina tasks yenu ide",
+      "intent": "task",
+      "tool": "tasks_list",
+      "args": {
+        "view": "today"
+      },
+      "id": "c04"
+    },
+    {
+      "language": "en",
+      "text": "Show my overdue tasks",
+      "intent": "task",
+      "tool": "tasks_list",
+      "args": {
+        "view": "overdue"
+      },
+      "id": "c05"
+    },
+    {
+      "language": "hi-en",
+      "text": "Mere reminders dikhao",
+      "intent": "reminder",
+      "tool": "reminders_list",
+      "args": {},
+      "id": "c06"
+    },
+    {
+      "language": "en",
+      "text": "List my reminders",
+      "intent": "reminder",
+      "tool": "reminders_list",
+      "args": {},
+      "id": "c07"
+    },
+    {
+      "language": "hi-en",
+      "text": "Kal tak budget report bhejna hai, task add karo",
+      "intent": "task",
+      "tool": "task_create",
+      "args": {
+        "title": "Send the budget report",
+        "due_date": "2026-11-05",
+        "due_phrase": "kal tak"
+      },
+      "id": "c08"
+    },
+    {
+      "language": "hi-en",
+      "text": "Friday ko client call ke liye task banao",
+      "intent": "task",
+      "tool": "task_create",
+      "args": {
+        "title": "Client call",
+        "due_date": "2026-11-06",
+        "due_phrase": "Friday"
+      },
+      "id": "c09"
+    },
+    {
+      "language": "en",
+      "text": "Add a task to review the pull request by tomorrow",
+      "intent": "task",
+      "tool": "task_create",
+      "args": {
+        "title": "Review the pull request",
+        "due_date": "2026-11-05",
+        "due_phrase": "tomorrow"
+      },
+      "id": "c10"
+    },
+    {
+      "language": "ta-en",
+      "text": "Naalaiku invoice anuppanum, task add pannu",
+      "intent": "task",
+      "tool": "task_create",
+      "args": {
+        "title": "Send the invoice",
+        "due_date": "2026-11-05",
+        "due_phrase": "naalaiku"
+      },
+      "id": "c11"
+    },
+    {
+      "language": "kn-en",
+      "text": "Naale report submit maadbeku, task haaku",
+      "intent": "task",
+      "tool": "task_create",
+      "args": {
+        "title": "Submit the report",
+        "due_date": "2026-11-05",
+        "due_phrase": "naale"
+      },
+      "id": "c12"
+    },
+    {
+      "language": "en",
+      "text": "Create a task to book flights next Monday",
+      "intent": "task",
+      "tool": "task_create",
+      "args": {
+        "title": "Book flights",
+        "due_date": "2026-11-09",
+        "due_phrase": "next Monday"
+      },
+      "id": "c13"
+    },
+    {
+      "language": "hi-en",
+      "text": "Budget report wala task complete kar do",
+      "intent": "task",
+      "tool": "task_complete",
+      "args": {
+        "match": "budget report"
+      },
+      "id": "c14"
+    },
+    {
+      "language": "en",
+      "text": "Mark the pull request review as done",
+      "intent": "task",
+      "tool": "task_complete",
+      "args": {
+        "match": "pull request review"
+      },
+      "id": "c15"
+    },
+    {
+      "language": "ta-en",
+      "text": "Invoice task mudinjiduchu, complete pannu",
+      "intent": "task",
+      "tool": "task_complete",
+      "args": {
+        "match": "invoice"
+      },
+      "id": "c16"
+    },
+    {
+      "language": "kn-en",
+      "text": "Report task mugiyitu, complete maadi",
+      "intent": "task",
+      "tool": "task_complete",
+      "args": {
+        "match": "report"
+      },
+      "id": "c17"
+    },
+    {
+      "language": "hi-en",
+      "text": "Client call ko Monday tak aage badhao",
+      "intent": "task",
+      "tool": "task_update",
+      "args": {
+        "match": "client call",
+        "due_date": "2026-11-09",
+        "due_phrase": "Monday"
+      },
+      "id": "c18"
+    },
+    {
+      "language": "en",
+      "text": "Move the flights task to Friday",
+      "intent": "task",
+      "tool": "task_update",
+      "args": {
+        "match": "flights",
+        "due_date": "2026-11-06",
+        "due_phrase": "Friday"
+      },
+      "id": "c19"
+    },
+    {
+      "language": "ta-en",
+      "text": "Invoice task-a Thursday-ku maathu",
+      "intent": "task",
+      "tool": "task_update",
+      "args": {
+        "match": "invoice",
+        "due_date": "2026-11-05",
+        "due_phrase": "Thursday"
+      },
+      "id": "c20"
+    },
+    {
+      "language": "hi-en",
+      "text": "Kal subah nau baje yaad dilana, dentist ko call karna hai",
+      "intent": "reminder",
+      "tool": "reminder_create",
+      "args": {
+        "title": "Call the dentist",
+        "remind_at": "2026-11-05T09:00:00+05:30",
+        "when_phrase": "kal subah nau baje"
+      },
+      "id": "c21"
+    },
+    {
+      "language": "en",
+      "text": "Remind me at 5 pm today to pick up the parcel",
+      "intent": "reminder",
+      "tool": "reminder_create",
+      "args": {
+        "title": "Pick up the parcel",
+        "remind_at": "2026-11-04T17:00:00+05:30",
+        "when_phrase": "5 pm today"
+      },
+      "id": "c22"
+    },
+    {
+      "language": "ta-en",
+      "text": "Naalaiku kaalai 8 mani-ku remind pannu, gym povanum",
+      "intent": "reminder",
+      "tool": "reminder_create",
+      "args": {
+        "title": "Go to the gym",
+        "remind_at": "2026-11-05T08:00:00+05:30",
+        "when_phrase": "naalaiku kaalai 8 mani"
+      },
+      "id": "c23"
+    },
+    {
+      "language": "kn-en",
+      "text": "Naale bilige hattu ghantege nenapisu, bank hogbeku",
+      "intent": "reminder",
+      "tool": "reminder_create",
+      "args": {
+        "title": "Go to the bank",
+        "remind_at": "2026-11-05T10:00:00+05:30",
+        "when_phrase": "naale bilige hattu ghante"
+      },
+      "id": "c24"
+    },
+    {
+      "language": "en",
+      "text": "Set a reminder in two hours to drink water",
+      "intent": "reminder",
+      "tool": "reminder_create",
+      "args": {
+        "title": "Drink water",
+        "remind_at": "2026-11-04T11:00:00+05:30",
+        "when_phrase": "in two hours"
+      },
+      "id": "c25"
+    },
+    {
+      "language": "hi-en",
+      "text": "Dentist wala reminder done mark karo",
+      "intent": "reminder",
+      "tool": "reminder_done",
+      "args": {
+        "match": "dentist"
+      },
+      "id": "c26"
+    },
+    {
+      "language": "hi-en",
+      "text": "Pichli meeting mein launch date kya decide hui thi",
+      "intent": "meetingquery",
+      "tool": "meeting_search",
+      "args": {
+        "query": "launch date"
+      },
+      "id": "c27"
+    },
+    {
+      "language": "en",
+      "text": "What did we decide about the annual plan",
+      "intent": "meetingquery",
+      "tool": "meeting_search",
+      "args": {
+        "query": "annual plan"
+      },
+      "id": "c28"
+    },
+    {
+      "language": "ta-en",
+      "text": "Last meeting-la release date enna decide pannom",
+      "intent": "meetingquery",
+      "tool": "meeting_search",
+      "args": {
+        "query": "release date"
+      },
+      "id": "c29"
+    },
+    {
+      "language": "kn-en",
+      "text": "Hindina meeting nalli office shift yaavaga anta nirdharisidvi",
+      "intent": "meetingquery",
+      "tool": "meeting_search",
+      "args": {
+        "query": "office shift date"
+      },
+      "id": "c30"
+    },
+    {
+      "language": "hi-en",
+      "text": "Ravi ne kya commit kiya tha",
+      "intent": "meetingquery",
+      "tool": "commitments_list",
+      "args": {
+        "owner": "Ravi"
+      },
+      "id": "c31"
+    },
+    {
+      "language": "en",
+      "text": "What is Meena supposed to deliver",
+      "intent": "meetingquery",
+      "tool": "commitments_list",
+      "args": {
+        "owner": "Meena"
+      },
+      "id": "c32"
+    },
+    {
+      "language": "en",
+      "text": "Show all overdue commitments",
+      "intent": "meetingquery",
+      "tool": "commitments_list",
+      "args": {
+        "status": "overdue"
+      },
+      "id": "c33"
+    },
+    {
+      "language": "hi-en",
+      "text": "Notes mein pricing search karo",
+      "intent": "note",
+      "tool": "notes_search",
+      "args": {
+        "query": "pricing"
+      },
+      "id": "c34"
+    },
+    {
+      "language": "en",
+      "text": "Find my notes about the offsite",
+      "intent": "note",
+      "tool": "notes_search",
+      "args": {
+        "query": "offsite"
+      },
+      "id": "c35"
+    },
+    {
+      "language": "hi-en",
+      "text": "Ek note banao: vendor ko quote ke liye call karna",
+      "intent": "note",
+      "tool": "note_create",
+      "args": {
+        "body": "Call the vendor for a quote"
+      },
+      "id": "c36"
+    },
+    {
+      "language": "en",
+      "text": "Take a note: ideas for the demo video",
+      "intent": "note",
+      "tool": "note_create",
+      "args": {
+        "body": "Ideas for the demo video"
+      },
+      "id": "c37"
+    },
+    {
+      "language": "ta-en",
+      "text": "Oru note ezhudhu: sprint retro points",
+      "intent": "note",
+      "tool": "note_create",
+      "args": {
+        "body": "Sprint retro points"
+      },
+      "id": "c38"
+    },
+    {
+      "language": "hi-en",
+      "text": "Pachchis minute ka focus shuru karo",
+      "intent": "focus",
+      "tool": "focus_start",
+      "args": {
+        "minutes": 25
+      },
+      "id": "c39"
+    },
+    {
+      "language": "en",
+      "text": "Start a 45 minute focus session",
+      "intent": "focus",
+      "tool": "focus_start",
+      "args": {
+        "minutes": 45
+      },
+      "id": "c40"
+    },
+    {
+      "language": "kn-en",
+      "text": "Hattu nimisha focus shuru maadi",
+      "intent": "focus",
+      "tool": "focus_start",
+      "args": {
+        "minutes": 10
+      },
+      "id": "c41"
+    },
+    {
+      "language": "en",
+      "text": "Stop the focus session",
+      "intent": "focus",
+      "tool": "focus_stop",
+      "args": {},
+      "id": "c42"
+    },
+    {
+      "language": "hi-en",
+      "text": "Focus band karo",
+      "intent": "focus",
+      "tool": "focus_stop",
+      "args": {},
+      "id": "c43"
+    },
+    {
+      "language": "en",
+      "text": "Show my projects",
+      "intent": "project",
+      "tool": "projects_list",
+      "args": {},
+      "id": "c44"
+    },
+    {
+      "language": "hi-en",
+      "text": "Haan kar do",
+      "intent": "approval",
+      "tool": null,
+      "args": {},
+      "id": "c45"
+    },
+    {
+      "language": "en",
+      "text": "Yes go ahead",
+      "intent": "approval",
+      "tool": null,
+      "args": {},
+      "id": "c46"
+    },
+    {
+      "language": "ta-en",
+      "text": "Aama pannunga",
+      "intent": "approval",
+      "tool": null,
+      "args": {},
+      "id": "c47"
+    },
+    {
+      "language": "hi-en",
+      "text": "Nahi rehne do",
+      "intent": "reject",
+      "tool": null,
+      "args": {},
+      "id": "c48"
+    },
+    {
+      "language": "en",
+      "text": "No cancel that",
+      "intent": "cancel",
+      "tool": null,
+      "args": {},
+      "id": "c49"
+    },
+    {
+      "language": "en",
+      "text": "Hmm okay never mind the weather is nice",
+      "intent": "noise",
+      "tool": null,
+      "args": {},
+      "id": "c50"
+    }
+  ]
+}

@@ -409,6 +409,8 @@ describe("Notes screen (against the in-memory shell)", () => {
     render(<App />);
     await openNotes(user);
     expect(await screen.findByRole("textbox", { name: "Search notes" })).toBeTruthy();
+    // Wait for the notes to load: while the list is empty its empty state has a New note button too.
+    await screen.findByRole("region", { name: "Pinned" });
     expect(screen.getByRole("button", { name: /New note/ })).toBeTruthy();
     const regions = (await screen.findAllByRole("region")).map((r) => r.getAttribute("aria-label"));
     expect(regions).not.toContain("Next 7 days");

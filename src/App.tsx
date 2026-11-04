@@ -25,6 +25,7 @@ import { TasksPage } from "@/features/tasks/TasksPage";
 import { TimePage } from "@/features/time/TimePage";
 import { TodayOverviewPage } from "@/features/overview/TodayOverviewPage";
 import { MeetingsPage } from "@/features/meetings/MeetingsPage";
+import { VoicePage } from "@/features/voice/VoicePage";
 import { ProjectsPage } from "@/features/projects/ProjectsPage";
 import { StudyPage } from "@/features/student/StudyPage";
 import type { TaskFocus } from "@/features/overview/YesterdayLine";
@@ -34,7 +35,7 @@ import { ROLE_PREF, parseRole } from "@/features/guide/roles";
 import { TOUR_PREF, parseTour, stepsFor } from "@/features/guide/tourSteps";
 import { usePref } from "@/features/guide/usePref";
 
-const PAGES: readonly Page[] = ["today", "tasks", "time", "notes", "projects", "study", "meetings", "archive", "bin", "character", "mcp", "settings"];
+const PAGES: readonly Page[] = ["today", "tasks", "time", "notes", "projects", "study", "meetings", "voice", "archive", "bin", "character", "mcp", "settings"];
 
 function Screen() {
   const [page, setPageState] = useState<Page>("today");
@@ -178,6 +179,7 @@ function Screen() {
             {page === "settings" && <SettingsPage />}
             {page === "tasks" && <TasksPage focus={taskFocus} onClearFocus={() => setTaskFocus(null)} />}
             {page === "meetings" && <MeetingsPage newTick={newMeeting} />}
+            {page === "voice" && <VoicePage />}
             {page === "projects" && <ProjectsPage />}
             {page === "study" && <StudyPage />}
             {page === "time" && <TimePage />}

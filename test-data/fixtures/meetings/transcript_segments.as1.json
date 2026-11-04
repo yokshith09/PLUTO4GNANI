@@ -1,0 +1,96 @@
+{
+  "contract_version": 1,
+  "data": [
+    {
+      "id": "seg-0",
+      "meeting_id": "m-as1",
+      "source": "batch",
+      "index": 0,
+      "start_ms": 0,
+      "end_ms": 6200,
+      "speaker_label": 1,
+      "participant": "Asha",
+      "text": "Okay team, launch ka date finalize karte hain. Pricing page Friday tak live ho jaana chahiye.",
+      "language": "hi-IN",
+      "relevance": "decision"
+    },
+    {
+      "id": "seg-1",
+      "meeting_id": "m-as1",
+      "source": "batch",
+      "index": 1,
+      "start_ms": 6400,
+      "end_ms": 11800,
+      "speaker_label": 2,
+      "participant": "Ravi",
+      "text": "Main Thursday tak copy complete kar dunga, Asha.",
+      "language": "hi-IN",
+      "relevance": "action_item"
+    },
+    {
+      "id": "seg-2",
+      "meeting_id": "m-as1",
+      "source": "batch",
+      "index": 2,
+      "start_ms": 12000,
+      "end_ms": 17000,
+      "speaker_label": 1,
+      "participant": "Asha",
+      "text": "Theek hai. Decision: hum annual plan se start karenge.",
+      "language": "hi-IN",
+      "relevance": "decision"
+    },
+    {
+      "id": "seg-3",
+      "meeting_id": "m-as1",
+      "source": "batch",
+      "index": 3,
+      "start_ms": 17400,
+      "end_ms": 22500,
+      "speaker_label": 3,
+      "participant": "Meena",
+      "text": "Vendor contract ka owner kaun hai? Abhi tak koi nahi hai.",
+      "language": "hi-IN",
+      "relevance": "question"
+    },
+    {
+      "id": "seg-4",
+      "meeting_id": "m-as1",
+      "source": "batch",
+      "index": 4,
+      "start_ms": 22700,
+      "end_ms": 27000,
+      "speaker_label": 1,
+      "participant": "Asha",
+      "text": "Meena, tum legal se baat karke Monday tak confirm karo.",
+      "language": "hi-IN",
+      "relevance": "action_item"
+    },
+    {
+      "id": "seg-5",
+      "meeting_id": "m-as1",
+      "source": "batch",
+      "index": 5,
+      "start_ms": 27200,
+      "end_ms": 31000,
+      "speaker_label": 3,
+      "participant": "Meena",
+      "text": "Risk yeh hai ki legal late hua toh launch miss ho sakta hai.",
+      "language": "hi-IN",
+      "relevance": "risk"
+    },
+    {
+      "id": "seg-6",
+      "meeting_id": "m-as1",
+      "source": "batch",
+      "index": 6,
+      "start_ms": 31200,
+      "end_ms": 34000,
+      "speaker_label": 2,
+      "participant": "Ravi",
+      "text": "Chai break?",
+      "language": "hi-IN",
+      "relevance": "chitchat"
+    }
+  ]
+}

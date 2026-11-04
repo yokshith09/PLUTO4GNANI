@@ -1,0 +1,9 @@
+{
+  "contract_version": 1,
+  "data": {
+    "state": "recording",
+    "mode": "meeting",
+    "detail": "Busy: recording",
+    "session_id": "sess-1"
+  }
+}

@@ -1,11 +1,11 @@
 import {
-  Archive, CheckSquare, Clock3, FolderKanban, GraduationCap, LayoutDashboard, Moon, NotebookPen, PawPrint, Plug, Settings, Sun, Trash2, Users,
+  Archive, CheckSquare, Mic, Clock3, FolderKanban, GraduationCap, LayoutDashboard, Moon, NotebookPen, PawPrint, Plug, Settings, Sun, Trash2, Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useStudentPack } from "@/features/student/useStudent";
 import { Bear } from "./Bear";
 
-export type Page = "today" | "tasks" | "time" | "notes" | "projects" | "study" | "meetings" | "archive" | "bin" | "character" | "mcp" | "settings";
+export type Page = "today" | "tasks" | "time" | "notes" | "projects" | "study" | "meetings" | "voice" | "archive" | "bin" | "character" | "mcp" | "settings";
 
 interface Props {
   page: Page;
@@ -72,6 +72,7 @@ export function Sidebar({ page, counts, onPage, isDark, onToggleTheme }: Props) 
         <Item active={page === "projects"} onClick={go("projects")} tour="nav-projects" icon={<FolderKanban />}>Projects</Item>
         {(study || page === "study") && <Item active={page === "study"} onClick={go("study")} icon={<GraduationCap />}>Study</Item>}
         <Item active={page === "meetings"} onClick={go("meetings")} icon={<Users />}>Meetings</Item>
+        <Item active={page === "voice"} onClick={go("voice")} icon={<Mic />}>Voice</Item>
         <Item active={page === "character"} onClick={go("character")} tour="nav-character" icon={<PawPrint />}>Character</Item>
         <Item active={page === "mcp"} onClick={go("mcp")} icon={<Plug />}>MCP</Item>
       </Group>
