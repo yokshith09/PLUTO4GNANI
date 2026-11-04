@@ -4,6 +4,7 @@
 
 pub mod apply;
 pub mod extraction;
+pub mod service;
 
 use std::collections::HashMap;
 use std::sync::{Mutex, PoisonError};

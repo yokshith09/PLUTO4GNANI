@@ -325,6 +325,73 @@ pub fn list_insights(conn: &Connection, meeting_id: &str) -> Result<Vec<InsightR
     Ok(rows)
 }
 
+/// Name each speaker: `position` is the index into the meeting's participant list (`None` clears it).
+pub fn set_speaker_positions(
+    conn: &Connection,
+    meeting_id: &str,
+    mapping: &[(u8, Option<u32>)],
+) -> Result<()> {
+    for (label, position) in mapping {
+        conn.execute(
+            "UPDATE transcript_segments SET participant_position = ?3 WHERE meeting_id = ?1 AND speaker_label = ?2",
+            params![meeting_id, label, position],
+        )?;
+    }
+    Ok(())
+}
+
+/// An applied decision or action item with where it came from.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AppliedRow {
+    pub id: String,
+    pub body: String,
+    pub assignee: Option<String>,
+    pub meta: Option<ActionMeta>,
+    /// For decisions: the segment and quote.
+    pub decision_source: Option<(Option<String>, String)>,
+}
+
+pub fn applied_actions(conn: &Connection, meeting_id: &str) -> Result<Vec<AppliedRow>> {
+    let mut stmt = conn.prepare(
+        "SELECT a.id, a.body, a.assignee FROM meeting_action_items a
+         JOIN action_item_meta m ON m.action_item_id = a.id WHERE a.meeting_id = ?1 ORDER BY a.position",
+    )?;
+    let base: Vec<(String, String, Option<String>)> = stmt
+        .query_map([meeting_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+        .collect::<rusqlite::Result<_>>()?;
+    base.into_iter()
+        .map(|(id, body, assignee)| {
+            let meta = get_action_meta(conn, &id)?;
+            Ok(AppliedRow {
+                id,
+                body,
+                assignee,
+                meta,
+                decision_source: None,
+            })
+        })
+        .collect()
+}
+
+pub fn applied_decisions(conn: &Connection, meeting_id: &str) -> Result<Vec<AppliedRow>> {
+    let mut stmt = conn.prepare(
+        "SELECT d.id, d.body, m.source_segment_id, m.quote FROM meeting_decisions d
+         JOIN decision_meta m ON m.decision_id = d.id WHERE d.meeting_id = ?1 ORDER BY d.position",
+    )?;
+    let rows = stmt
+        .query_map([meeting_id], |r| {
+            Ok(AppliedRow {
+                id: r.get(0)?,
+                body: r.get(1)?,
+                assignee: None,
+                meta: None,
+                decision_source: Some((r.get(2)?, r.get(3)?)),
+            })
+        })?
+        .collect::<rusqlite::Result<_>>()?;
+    Ok(rows)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -526,5 +593,61 @@ mod tests {
             )
             .unwrap();
         assert_eq!(src, None);
+    }
+
+    #[test]
+    fn speakers_are_named_by_position_and_can_be_cleared() {
+        let c = db();
+        replace_segments(
+            &c,
+            "m1",
+            &[
+                seg("s1", 0, "a"),
+                SegmentRow {
+                    speaker_label: Some(2),
+                    ..seg("s2", 1, "b")
+                },
+            ],
+        )
+        .unwrap();
+        set_speaker_positions(&c, "m1", &[(1, Some(0)), (2, Some(3))]).unwrap();
+        let rows = list_segments(&c, "m1").unwrap();
+        assert_eq!(
+            (rows[0].participant_position, rows[1].participant_position),
+            (Some(0), Some(3))
+        );
+        set_speaker_positions(&c, "m1", &[(1, None)]).unwrap();
+        assert_eq!(
+            list_segments(&c, "m1").unwrap()[0].participant_position,
+            None
+        );
+    }
+
+    #[test]
+    fn applied_rows_come_back_with_their_provenance() {
+        let c = db();
+        seed_item(&c);
+        link_action_item(
+            &c,
+            &ActionMeta {
+                action_item_id: "a1".into(),
+                source_segment_id: Some("s1".into()),
+                quote: "q".into(),
+                due_phrase: None,
+                due_date: None,
+                priority: None,
+                confidence: None,
+            },
+        )
+        .unwrap();
+        link_decision(&c, "d1", Some("s1"), "dq").unwrap();
+        let a = applied_actions(&c, "m1").unwrap();
+        assert_eq!(
+            (a[0].id.as_str(), a[0].meta.as_ref().unwrap().quote.as_str()),
+            ("a1", "q")
+        );
+        let d = applied_decisions(&c, "m1").unwrap();
+        assert_eq!(d[0].decision_source, Some((Some("s1".into()), "dq".into())));
+        assert!(applied_actions(&c, "other").unwrap().is_empty());
     }
 }
