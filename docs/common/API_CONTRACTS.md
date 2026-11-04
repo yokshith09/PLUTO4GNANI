@@ -228,7 +228,7 @@ struct Proposal { id: String, interaction_id: String, tool: String, args: serde_
 enum ProposalResponse { Approve, Reject, Edit { args: serde_json::Value } }
 struct ToolResult { tool: String, ok: bool, message: String, record_id: Option<String> }
 struct AssistantTurn { interaction_id: String, transcript: String, language: Option<String>, decision: AssistantDecision,
-  reply_text: Option<String>, proposal: Option<Proposal>, result: Option<ToolResult> }   // added once T-005 (AssistantDecision) is on main
+  reply_text: Option<String>, proposal: Option<Proposal>, result: Option<ToolResult> }   // in voice.rs since T-007; emitted as voice://turn
 // Rust only: what a caller asks ToolExecutor::propose to create.
 struct ProposalRequest { interaction_id: Option<String> /* None → a new interaction is logged */, tool: String,
   args: serde_json::Value, summary_text: String, language: String }
