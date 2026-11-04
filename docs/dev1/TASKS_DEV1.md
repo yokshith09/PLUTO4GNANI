@@ -10,8 +10,8 @@ Work top to bottom. **Wait** = a task of the other developer that must be merged
 
 | # | Task | Title | Size | Priority | Day | Wait | Status |
 |---|---|---|---|---|---|---|---|
-| 1 | T-002 | Base | M | P0a | 0–1 | — | In progress (CI and e2e green; D1's machine pending) |
-| 2 | T-003 | Skeleton | M | P0a | 1 | — | In review (PR #3, built and checked by D2) |
+| 1 | T-002 | Base | M | P0a | 0–1 | — | In progress (workflows merged, CI and e2e green on Windows and macOS; D1's machine pending) |
+| 2 | T-003 | Skeleton | M | P0a | 1 | — | Done (merged, PR #3) |
 | 3 | T-004 | Contracts A | M | P0a | 1 | — | To do |
 | 4 | T-007 | Shell stubs | S | P0a | 1 | T-005 | To do |
 | 5 | T-010 | Gnani check | S | P0a | 1 | — | To do |

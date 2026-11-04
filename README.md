@@ -6,12 +6,14 @@ A Windows desktop app with two parts:
 
 It is built on Gnani **Prisma** (speech-to-text) and **Timbre** (text-to-speech), with Gemini and Groq for reasoning. It is built on a base ported from the owner's earlier Pluto app (see [`docs/common/PORTING_FROM_PLUTO.md`](docs/common/PORTING_FROM_PLUTO.md)); the voice, meeting and LLM layers are new.
 
-**Status (4 Nov):** the Pluto base is ported; CI and end-to-end are green on GitHub's Windows and macOS runners; Developer 1's skeleton (PR #3) and the imported workflows (PR #4) await merge. The plan is re-baselined on that base. **Branches:** `main`, `D1`, `D2` only. **Current focus:** M0 (see [`PROJECT_ROADMAP.md`](PROJECT_ROADMAP.md)).
+**Status (4 Nov):** the Pluto base is ported; CI and end-to-end are green on GitHub's Windows and macOS runners; Developer 1's skeleton (PR #3) and the imported workflows (PR #4) are merged. The plan is re-baselined on that base. **Branches:** `main`, `D1`, `D2` only. **Current focus:** M0 (see [`PROJECT_ROADMAP.md`](PROJECT_ROADMAP.md)).
 
 ## Start here
 | File | Purpose |
 |---|---|
 | [`PROJECT_ROADMAP.md`](PROJECT_ROADMAP.md) | **What exists now**, milestones, epics, **task board** (single source for tasks), effort summary, Definition of Done, criteria → evidence |
+| [`FEATURE_ROADMAP.md`](FEATURE_ROADMAP.md) | **Feature view:** phases → milestones → features, who builds each, what exists and what is to build |
+| [`docs/dev1/START_HERE.md`](docs/dev1/START_HERE.md) · [`docs/dev2/START_HERE.md`](docs/dev2/START_HERE.md) | **Start point per developer:** sync, setup, first tasks, owned files |
 | [`HACKATHON_PLAN.md`](HACKATHON_PLAN.md) | Team allocation, dependency order, timeboxed milestones, PR/integration cadence, risks, cut rules, critical path |
 
 ## Documentation layout

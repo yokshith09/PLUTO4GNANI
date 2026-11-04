@@ -2,6 +2,7 @@
 
 **Team:** exactly 2 developers (Developer 1 = **D1**, Developer 2 = **D2**).
 **Branches:** `main`, `D1`, `D2` only (`docs/common/WORKING_AGREEMENT.md` §4).
+**Feature view (phases → milestones → features):** [`FEATURE_ROADMAP.md`](FEATURE_ROADMAP.md).
 **Schedule, cadence, risks, cut rules:** [`HACKATHON_PLAN.md`](HACKATHON_PLAN.md). **Per-developer lists:** [`docs/dev1/TASKS_DEV1.md`](docs/dev1/TASKS_DEV1.md), [`docs/dev2/TASKS_DEV2.md`](docs/dev2/TASKS_DEV2.md).
 
 ## Current Focus
@@ -32,13 +33,13 @@
 ### Not present (everything below is new work)
 Audio capture or playback; speech-to-text; text-to-speech; any LLM; HTTP or WebSocket client; OS keychain; full-text search; recordings, transcripts, segments, provenance (quotes); extraction; voice runtime; approval gate; hotkey key-release handling; CI (now imported, PR #4); the `voice` and `meeting_ai` commands.
 
-### In progress / in review (4 Nov 2026)
+### Done and in progress (4 Nov 2026)
 | Item | Owner | State |
 |---|---|---|
-| **T-003 skeleton** — four crates (`pluto-contracts`, `pluto-gnani`, `pluto-voice`, `pluto-intel`), module placeholders with ownership headers, workspace dependencies (reqwest, tokio-tungstenite, hound, keyring, wiremock, …), migrations 012 and 013 registered as empty files, `mod` lines for `meeting_ai_store` and `voice_store`, `gen:types` extended, the Tauri-dependency guard generalised to every crate | D1 (`Duggineniakhil`) | **PR #3 open.** D2 built it separately: `cargo check --locked` passes on the five non-Tauri crates; 43 database tests pass; the guard passes. Contains **no feature code yet** — every module file is a placeholder |
-| **Workflows** — `ci.yml`, `e2e.yml`, `release.yml` imported from Pluto, CI also on `D1`/`D2` pushes | D2 | **PR #4 open.** CI and end-to-end are green on Windows and macOS |
-| **Cleanup** — diary page and two unused scripts removed | D2 | On `D2` (PORTING_FROM_PLUTO §7); typecheck, lint, 468 tests and coverage pass |
-| Branch cleanup | — | Done: only `main`, `D1`, `D2` remain on GitHub |
+| **T-003 skeleton** — four crates (`pluto-contracts`, `pluto-gnani`, `pluto-voice`, `pluto-intel`), module placeholders with ownership headers, workspace dependencies (reqwest, tokio-tungstenite, hound, keyring, wiremock, …), migrations 012 and 013 registered as empty files, `mod` lines for `meeting_ai_store` and `voice_store`, `gen:types` extended, the Tauri-dependency guard generalised to every crate | D1 (`Duggineniakhil`) | **Merged (PR #3).** D2 built it separately before merging: `cargo check --locked` passes on the five non-Tauri crates; 43 database tests pass; the guard passes. Contains **no feature code yet** — every module file is a placeholder |
+| **Workflows** — `ci.yml`, `e2e.yml`, `release.yml` imported from Pluto, CI also on `D1`/`D2` pushes | D2 | **Merged (PR #4).** CI and end-to-end are green on Windows and macOS |
+| **Cleanup** — diary page and two unused scripts removed | D2 | **Merged (PR #4)** (PORTING_FROM_PLUTO §7); typecheck, lint, 468 tests and coverage pass |
+| Branch cleanup | — | Done: only `main`, `D1`, `D2` remain on GitHub; PRs #1, #3, #4 merged, #2 closed |
 
 ### Blocked
 Nothing. Open Gnani questions (credits, request limits, streaming hints, presigned upload) have fallbacks and do not block (ARCHITECTURE §13).
@@ -80,8 +81,8 @@ Tray, hotkeys, notifications, autostart and tracking on a real Windows desktop (
 | ID | Story / Feature | Task → deliverable | Owner | Priority | Dependencies | Est. | Acceptance criteria | Tests | Status |
 |---|---|---|---|---|---|---|---|---|---|
 | T-001 | Base | Verify the base on Windows: `pnpm install`, `pnpm tauri dev`, walk the checklist, record results in `docs/results/base-verification.md`, list every failure with its cause | D2 | P0a | — | S | App opens; Today, Tasks, Notes, Meetings load; a reminder notification fires; failures listed | Manual checklist | In progress (CI green on Windows and macOS; local run pending) |
-| T-002 | Base | Verify on D1's machine. Read the first runs of the imported workflows (`ci.yml`, `e2e.yml`, `release.yml` from Pluto; CI also runs on pushes to `D1` and `D2`) and fix any failure. Keep the base's floors green: `pluto-core` ≥ 90% lines; frontend 80 / 80 / 70 / 55 | D1 | P0a | — | M | CI and Windows e2e green on `main`; D1's machine passes `pnpm tauri dev` | CI and e2e runs | In progress (CI and e2e green; D1's machine pending) |
-| T-003 | Skeleton | New crates `pluto-contracts`, `pluto-gnani`, `pluto-voice`, `pluto-intel` in the workspace; module placeholders (one file per owner); extend `gen:types` to the new crates; workspace deps (reqwest, tokio-tungstenite, hound, keyring, async-trait); pre-register migrations 012 and 013 in `migrate.rs`; add the `mod` lines for `meeting_ai_store` and `voice_store` to `pluto-core/src/lib.rs`. **Merge to `main` within the first hour of Day 1** | D1 | P0a | — | M | `cargo build --workspace` and `pnpm gen:types` succeed; D2 can add files in `pluto-intel` and `pluto-gnani/src/{batch,rest}.rs` without editing any shared file | cargo build; CI | In review (PR #3, built and checked by D2) |
+| T-002 | Base | Verify on D1's machine. Read the first runs of the imported workflows (`ci.yml`, `e2e.yml`, `release.yml` from Pluto; CI also runs on pushes to `D1` and `D2`) and fix any failure. Keep the base's floors green: `pluto-core` ≥ 90% lines; frontend 80 / 80 / 70 / 55 | D1 | P0a | — | M | CI and Windows e2e green on `main`; D1's machine passes `pnpm tauri dev` | CI and e2e runs | In progress (workflows merged, CI and e2e green on Windows and macOS; D1's machine pending) |
+| T-003 | Skeleton | New crates `pluto-contracts`, `pluto-gnani`, `pluto-voice`, `pluto-intel` in the workspace; module placeholders (one file per owner); extend `gen:types` to the new crates; workspace deps (reqwest, tokio-tungstenite, hound, keyring, async-trait); pre-register migrations 012 and 013 in `migrate.rs`; add the `mod` lines for `meeting_ai_store` and `voice_store` to `pluto-core/src/lib.rs`. **Merge to `main` within the first hour of Day 1** | D1 | P0a | — | M | `cargo build --workspace` and `pnpm gen:types` succeed; D2 can add files in `pluto-intel` and `pluto-gnani/src/{batch,rest}.rs` without editing any shared file | cargo build; CI | Done (merged, PR #3) |
 | T-004 | Contracts A | `pluto-contracts`: voice runtime, speech, proposal and tool types; `VoiceError`; traits `SpeechToText`, `TextToSpeech`, `ToolExecutor`, `FrameSink`; mocks | D1 | P0a | T-003 | M | Types compile and export TypeScript to `src/ipc/generated`; **D2 approves** | Export test; typecheck | To do |
 | T-005 | Contracts B | `pluto-contracts`: meeting, LLM and decision types; traits `Llm`, `Decider`; `MockLlm` with fixtures | D2 | P0a | T-003 | M | Same; **D1 approves** | Export test; typecheck | To do |
 | T-006 | UI plumbing | `src/ipc/voiceClient.ts`, `meetingAi.ts`, mock handlers composed into `createMock`, `voice://` event listeners, `voice` entry in `Page` / `App.tsx` / Sidebar, folders `src/features/voice`; shared fixtures in `test-data/fixtures` | D2 | P0a | T-004, T-005 | M | Every new command can be called from the UI against the mock; the Voice page opens | Vitest | To do |
