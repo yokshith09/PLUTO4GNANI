@@ -229,13 +229,15 @@ pub async fn meeting_items_get(
     shell.ai(&core).items(&meeting_id).await
 }
 
+/// Real: searches the transcripts and answers only from what it finds, with citations (T-305).
 #[tauri::command]
 pub async fn meeting_recall(
     question: String,
     language: Option<String>,
+    core: State<'_, Core>,
+    shell: State<'_, MeetingShell>,
 ) -> VoiceResult<RecallAnswer> {
-    let _ = (question, language);
-    fixture(fixtures::RECALL_OK)
+    shell.ai(&core).recall(&question, language.as_deref()).await
 }
 
 /// Stub: nothing is spoken or exported yet (T-205); returns no file.

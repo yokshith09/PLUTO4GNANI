@@ -4,6 +4,7 @@
 
 pub mod apply;
 pub mod extraction;
+pub mod recall;
 pub mod service;
 
 use std::collections::HashMap;

@@ -19,6 +19,7 @@ use pluto_core::tasks::{self, TaskFilters, TaskView};
 
 use super::apply::{apply, ApplyOutcome};
 use super::extraction::{extract, ExtractInput, OpenTask};
+use super::recall::{self, Hit};
 use super::ExtractionCache;
 
 fn core(e: AppError) -> VoiceError {
@@ -176,6 +177,61 @@ impl MeetingAi {
             )
         })?;
         apply(&self.db, &*self.clock, &extraction, input).await
+    }
+
+    /// Answer a question from the user's own transcripts, with citations; never from outside them.
+    pub async fn recall(
+        &self,
+        question: &str,
+        language: Option<&str>,
+    ) -> VoiceResult<pluto_contracts::meeting::RecallAnswer> {
+        let language = language.unwrap_or("en-IN");
+        let question = question.trim();
+        if question.is_empty() {
+            return Err(VoiceError::new(
+                VoiceErrorCode::Core,
+                "Ask a question first.",
+            ));
+        }
+        let terms = recall::search_terms(question);
+        let rows = self
+            .db
+            .read(move |c| store::search_segments_any(c, &terms, recall::TOP_K))
+            .await
+            .map_err(core)?;
+        let mut hits = Vec::new();
+        let mut cache: std::collections::HashMap<String, Meeting> =
+            std::collections::HashMap::new();
+        for r in rows {
+            if !cache.contains_key(&r.meeting_id) {
+                // A meeting deleted since the index was written has no row; skip its lines.
+                let Ok(m) = meetings::get(&self.db, &r.meeting_id).await else {
+                    continue;
+                };
+                cache.insert(r.meeting_id.clone(), m);
+            }
+            let m = &cache[&r.meeting_id];
+            hits.push(Hit {
+                said_at: m.starts_at + r.start_ms,
+                meeting_title: m.title.clone(),
+                segment: TranscriptSegment {
+                    participant: r
+                        .participant_position
+                        .and_then(|p| m.participants.get(p as usize).cloned()),
+                    id: r.id,
+                    meeting_id: Some(r.meeting_id),
+                    source: SegmentSource::Batch,
+                    index: r.index,
+                    start_ms: Some(r.start_ms),
+                    end_ms: Some(r.end_ms),
+                    speaker_label: r.speaker_label,
+                    text: r.text,
+                    language: r.language,
+                    relevance: r.relevance.as_deref().and_then(relevance_of),
+                },
+            });
+        }
+        recall::answer(&*self.llm, question, language, &hits).await
     }
 
     /// What was applied to the meeting, with the quote and segment each came from.

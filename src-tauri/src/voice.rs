@@ -84,6 +84,7 @@ pub(crate) mod fixtures {
     #[cfg(test)]
     pub const EXTRACTION_AS1: &str =
         include_str!("../../test-data/fixtures/meetings/extraction_result.as1.json");
+    #[cfg(test)]
     pub const RECALL_OK: &str =
         include_str!("../../test-data/fixtures/meetings/recall_answer.ok.json");
 }

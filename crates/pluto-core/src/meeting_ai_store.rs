@@ -148,6 +148,35 @@ pub fn search_segments(conn: &Connection, query: &str) -> Result<Vec<SegmentRow>
     Ok(rows)
 }
 
+/// Search every transcript for any of `terms` (best matches first, at most `limit`). Each term is
+/// quoted, so user words can never be read as FTS syntax.
+pub fn search_segments_any(
+    conn: &Connection,
+    terms: &[String],
+    limit: usize,
+) -> Result<Vec<SegmentRow>> {
+    let fts: String = terms
+        .iter()
+        .map(|w| w.trim())
+        .filter(|w| !w.is_empty())
+        .map(|w| format!("\"{}\"", w.replace('"', "\"\"")))
+        .collect::<Vec<_>>()
+        .join(" OR ");
+    if fts.is_empty() {
+        return Ok(vec![]);
+    }
+    let sql = format!(
+        "SELECT {SEGMENT_COLS} FROM transcript_fts f JOIN transcript_segments s ON s.rowid = f.rowid
+         WHERE transcript_fts MATCH ?1 ORDER BY rank LIMIT {}",
+        limit.clamp(1, 50)
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt
+        .query_map([fts], segment_from)?
+        .collect::<rusqlite::Result<_>>()?;
+    Ok(rows)
+}
+
 /// Record a new transcription attempt.
 pub fn insert_job(
     conn: &Connection,
@@ -649,5 +678,30 @@ mod tests {
         let d = applied_decisions(&c, "m1").unwrap();
         assert_eq!(d[0].decision_source, Some((Some("s1".into()), "dq".into())));
         assert!(applied_actions(&c, "other").unwrap().is_empty());
+    }
+
+    #[test]
+    fn any_term_search_ranks_and_ignores_syntax() {
+        let c = db();
+        replace_segments(
+            &c,
+            "m1",
+            &[
+                seg("a", 0, "launch date is 20 November"),
+                seg("b", 1, "budget approved"),
+                seg("c", 2, "lunch plans"),
+            ],
+        )
+        .unwrap();
+        let hits = search_segments_any(&c, &["launch".into(), "budget".into()], 8).unwrap();
+        assert_eq!(hits.len(), 2);
+        assert!(search_segments_any(&c, &["\" OR NEAR(".into()], 8).is_ok());
+        assert!(search_segments_any(&c, &[], 8).unwrap().is_empty());
+        assert_eq!(
+            search_segments_any(&c, &["launch".into(), "budget".into()], 1)
+                .unwrap()
+                .len(),
+            1
+        );
     }
 }
