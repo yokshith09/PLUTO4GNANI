@@ -12,7 +12,7 @@ Work top to bottom. **Wait** = a task of the other developer that must be merged
 |---|---|---|---|---|---|---|---|
 | 1 | T-002 | Base | M | P0a | 0–1 | — | Done (`docs/results/d1-base-verification.md`) |
 | 2 | T-003 | Skeleton | M | P0a | 1 | — | Done (merged, PR #3) |
-| 3 | T-004 | Contracts A | M | P0a | 1 | — | To do |
+| 3 | T-004 | Contracts A | M | P0a | 1 | — | In review |
 | 4 | T-007 | Shell stubs | S | P0a | 1 | T-005 | To do |
 | 5 | T-010 | Gnani check | S | P0a | 1 | — | To do |
 | 6 | T-011 | Mic check | S | P0a | 2 | — | To do |

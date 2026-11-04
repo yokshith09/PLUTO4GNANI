@@ -12,9 +12,12 @@ async-trait.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+tokio.workspace = true
 ts-rs = { workspace = true, optional = true }
 
 [features]
 default = ["ts"]
 # Exports TypeScript to src/ipc/generated via `cargo test -p pluto-contracts export_bindings`.
 ts = ["dep:ts-rs"]
+# Test doubles for the D1 traits (`MockToolExecutor`, `RecordingSink`). Enable from dev-dependencies.
+mock = []

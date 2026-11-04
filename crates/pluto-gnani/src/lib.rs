@@ -7,9 +7,12 @@
 //! | `tts` (Timbre WebSocket and REST) | D1 | T-102 |
 //! | `batch` (Prisma Batch jobs, `meeting_import`) | D1 | T-201 |
 //! | `rest` (Prisma REST, comparison) | D2 | T-504 |
+//! | `mock` (`MockStt`, `MockTts`; feature `mock`) | D1 | T-004 |
 
 pub mod batch;
 pub mod http;
+#[cfg(any(test, feature = "mock"))]
+pub mod mock;
 pub mod realtime;
 pub mod rest;
 pub mod tts;
