@@ -24,7 +24,7 @@ Work top to bottom. **Wait** = a task of the other developer that must be merged
 | 12 | T-205 | Recap | S | P0a | 3 | T-102 | To do |
 | 13 | T-206 | Integration C2 | S | P0a | 3 | — | To do |
 | 14 | T-207 | Recorder | L | P0b | 3–4 | T-013 | To do |
-| 15 | T-302 | Decisions | M | P0a | 3 | — | To do |
+| 15 | T-302 | Decisions | M | P0a | 3 | — | In review (PR #14; rules plus intent prompt built; routing accuracy on the real model (T-ML-04) needs keys) |
 | 16 | T-304 | Voice UI | M | P0a | 3–4 | — | To do |
 | 17 | T-305 | Recall | L | P0a | 4 | — | To do |
 | 18 | T-401 | Voice settings | M | P0a | 4–5 | — | To do |
