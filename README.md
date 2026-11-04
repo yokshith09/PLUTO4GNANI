@@ -6,7 +6,7 @@ A Windows desktop app with two parts:
 
 It is built on Gnani **Prisma** (speech-to-text) and **Timbre** (text-to-speech), with Gemini and Groq for reasoning. It is built on a base ported from the owner's earlier Pluto app (see [`docs/common/PORTING_FROM_PLUTO.md`](docs/common/PORTING_FROM_PLUTO.md)); the voice, meeting and LLM layers are new.
 
-**Status:** the Pluto base is ported and its Rust core and UI tests pass (Linux); the Tauri shell is unverified until built on Windows. The plan is re-baselined on that base. **Branches:** `main`, `D1`, `D2` only. **Current focus:** M0 (see [`PROJECT_ROADMAP.md`](PROJECT_ROADMAP.md)).
+**Status (4 Nov):** the Pluto base is ported; CI and end-to-end are green on GitHub's Windows and macOS runners; Developer 1's skeleton (PR #3) and the imported workflows (PR #4) await merge. The plan is re-baselined on that base. **Branches:** `main`, `D1`, `D2` only. **Current focus:** M0 (see [`PROJECT_ROADMAP.md`](PROJECT_ROADMAP.md)).
 
 ## Start here
 | File | Purpose |

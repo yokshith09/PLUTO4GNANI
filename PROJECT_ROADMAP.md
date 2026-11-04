@@ -14,7 +14,7 @@
 ---
 
 ## 1. Audit — what exists now (3 Nov 2026)
-**Source of the code:** the ported Pluto base (`docs/common/PORTING_FROM_PLUTO.md`). Verified in a Linux sandbox: `pluto-core` 492 tests pass; UI typecheck clean, 486 tests pass. The Tauri shell has **not** been built or run (needs Windows).
+**Source of the code:** the ported Pluto base (`docs/common/PORTING_FROM_PLUTO.md`). Verified: `pluto-core` 492 tests pass; UI typecheck clean, 468 tests pass (486 before the diary page was removed). **On GitHub's Windows and macOS runners (4 Nov): CI is green** (fmt, clippy, tests, generated types, coverage floors, lint, `tauri build`) **and the end-to-end test drives the real app** (welcome, a task, a note, a meeting with an action item turned into a task, restart). It has **not** been run on a developer's own machine, and the microphone path is untested.
 
 ### Implemented (in the base, tested, to be reused as-is)
 | Area | What exists |
@@ -30,16 +30,21 @@
 | Pluto-only features | Desktop pet, characters, diary, courses and exams, app/website usage tracking (off by default) |
 
 ### Not present (everything below is new work)
-Audio capture or playback; speech-to-text; text-to-speech; any LLM; HTTP or WebSocket client; OS keychain; full-text search; recordings, transcripts, segments, provenance (quotes); extraction; voice runtime; approval gate; hotkey key-release handling; CI (not ported); the `voice` and `meeting_ai` commands.
+Audio capture or playback; speech-to-text; text-to-speech; any LLM; HTTP or WebSocket client; OS keychain; full-text search; recordings, transcripts, segments, provenance (quotes); extraction; voice runtime; approval gate; hotkey key-release handling; CI (now imported, PR #4); the `voice` and `meeting_ai` commands.
 
-### In progress
-Nothing. No new feature code has been written.
+### In progress / in review (4 Nov 2026)
+| Item | Owner | State |
+|---|---|---|
+| **T-003 skeleton** — four crates (`pluto-contracts`, `pluto-gnani`, `pluto-voice`, `pluto-intel`), module placeholders with ownership headers, workspace dependencies (reqwest, tokio-tungstenite, hound, keyring, wiremock, …), migrations 012 and 013 registered as empty files, `mod` lines for `meeting_ai_store` and `voice_store`, `gen:types` extended, the Tauri-dependency guard generalised to every crate | D1 (`Duggineniakhil`) | **PR #3 open.** D2 built it separately: `cargo check --locked` passes on the five non-Tauri crates; 43 database tests pass; the guard passes. Contains **no feature code yet** — every module file is a placeholder |
+| **Workflows** — `ci.yml`, `e2e.yml`, `release.yml` imported from Pluto, CI also on `D1`/`D2` pushes | D2 | **PR #4 open.** CI and end-to-end are green on Windows and macOS |
+| **Cleanup** — diary page and two unused scripts removed | D2 | On `D2` (PORTING_FROM_PLUTO §7); typecheck, lint, 468 tests and coverage pass |
+| Branch cleanup | — | Done: only `main`, `D1`, `D2` remain on GitHub |
 
 ### Blocked
 Nothing. Open Gnani questions (credits, request limits, streaming hints, presigned upload) have fallbacks and do not block (ARCHITECTURE §13).
 
 ### Unverified
-The Tauri shell, tray, hotkeys, notifications, autostart and tracking on Windows. Pluto's own status file lists 42 such items.
+Tray, hotkeys, notifications, autostart and tracking on a real Windows desktop (the end-to-end test covers the in-app flows, not the OS integrations). Pluto's own status file lists 42 such items. Microphone capture in WebView2 (T-011).
 
 ## 2. Milestones
 | # | Milestone | Why here | Checkpoint |
@@ -68,15 +73,15 @@ The Tauri shell, tray, hotkeys, notifications, autostart and tracking on Windows
 ## 4. Board
 **Estimates:** S ≈ 1 h, M ≈ 2.5 h, L ≈ 5.5 h of focused work; XL is split before starting. These are estimates, not measurements.
 **Priority:** **P0a** = demo spine, **P0b** = needed for the full demo but cut first, **P1**, **P2**.
-**Status:** every task is **To do**.
+**Status:** **To do** unless the Status column says otherwise.
 **Parallel-safe:** depends on no one else's unmerged work.
 
 ### M0 — Base verified, skeleton and contracts (Day 0–1)
 | ID | Story / Feature | Task → deliverable | Owner | Priority | Dependencies | Est. | Acceptance criteria | Tests | Status |
 |---|---|---|---|---|---|---|---|---|---|
-| T-001 | Base | Verify the base on Windows: `pnpm install`, `pnpm tauri dev`, walk the checklist, record results in `docs/results/base-verification.md`, list every failure with its cause | D2 | P0a | — | S | App opens; Today, Tasks, Notes, Meetings load; a reminder notification fires; failures listed | Manual checklist | To do |
-| T-002 | Base | Verify on D1's machine too. Add `.github/workflows/ci.yml` adapted from Pluto's (fmt, clippy, `cargo test --workspace`, typecheck, lint, vitest, core-deps check). No release workflow | D1 | P0a | — | M | CI green on `main`; D1's machine passes `pnpm tauri dev` | CI run | To do |
-| T-003 | Skeleton | New crates `pluto-contracts`, `pluto-gnani`, `pluto-voice`, `pluto-intel` in the workspace; module placeholders (one file per owner); extend `gen:types` to the new crates; workspace deps (reqwest, tokio-tungstenite, hound, keyring, async-trait); pre-register migrations 012 and 013 in `migrate.rs`; add the `mod` lines for `meeting_ai_store` and `voice_store` to `pluto-core/src/lib.rs`. **Merge to `main` within the first hour of Day 1** | D1 | P0a | — | M | `cargo build --workspace` and `pnpm gen:types` succeed; D2 can add files in `pluto-intel` and `pluto-gnani/src/{batch,rest}.rs` without editing any shared file | cargo build; CI | To do |
+| T-001 | Base | Verify the base on Windows: `pnpm install`, `pnpm tauri dev`, walk the checklist, record results in `docs/results/base-verification.md`, list every failure with its cause | D2 | P0a | — | S | App opens; Today, Tasks, Notes, Meetings load; a reminder notification fires; failures listed | Manual checklist | In progress (CI green on Windows and macOS; local run pending) |
+| T-002 | Base | Verify on D1's machine. Read the first runs of the imported workflows (`ci.yml`, `e2e.yml`, `release.yml` from Pluto; CI also runs on pushes to `D1` and `D2`) and fix any failure. Keep the base's floors green: `pluto-core` ≥ 90% lines; frontend 80 / 80 / 70 / 55 | D1 | P0a | — | M | CI and Windows e2e green on `main`; D1's machine passes `pnpm tauri dev` | CI and e2e runs | In progress (CI and e2e green; D1's machine pending) |
+| T-003 | Skeleton | New crates `pluto-contracts`, `pluto-gnani`, `pluto-voice`, `pluto-intel` in the workspace; module placeholders (one file per owner); extend `gen:types` to the new crates; workspace deps (reqwest, tokio-tungstenite, hound, keyring, async-trait); pre-register migrations 012 and 013 in `migrate.rs`; add the `mod` lines for `meeting_ai_store` and `voice_store` to `pluto-core/src/lib.rs`. **Merge to `main` within the first hour of Day 1** | D1 | P0a | — | M | `cargo build --workspace` and `pnpm gen:types` succeed; D2 can add files in `pluto-intel` and `pluto-gnani/src/{batch,rest}.rs` without editing any shared file | cargo build; CI | In review (PR #3, built and checked by D2) |
 | T-004 | Contracts A | `pluto-contracts`: voice runtime, speech, proposal and tool types; `VoiceError`; traits `SpeechToText`, `TextToSpeech`, `ToolExecutor`, `FrameSink`; mocks | D1 | P0a | T-003 | M | Types compile and export TypeScript to `src/ipc/generated`; **D2 approves** | Export test; typecheck | To do |
 | T-005 | Contracts B | `pluto-contracts`: meeting, LLM and decision types; traits `Llm`, `Decider`; `MockLlm` with fixtures | D2 | P0a | T-003 | M | Same; **D1 approves** | Export test; typecheck | To do |
 | T-006 | UI plumbing | `src/ipc/voiceClient.ts`, `meetingAi.ts`, mock handlers composed into `createMock`, `voice://` event listeners, `voice` entry in `Page` / `App.tsx` / Sidebar, folders `src/features/voice`; shared fixtures in `test-data/fixtures` | D2 | P0a | T-004, T-005 | M | Every new command can be called from the UI against the mock; the Voice page opens | Vitest | To do |
@@ -124,7 +129,7 @@ The Tauri shell, tray, hotkeys, notifications, autostart and tracking on Windows
 | ID | Story / Feature | Task → deliverable | Owner | Priority | Dependencies | Est. | Acceptance criteria | Tests | Status |
 |---|---|---|---|---|---|---|---|---|---|
 | T-401 | Voice settings | "Voice & privacy" section in Settings: opt-in disclosure, keys, languages, caption style, voice preview, hotkey (shortcut row), model IDs | D2 | P0a | T-105 | M | Cloud voice off → assistant disabled; keys show "Saved" only | Vitest; T-PR-04 | To do |
-| T-402 | Demo build | Hide non-product pages (time, study, diary, character, mcp, archive) behind one setting; app tracking stays off | D2 | P0a | T-006 | S | The demo build shows only Today, Tasks, Notes, Projects, Meetings, Voice, Settings | Vitest | To do |
+| T-402 | Demo build | Hide the remaining non-product pages (time, study, mcp, archive) behind one setting; app tracking stays off. The diary page was already removed (PORTING_FROM_PLUTO §7) | D2 | P0a | T-006 | S | The demo build shows only Today, Tasks, Notes, Projects, Meetings, Voice, Settings (and the pet) | Vitest | To do |
 | T-403 | Safety | Automate T-AS-05 (no write without approval), T-PR-01..04 (keys, privacy log, consent, cloud-off = zero outbound) | D1 | P0a | T-303 | S | All pass | Listed | To do |
 | T-404 | Build | Windows installer (`pnpm tauri build`), demo-machine setup, rollback installer kept | D1 | P0a | T-306 | S | Fresh install on the demo machine passes the voice test | Manual | To do |
 | T-405 | Measurement | Run T-ML-01..04, T-NZ, T-LAT; write `docs/results/` | D2 | P0b | T-306 | M | Results recorded with commit and machine | Listed | To do |
@@ -145,6 +150,7 @@ The Tauri shell, tray, hotkeys, notifications, autostart and tracking on Windows
 | T-510 | Audio tags | Allow-list of Timbre tags in the reply composer | D2 | P1 | T-102 | S | Only allow-listed tags are sent | Unit | To do |
 | T-511 | Failure suite | Run and fix T-FH-01..09 | D1 | P1 | T-306 | M | All pass or have a documented fallback | T-FH-* | To do |
 | T-512 | Integration C5 | Re-run E2E §7 with the P1 features that are in; record the cut list | D2 | P1 | T-501..T-511 or cuts | S | E2E still passes | E2E §7 | To do |
+| T-513 | macOS mic | macOS microphone support: add `NSMicrophoneUsageDescription` to `src-tauri/Info.plist` and check WKWebView capture on a Mac. CI already compiles and smoke-tests macOS; capture cannot be tested there | D1 | P1 | T-012 | S | Microphone permission prompt appears and capture works on a Mac | Manual on a Mac | To do |
 
 ### M6 — Demo, post and submission (Day 5–7)
 | ID | Story / Feature | Task → deliverable | Owner | Priority | Dependencies | Est. | Acceptance criteria | Tests | Status |
@@ -174,7 +180,7 @@ The Tauri shell, tray, hotkeys, notifications, autostart and tracking on Windows
 | P0a before the demo freeze (M0–M4) | 50 h | 49 h |
 | P0a after the freeze (M6: freeze, rehearsal, post, submission) | 2 h | 5 h |
 | P0b (cut first) | 0 h | 8 h |
-| P1 | 7 h | 12 h |
+| P1 | 8 h | 12 h |
 | P2 | 18 h | 6 h |
 | P0a task count (L / M / S) | 5 / 6 / 9 | 4 / 10 / 7 |
 

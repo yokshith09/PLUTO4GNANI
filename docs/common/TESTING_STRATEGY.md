@@ -5,7 +5,7 @@
 ## 1. Levels
 | Level | Scope | Tools | Owner |
 |---|---|---|---|
-| Base regression | The base's existing 492 core tests and 486 UI tests must keep passing | `cargo test -p pluto-core`, `pnpm test` | Both |
+| Base regression | The base's existing tests must keep passing (492 core tests; 468 UI tests after the diary page was removed) | `cargo test -p pluto-core`, `pnpm test` | Both |
 | Unit (Rust) | WAV chunking, retries and request queues, Realtime rotation, Batch parsing, date resolution, rules, LLM router fallback, grounding validator, proposal gate | `cargo test` | Module owner |
 | Unit (DB) | Migrations 012–013, checks, cascades, FTS5 | `cargo test -p pluto-core` | D1 (013), D2 (012) |
 | Unit (UI) | Every screen in every state on mocks; worklet downsampling (pure function) | Vitest + Testing Library | Page owner |
@@ -92,7 +92,13 @@ Each set has a ground-truth file (expected items and intents). Noise is mixed wi
 - `pnpm typecheck && pnpm lint && pnpm test`
 - `cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace`
 
-## 9. Commands
+## 9. CI (imported from Pluto, `.github/workflows/`)
+- **`ci.yml`** on Windows and macOS: `cargo fmt --check`, `cargo clippy -D warnings`, `cargo check --workspace --locked`, `cargo test --workspace --locked`, generated types up to date, coverage (`pluto-core` ≥ 90% lines), `pnpm typecheck`, `pnpm lint`, `pnpm test:coverage` (frontend floors 80 / 80 / 70 / 55 in `vite.config.ts`), script tests, `pnpm check:core-deps`, and `pnpm tauri build --no-bundle`.
+- **`e2e.yml`**: on Windows, the real app is driven by WebDriver (welcome, a task, a note, a meeting with an action item turned into a task, restart to prove persistence); on macOS, a start-up smoke test.
+- **`release.yml`**: Windows and macOS installers into a private draft release (version change, `v*` tag or manual run).
+- **New code must keep the floors green**, so new modules in `pluto-core` and new UI need tests. The new crates join the workspace jobs automatically.
+
+## 10. Commands
 ```
 cargo test --workspace                 # core + contracts + gnani + voice + intel
 cargo test -p pluto-intel              # D2, with MockLlm and fixtures

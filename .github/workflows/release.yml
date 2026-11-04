@@ -1,0 +1,147 @@
+name: Release build
+
+# Builds the Windows and macOS installers and keeps them as a DRAFT GitHub Release. Nothing is
+# published until you press "Publish release" on the draft.
+#
+# It starts by itself when the app version changes on `main` (src-tauri/tauri.conf.json), so a
+# release is: bump the version, push to main, wait, test the draft's installers, publish. It also
+# starts when you push a tag `v*` or press "Run workflow" in the Actions tab. If the release for the
+# version is already PUBLISHED, a push does nothing (published installers never change under people).
+# A branch push builds only when the version NUMBER changed in that push (other edits to
+# tauri.conf.json, such as a new window, build nothing: owner rule 2026-11-01, releases only on the
+# owner's word; a window added on 2026-11-01 had refreshed the 0.5.7 draft by mistake). A new
+# version's draft points at the commit that was built, so publishing tags exactly that commit.
+#
+# Publishing the draft creates the tag `v<version>` on the commit that was built.
+# To rebuild the same unpublished version (for example after a fix), press "Run workflow".
+# (0.5.2 was rebuilt this way after a case-clash in the sources broke its first build; 0.5.6 after
+# the Windows foreground fix for the owner's missing half hour, and again for its second step.)
+#
+# Signing is NOT set up: it needs the owner's certificates. Unsigned installers work, but Windows
+# SmartScreen and macOS Gatekeeper will warn. To sign, add the secrets listed below to the
+# repository and uncomment the `env` block of the build step.
+on:
+  push:
+    tags: ["v*"]
+    branches: [main]
+    # A branch push only runs when the version file (or this workflow) changes; `plan` then builds
+    # only if the version number itself changed.
+    paths:
+      - "src-tauri/tauri.conf.json"
+      - ".github/workflows/release.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  plan:
+    name: plan
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.v.outputs.tag }}
+      build: ${{ steps.v.outputs.build }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          version=$(jq -r .version src-tauri/tauri.conf.json)
+          if [ "$REF_TYPE" = "tag" ]; then tag="$REF_NAME"; else tag="v$version"; fi
+          build=true
+          # A branch push builds only when it changed the version number.
+          if [ "$EVENT" = "push" ] && [ "$REF_TYPE" = "branch" ] && [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
+            git fetch --quiet --depth=1 origin "$BEFORE"
+            previous=$(git show "$BEFORE:src-tauri/tauri.conf.json" | jq -r .version)
+            if [ "$previous" = "$version" ]; then
+              echo "Version unchanged ($version): nothing to build."
+              build=false
+            fi
+          fi
+          # An automatic branch push must not rebuild a release that already exists.
+          if [ "$build" = "true" ] && [ "$EVENT" = "push" ] && [ "$REF_TYPE" = "branch" ]; then
+            # Only a published release stops a rebuild; a draft is refreshed.
+            if gh release list --repo "$REPO" --limit 100 --json tagName,isDraft -q '.[] | select(.isDraft | not) | .tagName' | grep -qx "$tag"; then
+              build=false
+            fi
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          echo "Release tag: $tag (build: $build)"
+
+  installers:
+    name: installers (${{ matrix.os }})
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Install the pinned Rust toolchain (rust-toolchain.toml)
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - run: pnpm install --frozen-lockfile
+      - name: Build the app and its installers
+        run: pnpm tauri build
+        # env:
+        #   Windows: TAURI_SIGNING_PRIVATE_KEY / certificate settings (see Tauri's Windows signing guide)
+        #   macOS:   APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY,
+        #            APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pluto-installers-${{ matrix.os }}
+          path: |
+            target/release/bundle/nsis/*.exe
+            target/release/bundle/msi/*.msi
+            target/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+
+  draft-release:
+    name: draft GitHub release
+    needs: [plan, installers]
+    if: needs.plan.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Create (or refresh) the draft release with the installers
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          mapfile -t files < <(find dist -type f \( -name '*.exe' -o -name '*.msi' -o -name '*.dmg' \))
+          if [ "${#files[@]}" -eq 0 ]; then echo "No installers were built."; exit 1; fi
+          if gh release list --repo "$REPO" --limit 100 --json tagName -q '.[].tagName' | grep -qx "$TAG"; then
+            gh release upload "$TAG" "${files[@]}" --repo "$REPO" --clobber
+            # A draft keeps the commit it was first made from; move it to the one just built.
+            if [ "$(gh release view "$TAG" --repo "$REPO" --json isDraft -q .isDraft)" = "true" ]; then
+              gh release edit "$TAG" --repo "$REPO" --target "$SHA"
+            fi
+          else
+            flags=(--draft --generate-notes --target "$SHA")
+            case "$TAG" in *-*) flags+=(--prerelease);; esac
+            gh release create "$TAG" "${files[@]}" --repo "$REPO" --title "Pluto $TAG" "${flags[@]}"
+          fi

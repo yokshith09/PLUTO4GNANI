@@ -1,0 +1,120 @@
+name: End-to-end
+
+# F1-27: the real app, built and driven like a person would use it.
+#  - Windows: WebDriver (tauri-driver + Microsoft Edge Driver) runs e2e/app.e2e.mjs: first-run
+#    welcome, a task, a note, a meeting with an action item turned into a task, then a restart
+#    to prove everything was saved.
+#  - macOS: Apple offers no WebDriver for the app's webview, so e2e/smoke.mjs only checks that
+#    the app starts, opens its database, logs, and stays up.
+# Every run uses a fresh temporary data folder (PLUTO_DATA_DIR), never real data.
+
+on:
+  push:
+    branches: [main, D1, D2]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  windows:
+    name: e2e (windows)
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Install the pinned Rust toolchain (rust-toolchain.toml)
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: e2e
+      - name: Exclude the build output from Windows Defender's real-time scan
+        # Without this, Defender scanning a freshly-built debug .exe on first launch can take
+        # longer than chromedriver/msedgedriver's internal wait for the DevToolsActivePort file,
+        # which then reports "session not created" even though Pluto does start (R11).
+        shell: pwsh
+        run: Add-MpPreference -ExclusionPath "${{ github.workspace }}"
+      - run: pnpm install --frozen-lockfile
+      - name: Build the app (debug, UI embedded, no installer)
+        run: pnpm tauri build --debug --no-bundle
+      - name: Launch smoke test (does the app start on this runner at all?)
+        run: pnpm e2e:smoke
+      - name: Stop any WebView2 process the smoke test left behind (R11)
+        # WebView2 joins a browser process already running on the same profile folder and then
+        # ignores the new launch's flags, including the debugging port the driver needs.
+        shell: pwsh
+        run: |
+          Get-Process msedgewebview2, pluto -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 2
+          Get-Process msedgewebview2, pluto -ErrorAction SilentlyContinue | Format-Table Id, ProcessName
+      - name: Probe WebView2 debugging (diagnostic for R11; never fails the job)
+        continue-on-error: true
+        run: node e2e/probe-webview.mjs
+      - name: Install tauri-driver and a matching Microsoft Edge Driver
+        shell: pwsh
+        run: |
+          cargo install tauri-driver --locked
+          cargo install --git https://github.com/chippers/msedgedriver-tool
+          & "$HOME/.cargo/bin/msedgedriver-tool.exe"
+          # tauri-driver starts whatever --native-driver points at; a tiny wrapper makes the
+          # Edge driver write a verbose log we can read when the session fails to start (R11).
+          Set-Content -Path msedgedriver-verbose.cmd -Value '@"%~dp0msedgedriver.exe" --verbose --log-path="%~dp0msedgedriver.log" %*'
+          "NATIVE_DRIVER=$PWD\msedgedriver-verbose.cmd" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Run the end-to-end tests
+        run: pnpm e2e
+        env:
+          RUST_BACKTRACE: "1"
+      - name: Diagnostics for a failed session (R11)
+        if: failure()
+        shell: pwsh
+        run: |
+          Write-Host "--- msedgedriver.log (first 120 and last 80 lines) ---"
+          if (Test-Path msedgedriver.log) {
+            Get-Content msedgedriver.log -TotalCount 120
+            Write-Host "..."
+            Get-Content msedgedriver.log -Tail 80
+          } else { Write-Host "no msedgedriver.log was written (the wrapper may not have run)" }
+          Write-Host "--- DevToolsActivePort files anywhere under LOCALAPPDATA / TEMP ---"
+          Get-ChildItem -Path $env:LOCALAPPDATA, $env:TEMP -Recurse -Filter DevToolsActivePort -Force -ErrorAction SilentlyContinue |
+            ForEach-Object { "$($_.FullName)  ($($_.Length) bytes, $($_.LastWriteTime))" }
+          Write-Host "--- WebView2 user-data folders for Pluto ---"
+          Get-ChildItem -Path $env:LOCALAPPDATA -Directory -Force -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match 'pluto|Pluto|EBWebView' } | ForEach-Object { $_.FullName }
+          Write-Host "--- running Pluto / WebView2 processes ---"
+          Get-CimInstance Win32_Process -Filter "Name='pluto.exe' OR Name='msedgewebview2.exe' OR Name='msedgedriver.exe'" |
+            Select-Object ProcessId, Name, @{n='Cmd';e={ $_.CommandLine.Substring(0, [Math]::Min(300, $_.CommandLine.Length)) }} | Format-List
+
+  macos:
+    name: smoke (macos)
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Install the pinned Rust toolchain (rust-toolchain.toml)
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: e2e
+      - run: pnpm install --frozen-lockfile
+      - name: Build the app (debug, UI embedded, no installer)
+        run: pnpm tauri build --debug --no-bundle
+      - name: Launch smoke test
+        run: pnpm e2e:smoke
