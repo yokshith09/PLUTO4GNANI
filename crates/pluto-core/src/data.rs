@@ -38,9 +38,13 @@ const SETTINGS_TABLES: [&str; 2] = ["settings", "user_preferences"];
 /// (`usage_open`). Never exported, never blocks an import; "delete all" still clears it.
 const TRANSIENT_TABLES: [&str; 1] = ["usage_open"];
 
+/// The transcript search index (`transcript_fts` and its shadow tables) is derived from
+/// `transcript_segments`: it is neither exported nor listed. Import refills it through the
+/// segment triggers; `delete_all` clears it explicitly.
 fn user_tables(conn: &Connection) -> Result<Vec<String>> {
     let mut stmt = conn.prepare(
-        "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+           AND name NOT LIKE 'transcript\\_fts%' ESCAPE '\\' ORDER BY name",
     )?;
     let names = stmt
         .query_map([], |r| r.get::<_, String>(0))?
@@ -297,6 +301,8 @@ pub async fn delete_all(db: &Database, clock: &dyn Clock, confirm: &str) -> Resu
         for (_, sql) in &triggers {
             tx.execute_batch(sql)?;
         }
+        // The triggers were off while the segments were deleted, so empty the search index too.
+        tx.execute_batch("INSERT INTO transcript_fts(transcript_fts) VALUES ('delete-all')")?;
         Ok(((), vec![Event::AllDataDeleted { at: now }]))
     })
     .await?;
@@ -420,6 +426,65 @@ mod tests {
         let mut doc = export(&f.db, &f.clock, "test").await.unwrap();
         doc["exported_at"] = json!(0);
         doc
+    }
+
+    #[tokio::test]
+    async fn transcripts_survive_export_import_and_the_search_index_follows() {
+        use crate::meeting_ai_store as store;
+        let f = setup();
+        f.db.write(|tx| {
+            tx.execute(
+                "INSERT INTO meetings (id, title, starts_at, created_at, updated_at)
+                 VALUES ('m1', 'Sync', 0, 0, 0)",
+                [],
+            )?;
+            let row = store::SegmentRow {
+                id: "s1".into(),
+                meeting_id: "m1".into(),
+                index: 0,
+                start_ms: 0,
+                end_ms: 900,
+                speaker_label: Some(1),
+                participant_position: None,
+                text: "ship the budget".into(),
+                language: None,
+                relevance: None,
+            };
+            store::replace_segments(tx, "m1", &[row])?;
+            Ok(((), vec![]))
+        })
+        .await
+        .unwrap();
+        let doc = dump(&f).await;
+        assert!(
+            doc["tables"].get("transcript_fts").is_none(),
+            "the index is not exported"
+        );
+        assert_eq!(
+            doc["tables"]["transcript_segments"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+
+        delete_all(&f.db, &f.clock, CONFIRM_WORD).await.unwrap();
+        let hits =
+            f.db.read(|c| store::search_segments(c, "budget"))
+                .await
+                .unwrap();
+        assert!(hits.is_empty(), "delete-all clears the index");
+
+        import(&f.db, &f.clock, doc).await.unwrap();
+        let hits =
+            f.db.read(|c| store::search_segments(c, "budget"))
+                .await
+                .unwrap();
+        assert_eq!(
+            hits.len(),
+            1,
+            "import refills the index through the triggers"
+        );
     }
 
     #[tokio::test]
