@@ -20,6 +20,7 @@ use pluto_core::tasks::{self, TaskFilters, TaskView};
 use super::apply::{apply, ApplyOutcome};
 use super::extraction::{extract, ExtractInput, OpenTask};
 use super::recall::{self, Hit};
+use super::recap::{self, RecapAction, RecapInput};
 use super::ExtractionCache;
 
 fn core(e: AppError) -> VoiceError {
@@ -232,6 +233,50 @@ impl MeetingAi {
             });
         }
         recall::answer(&*self.llm, question, language, &hits).await
+    }
+
+    /// A short recap in `language`, written only from the decisions and action items on the meeting.
+    pub async fn recap_text(&self, meeting_id: &str, language: &str) -> VoiceResult<String> {
+        let meeting = self.meeting(meeting_id).await?;
+        let input = RecapInput {
+            date: self.clock.local_date(meeting.starts_at),
+            title: meeting.title,
+            participants: meeting.participants,
+            decisions: meeting.decisions.into_iter().map(|d| d.body).collect(),
+            actions: meeting
+                .action_items
+                .into_iter()
+                .map(|a| RecapAction {
+                    body: a.body,
+                    owner: a.assignee,
+                    due_date: None,
+                })
+                .collect(),
+        };
+        let input = self.with_due_dates(meeting_id, input).await?;
+        recap::generate(&*self.llm, &input, language).await
+    }
+
+    /// Fill in each action item's due date from the provenance saved when it was applied.
+    async fn with_due_dates(
+        &self,
+        meeting_id: &str,
+        mut input: RecapInput,
+    ) -> VoiceResult<RecapInput> {
+        let id = meeting_id.to_owned();
+        let applied = self
+            .db
+            .read(move |c| store::applied_actions(c, &id))
+            .await
+            .map_err(core)?;
+        for a in &mut input.actions {
+            a.due_date = applied
+                .iter()
+                .find(|x| x.body == a.body)
+                .and_then(|x| x.meta.as_ref())
+                .and_then(|m| m.due_date.clone());
+        }
+        Ok(input)
     }
 
     /// What was applied to the meeting, with the quote and segment each came from.

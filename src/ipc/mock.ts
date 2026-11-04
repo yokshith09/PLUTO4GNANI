@@ -746,7 +746,7 @@ export function createMock() {
 
   // Voice and meeting-AI commands (T-006) live in their own file and load on first use, so the
   // base mock starts exactly as fast as before.
-  const VOICE_COMMAND = /^(voice_|privacy_log_|audio_push$|commitments_list$|meeting_(rec_|import$|audio_pick$|job_|transcript_|speakers_|extract|items_|recall$|recap$))/;
+  const VOICE_COMMAND = /^(voice_|privacy_log_|audio_push$|commitments_list$|meeting_(rec_|import$|audio_pick$|job_|transcript_|speakers_|extract|items_|recall$|recap(_text)?$))/;
   let voiceLoaded: Promise<void> | null = null;
   const loadVoice = () =>
     (voiceLoaded ??= import("./mockVoice").then(({ createVoiceMock }) => {
