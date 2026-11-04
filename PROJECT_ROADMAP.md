@@ -103,7 +103,7 @@ Tray, hotkeys, notifications, autostart and tracking on a real Windows desktop (
 | T-104 | LLM | Gemini and Groq clients, router per task, timeouts, one JSON-repair attempt, fallback with `fell_back` flag | D2 | P0a | T-009, T-005 | M | A mocked 429 on the primary is answered by the fallback; both failing → `LlmUnavailable` | T-FH-07, T-FH-08 | To do |
 | T-105 | Secrets | `SecretStore` (OS keychain) for the Gnani, Gemini and Groq keys; key commands; `voice.*` / `llm.*` settings keys through Pluto's settings service | D2 | P0a | T-003 | S | Keys survive a restart; never in the database or logs | T-PR-01 | To do |
 | T-106 | Migration 012 | `012_meeting_ai.sql` + `meeting_ai_store`: recordings, jobs, segments + FTS5, provenance, pipeline status (DATA_SCHEMA) | D2 | P0a | T-003 | M | Chain applies; FTS5 query returns inserted segments; delete cascades | T-DB-01..04 | To do |
-| T-107 | Migration 013 | `013_voice.sql` + `voice_store`: interactions, proposals, privacy log | D1 | P0a | T-003 | S | Chain applies; constraints hold | T-DB-05 | In review |
+| T-107 | Migration 013 | `013_voice.sql` + `voice_store`: interactions, proposals, privacy log | D1 | P0a | T-003 | S | Chain applies; constraints hold | T-DB-05 | Done (merged, PR #11) |
 
 ### M2 — Meeting MVP end to end (Day 2–3)
 | ID | Story / Feature | Task → deliverable | Owner | Priority | Dependencies | Est. | Acceptance criteria | Tests | Status |
