@@ -11,13 +11,13 @@ Work top to bottom. **Wait** = a task of the other developer that must be merged
 | # | Task | Title | Size | Priority | Day | Wait | Status |
 |---|---|---|---|---|---|---|---|
 | 1 | T-001 | Base | S | P0a | 0 | — | In progress (CI green on Windows and macOS; local run pending) |
-| 2 | T-005 | Contracts B | M | P0a | 1 | T-003 | In review (PR #8; approved by D1) |
+| 2 | T-005 | Contracts B | M | P0a | 1 | T-003 | Done (merged, PR #8) |
 | 3 | T-006 | UI plumbing | M | P0a | 1 | T-004 | In review (PR from D2) |
 | 4 | T-008 | Test data | M | P0a | 1–2 | — | To do |
 | 5 | T-009 | LLM check | S | P0a | 1 | — | To do |
 | 6 | T-104 | LLM | M | P0a | 2 | — | To do |
 | 7 | T-105 | Secrets | S | P0a | 1–2 | T-003 | To do |
-| 8 | T-106 | Migration 012 | M | P0a | 1–2 | T-003 | In review (PR #8; approved by D1) |
+| 8 | T-106 | Migration 012 | M | P0a | 1–2 | T-003 | Done (merged, PR #8) |
 | 9 | T-202 | Meetings UI | L | P0a | 2–3 | — | To do |
 | 10 | T-203 | Extraction | L | P0a | 3 | — | To do |
 | 11 | T-204 | Review and apply | L | P0a | 3 | — | To do |
