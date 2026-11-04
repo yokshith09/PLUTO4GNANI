@@ -11,6 +11,9 @@ type Args = Record<string, unknown> | undefined;
 
 const HOUR = 3_600_000;
 
+// Module-level so meetings made from audio keep unique ids even across mock instances (events are shared).
+let audioMeetingSeq = 0;
+
 export function createMock() {
   let seq = 100;
   const now = () => Date.now();
@@ -743,11 +746,18 @@ export function createMock() {
 
   // Voice and meeting-AI commands (T-006) live in their own file and load on first use, so the
   // base mock starts exactly as fast as before.
-  const VOICE_COMMAND = /^(voice_|privacy_log_|audio_push$|commitments_list$|meeting_(rec_|import$|job_|transcript_|speakers_|extract|items_|recall$|recap$))/;
+  const VOICE_COMMAND = /^(voice_|privacy_log_|audio_push$|commitments_list$|meeting_(rec_|import$|audio_pick$|job_|transcript_|speakers_|extract|items_|recall$|recap$))/;
   let voiceLoaded: Promise<void> | null = null;
   const loadVoice = () =>
     (voiceLoaded ??= import("./mockVoice").then(({ createVoiceMock }) => {
-      Object.assign(handlers, createVoiceMock({ now, getMeeting: (id) => withStatus(findMeeting(id)) }));
+      Object.assign(handlers, createVoiceMock({
+        now,
+        getMeeting: (id) => withStatus(findMeeting(id)),
+        createMeeting: (title, participants) => {
+          const m: StoredMeeting = { id: `mi${++audioMeetingSeq}`, starts_at: now(), created_at: now(), updated_at: now(), ...meetingParts({ title: title.trim() || "Imported meeting", starts_at: null, notes: "", follow_up_date: null, participants, decisions: [], action_items: [] }) };
+          meetings.push(m); emit("MeetingCreated", { meeting: withStatus(m) }); return m.id;
+        },
+      }));
     }));
 
   return {

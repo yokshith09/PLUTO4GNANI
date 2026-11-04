@@ -331,7 +331,8 @@ type PcmSink = mpsc::Sender<Vec<u8>>;   // PCM16 24 kHz chunks; a closed receive
 |---|---|---|
 | `meeting_rec_start` | `title, participants: Vec<String>, live_captions: bool, consent: bool` | `RecordingSession` |
 | `meeting_rec_pause` / `meeting_rec_resume` / `meeting_rec_stop` | `session_id` | `RecordingSession` (stop also queues the batch job) |
-| `meeting_import` | `title, participants, path` | `TranscriptionJob` |
+| `meeting_audio_pick` | — | `Option<String>` (a path chosen in the system "open" dialog; `None` if cancelled. The path comes only from the dialog, never from the webview) |
+| `meeting_import` | `title, participants, path` | `TranscriptionJob` (also creates the meeting) |
 | `meeting_job_get` | `meeting_id` | `Option<TranscriptionJob>` |
 | `meeting_job_retry` | `meeting_id` | `TranscriptionJob` |
 | `meeting_transcript_get` *(D2)* | `meeting_id` | `Vec<TranscriptSegment>` |

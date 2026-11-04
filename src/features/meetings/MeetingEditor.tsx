@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MarkdownView } from "@/features/notes/MarkdownView";
+import { AiPanel } from "./AiPanel";
 import { useMeeting, useMeetingActions, useParticipantSuggestions } from "@/hooks/usePluto";
 import { errorMessage, type ActionItemInput, type DecisionInput, type MeetingInput, type TaskStatus } from "@/ipc";
 import { STATUS_LABEL } from "@/lib/taskStatus";
@@ -304,6 +305,7 @@ export function MeetingEditor({ meetingId, onBack, onCreated }: { meetingId: str
         </ul>
         <Button size="sm" variant="ghost" onClick={() => change({ action_items: [...draft.action_items, { id: newId(), body: "", assignee: null }] })}><Plus />Add action item</Button>
       </section>
+      {id && <AiPanel meetingId={id} participants={draft.participants} />}
     </div>
   );
 }
