@@ -3290,15 +3290,19 @@ name = "pluto-intel"
 version = "0.5.7"
 dependencies = [
  "async-trait",
+ "chrono",
+ "chrono-tz",
  "pluto-contracts",
  "pluto-core",
  "pluto-gnani",
  "reqwest",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.21",
  "tokio",
  "tracing",
+ "wiremock",
 ]
 
 [[package]]

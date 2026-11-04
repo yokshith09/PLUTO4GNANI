@@ -15,6 +15,8 @@ export const meetingAi = {
   recResume: (sessionId: string) => call<RecordingSession>("meeting_rec_resume", { sessionId }),
   /** Also queues the batch transcription job. */
   recStop: (sessionId: string) => call<RecordingSession>("meeting_rec_stop", { sessionId }),
+  /** Opens the system file dialog for an audio file; `null` if cancelled. */
+  pickAudio: () => call<string | null>("meeting_audio_pick"),
   import: (title: string, participants: string[], path: string) =>
     call<TranscriptionJob>("meeting_import", { title, participants, path }),
   jobGet: (meetingId: string) => call<TranscriptionJob | null>("meeting_job_get", { meetingId }),

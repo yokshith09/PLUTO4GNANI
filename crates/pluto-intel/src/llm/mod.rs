@@ -1,6 +1,17 @@
 //! Gemini and Groq clients, router with fallback, `MockLlm`.
 //!
-//! Owner: **D2**. Clients and router: T-104. `MockLlm` was added by T-005.
+//! Owner: **D2**. `MockLlm`: T-005. Clients and router: T-104.
+//!
+//! - [`gemini::GeminiClient`], [`groq::GroqClient`]: one provider each, both implement `Llm`.
+//! - [`router::Router`]: picks the provider per task (ARCHITECTURE §7) and falls back to the other
+//!   on timeout, 429, 5xx, missing key or invalid JSON (after one repair attempt).
+//! - Keys come from a `SecretStore`; every call is written to the privacy log; neither the keys nor
+//!   the prompts are ever logged or put in an error message.
+
+pub mod gemini;
+pub mod groq;
+pub mod router;
+mod shared;
 
 use std::collections::VecDeque;
 use std::sync::{Mutex, PoisonError};
