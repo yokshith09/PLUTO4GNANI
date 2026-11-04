@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main, D1, D2]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # TRD §9: fmt, clippy -D warnings, tests, coverage, lint, build — on both target OSes.
+  checks:
+    name: checks (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4 # version comes from package.json "packageManager"
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Install the pinned Rust toolchain (rust-toolchain.toml)
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+      - run: pnpm install --frozen-lockfile
+
+      - name: Rust — format
+        run: cargo fmt --all -- --check
+      - name: Rust — clippy (warnings are errors)
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Rust — the libraries build on their own (no dev-dependency features)
+        # Test targets enable extra crate features through dev-dependencies, which can hide a
+        # missing feature in the real build. This caught `tokio::select!` needing `macros`.
+        run: cargo check --workspace --locked
+      - name: Rust — tests
+        run: cargo test --workspace --locked
+      - name: Generated TypeScript types are up to date (ts-rs)
+        shell: bash
+        run: |
+          pnpm gen:types
+          git diff --exit-code -- src/ipc/generated || { echo "::error::generated types are stale - run 'pnpm gen:types' and commit src/ipc/generated"; exit 1; }
+          test -z "$(git status --porcelain -- src/ipc/generated)" || { echo "::error::generated types are stale - untracked files in src/ipc/generated"; exit 1; }
+      - name: Rust — coverage report (whole workspace, informational)
+        run: cargo llvm-cov --workspace --locked --summary-only
+      - name: Rust — pluto-core coverage floor (G6)
+        # Measured 2026-10-11: 97% of lines. The floor is below that on purpose; raise it, never lower it.
+        run: cargo llvm-cov -p pluto-core --locked --summary-only --fail-under-lines 90
+
+      - name: Frontend — typecheck
+        run: pnpm typecheck
+      - name: Frontend — lint
+        run: pnpm lint
+      - name: Frontend — tests with coverage
+        run: pnpm test:coverage
+      - name: Tooling — script tests
+        run: pnpm test:scripts
+      - name: Guard — pluto-core must not depend on tauri (ADR-002)
+        run: pnpm check:core-deps
+
+      - name: Build the app (no installer; bundling is CP5)
+        run: pnpm tauri build --no-bundle

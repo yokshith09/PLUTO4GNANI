@@ -75,7 +75,7 @@ The Tauri shell, tray, hotkeys, notifications, autostart and tracking on Windows
 | ID | Story / Feature | Task → deliverable | Owner | Priority | Dependencies | Est. | Acceptance criteria | Tests | Status |
 |---|---|---|---|---|---|---|---|---|---|
 | T-001 | Base | Verify the base on Windows: `pnpm install`, `pnpm tauri dev`, walk the checklist, record results in `docs/results/base-verification.md`, list every failure with its cause | D2 | P0a | — | S | App opens; Today, Tasks, Notes, Meetings load; a reminder notification fires; failures listed | Manual checklist | To do |
-| T-002 | Base | Verify on D1's machine too. Add `.github/workflows/ci.yml` adapted from Pluto's (fmt, clippy, `cargo test --workspace`, typecheck, lint, vitest, core-deps check). No release workflow | D1 | P0a | — | M | CI green on `main`; D1's machine passes `pnpm tauri dev` | CI run | To do |
+| T-002 | Base | Verify on D1's machine. Read the first runs of the imported workflows (`ci.yml`, `e2e.yml`, `release.yml` from Pluto; CI also runs on pushes to `D1` and `D2`) and fix any failure. Keep the base's floors green: `pluto-core` ≥ 90% lines; frontend 80 / 80 / 70 / 55 | D1 | P0a | — | M | CI and Windows e2e green on `main`; D1's machine passes `pnpm tauri dev` | CI and e2e runs | To do |
 | T-003 | Skeleton | New crates `pluto-contracts`, `pluto-gnani`, `pluto-voice`, `pluto-intel` in the workspace; module placeholders (one file per owner); extend `gen:types` to the new crates; workspace deps (reqwest, tokio-tungstenite, hound, keyring, async-trait); pre-register migrations 012 and 013 in `migrate.rs`; add the `mod` lines for `meeting_ai_store` and `voice_store` to `pluto-core/src/lib.rs`. **Merge to `main` within the first hour of Day 1** | D1 | P0a | — | M | `cargo build --workspace` and `pnpm gen:types` succeed; D2 can add files in `pluto-intel` and `pluto-gnani/src/{batch,rest}.rs` without editing any shared file | cargo build; CI | To do |
 | T-004 | Contracts A | `pluto-contracts`: voice runtime, speech, proposal and tool types; `VoiceError`; traits `SpeechToText`, `TextToSpeech`, `ToolExecutor`, `FrameSink`; mocks | D1 | P0a | T-003 | M | Types compile and export TypeScript to `src/ipc/generated`; **D2 approves** | Export test; typecheck | To do |
 | T-005 | Contracts B | `pluto-contracts`: meeting, LLM and decision types; traits `Llm`, `Decider`; `MockLlm` with fixtures | D2 | P0a | T-003 | M | Same; **D1 approves** | Export test; typecheck | To do |
@@ -145,6 +145,7 @@ The Tauri shell, tray, hotkeys, notifications, autostart and tracking on Windows
 | T-510 | Audio tags | Allow-list of Timbre tags in the reply composer | D2 | P1 | T-102 | S | Only allow-listed tags are sent | Unit | To do |
 | T-511 | Failure suite | Run and fix T-FH-01..09 | D1 | P1 | T-306 | M | All pass or have a documented fallback | T-FH-* | To do |
 | T-512 | Integration C5 | Re-run E2E §7 with the P1 features that are in; record the cut list | D2 | P1 | T-501..T-511 or cuts | S | E2E still passes | E2E §7 | To do |
+| T-513 | macOS mic | macOS microphone support: add `NSMicrophoneUsageDescription` to `src-tauri/Info.plist` and check WKWebView capture on a Mac. CI already compiles and smoke-tests macOS; capture cannot be tested there | D1 | P1 | T-012 | S | Microphone permission prompt appears and capture works on a Mac | Manual on a Mac | To do |
 
 ### M6 — Demo, post and submission (Day 5–7)
 | ID | Story / Feature | Task → deliverable | Owner | Priority | Dependencies | Est. | Acceptance criteria | Tests | Status |
@@ -174,7 +175,7 @@ The Tauri shell, tray, hotkeys, notifications, autostart and tracking on Windows
 | P0a before the demo freeze (M0–M4) | 50 h | 49 h |
 | P0a after the freeze (M6: freeze, rehearsal, post, submission) | 2 h | 5 h |
 | P0b (cut first) | 0 h | 8 h |
-| P1 | 7 h | 12 h |
+| P1 | 8 h | 12 h |
 | P2 | 18 h | 6 h |
 | P0a task count (L / M / S) | 5 / 6 / 9 | 4 / 10 / 7 |
 

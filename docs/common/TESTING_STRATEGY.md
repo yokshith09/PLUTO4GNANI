@@ -92,7 +92,13 @@ Each set has a ground-truth file (expected items and intents). Noise is mixed wi
 - `pnpm typecheck && pnpm lint && pnpm test`
 - `cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace`
 
-## 9. Commands
+## 9. CI (imported from Pluto, `.github/workflows/`)
+- **`ci.yml`** on Windows and macOS: `cargo fmt --check`, `cargo clippy -D warnings`, `cargo check --workspace --locked`, `cargo test --workspace --locked`, generated types up to date, coverage (`pluto-core` ≥ 90% lines), `pnpm typecheck`, `pnpm lint`, `pnpm test:coverage` (frontend floors 80 / 80 / 70 / 55 in `vite.config.ts`), script tests, `pnpm check:core-deps`, and `pnpm tauri build --no-bundle`.
+- **`e2e.yml`**: on Windows, the real app is driven by WebDriver (welcome, a task, a note, a meeting with an action item turned into a task, restart to prove persistence); on macOS, a start-up smoke test.
+- **`release.yml`**: Windows and macOS installers into a private draft release (version change, `v*` tag or manual run).
+- **New code must keep the floors green**, so new modules in `pluto-core` and new UI need tests. The new crates join the workspace jobs automatically.
+
+## 10. Commands
 ```
 cargo test --workspace                 # core + contracts + gnani + voice + intel
 cargo test -p pluto-intel              # D2, with MockLlm and fixtures

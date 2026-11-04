@@ -35,7 +35,7 @@ Day 0 is tonight. **Integration happens at the end of every milestone**, never o
 
 | Day | Date | D1 | D2 | Checkpoint |
 |---|---|---|---|---|
-| 0 | Tue 3 Nov | T-002 (verify, CI) | T-001 (verify on Windows) | — |
+| 0 | Tue 3 Nov | T-002 (verify, read the first CI runs) | T-001 (verify on Windows) | — |
 | 1 | Wed 4 Nov | **T-003 first**, T-004, T-007, T-013, T-010, T-012 | T-005, T-006, T-009, T-105, T-106, T-008 | **C0** — contracts on `main`, stubs callable, Day-1 checks recorded |
 | 2 | Thu 5 Nov | T-011, T-101, T-102, T-103, T-107 | T-104, T-008 (finish), T-202 on mocks | **C1** — live clip → segments; TTS plays; router falls back. **Velocity check** |
 | 3 | Fri 6 Nov | T-201, start T-301 | T-203, T-204, T-205, T-202 live, start T-207 | **C2** — import → transcript → approved tasks |

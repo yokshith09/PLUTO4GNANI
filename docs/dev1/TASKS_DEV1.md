@@ -31,8 +31,8 @@ Work top to bottom. **Wait** = a task of the other developer that must be merged
 | 19 | T-601 | Freeze | S | P0a | 5 | T-406 |
 | 20 | T-604 | Submission | S | P0a | 6–7 | T-603 |
 
-**P1 (after C4, only if on schedule):** T-506 Privacy log, T-508 More voice tools, T-509 mp3 export, T-511 Failure suite
+**P1 (after C4, only if on schedule):** T-506 Privacy log, T-508 More voice tools, T-509 mp3 export, T-511 Failure suite, T-513 macOS mic
 
 **P2 (own branch state, never in the demo build):** T-701, T-702, T-703, T-704, T-705
 
-**Effort (estimates):** P0a before freeze 50 h · after freeze 2 h · P0b 0 h · P1 7 h.
+**Effort (estimates):** P0a before freeze 50 h · after freeze 2 h · P0b 0 h · P1 8 h.

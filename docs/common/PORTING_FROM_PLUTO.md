@@ -15,7 +15,7 @@
 | `desktop-pet-docs/docs/05-backend/migrations/` | same path | The only docs the code needs (included with `include_str!`) |
 
 ## 2. What was not copied
-Pluto's other documentation (`desktop-pet-docs/` apart from migrations), `skills/`, its instructions file for AI sessions, `README.md`, `LICENSE`, `.github/workflows/` (CI, audit, e2e, release, v2-ram). CI will be added back deliberately at the re-plan; the release workflow is intentionally not brought over.
+Pluto's other documentation (`desktop-pet-docs/` apart from migrations), `skills/`, its instructions file for AI sessions, `README.md`, `LICENSE`, `audit.yml` and `v2-ram.yml` (not needed). **Imported later (3–4 Nov):** `ci.yml`, `e2e.yml` and `release.yml` into `.github/workflows/`, unchanged except that CI and e2e also run on pushes to `D1` and `D2`. `release.yml` builds Windows and macOS installers into a private draft release, only when the app version changes, on a `v*` tag, or on a manual run.
 
 ## 3. Verification so far (Linux sandbox, 3 Nov 2026)
 | Check | Result |
