@@ -17,7 +17,8 @@ tauri-build = { version = "=2.7.1", features = [] }
 tauri = { version = "=2.12.1", features = ["tray-icon", "macos-private-api"] }
 pluto-core = { path = "../crates/pluto-core" }
 pluto-contracts.workspace = true
-pluto-gnani.workspace = true
+# `mock`: the test tone `voice_speak` plays until Timbre lands (T-102).
+pluto-gnani = { workspace = true, features = ["mock"] }
 pluto-voice.workspace = true
 pluto-intel.workspace = true
 serde = { version = "1.0", features = ["derive"] }

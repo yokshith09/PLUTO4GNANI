@@ -3,12 +3,13 @@
 //!
 //! Owner: **D1** (T-004). Changes go through a `contract` PR that D2 approves.
 //!
-//! `AssistantTurn` (§3.5) embeds D2's `AssistantDecision` and is added once T-005 is on `main`.
+//! `AssistantTurn` (§3.5) embeds D2's `AssistantDecision` from `decide.rs`.
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::decide::AssistantDecision;
 use crate::error::VoiceResult;
 
 // ---- runtime -------------------------------------------------------------------------------
@@ -231,6 +232,24 @@ pub struct ToolResult {
     pub record_id: Option<String>,
 }
 
+/// One assistant turn: what was heard, what was decided, and what happened. Emitted as
+/// `voice://turn` and listed by `voice_history` (newest first).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+pub struct AssistantTurn {
+    pub interaction_id: String,
+    /// What the user said (shown in the history; never logged above `debug`).
+    pub transcript: String,
+    pub language: Option<String>,
+    pub decision: AssistantDecision,
+    /// What the assistant said back, also shown as text.
+    pub reply_text: Option<String>,
+    /// The write it proposed, if any.
+    pub proposal: Option<Proposal>,
+    /// The tool's result, once it ran.
+    pub result: Option<ToolResult>,
+}
+
 /// What a caller asks `ToolExecutor::propose` to create. Not on the wire.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProposalRequest {
@@ -348,6 +367,33 @@ mod tests {
                 ..Default::default()
             }
         );
+    }
+
+    #[test]
+    fn an_assistant_turn_round_trips_with_its_decision() {
+        use crate::decide::{DecisionSource, Intent};
+        let turn = AssistantTurn {
+            interaction_id: "i1".into(),
+            transcript: "aaj ke tasks batao".into(),
+            language: Some("hi-IN".into()),
+            decision: AssistantDecision {
+                intent: Intent::Task,
+                tool: Some(tools::TASKS_LIST.into()),
+                args: json!({"view": "today"}),
+                confidence: Some(0.9),
+                source: DecisionSource::Llm,
+                latency_ms: 640,
+            },
+            reply_text: Some("Aaj 3 tasks hain.".into()),
+            proposal: None,
+            result: None,
+        };
+        let v = serde_json::to_value(&turn).unwrap();
+        assert_eq!(v["decision"]["source"], "llm");
+        assert_eq!(v["decision"]["intent"], "task");
+        assert!(v["proposal"].is_null());
+        let back: AssistantTurn = serde_json::from_value(v).unwrap();
+        assert_eq!(back, turn);
     }
 
     #[test]
