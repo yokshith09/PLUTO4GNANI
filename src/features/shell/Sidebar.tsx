@@ -4,6 +4,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useStudentPack } from "@/features/student/useStudent";
 import { Bear } from "./Bear";
+import { isPageVisible } from "./pages";
 
 export type Page = "today" | "tasks" | "time" | "notes" | "projects" | "study" | "meetings" | "voice" | "archive" | "bin" | "character" | "mcp" | "settings";
 
@@ -13,6 +14,8 @@ interface Props {
   onPage: (p: Page) => void;
   isDark: boolean;
   onToggleTheme: () => void;
+  /** Show only the product pages (T-402). */
+  demoOnly?: boolean;
 }
 
 function Item({
@@ -51,8 +54,9 @@ function Group({ title, children }: { title?: string; children: React.ReactNode 
   );
 }
 
-export function Sidebar({ page, counts, onPage, isDark, onToggleTheme }: Props) {
+export function Sidebar({ page, counts, onPage, isDark, onToggleTheme, demoOnly = false }: Props) {
   const go = (p: Page) => () => onPage(p);
+  const show = (p: Page) => isPageVisible(p, demoOnly);
   const study = useStudentPack();
   return (
     <aside className="flex w-14 shrink-0 flex-col border-r bg-[var(--sidebar)] px-2 pb-3 pt-3.5 lg:w-56 lg:px-3">
@@ -67,18 +71,18 @@ export function Sidebar({ page, counts, onPage, isDark, onToggleTheme }: Props) 
       <Group>
         <Item active={page === "today"} onClick={go("today")} tour="nav-today" icon={<LayoutDashboard />} count={counts.today}>Today overview</Item>
         <Item active={page === "tasks"} onClick={go("tasks")} tour="nav-tasks" icon={<CheckSquare />}>Tasks</Item>
-        <Item active={page === "time"} onClick={go("time")} tour="nav-time" icon={<Clock3 />}>Time</Item>
+        {show("time") && <Item active={page === "time"} onClick={go("time")} tour="nav-time" icon={<Clock3 />}>Time</Item>}
         <Item active={page === "notes"} onClick={go("notes")} tour="nav-notes" icon={<NotebookPen />} count={counts.notes}>Notes</Item>
         <Item active={page === "projects"} onClick={go("projects")} tour="nav-projects" icon={<FolderKanban />}>Projects</Item>
-        {(study || page === "study") && <Item active={page === "study"} onClick={go("study")} icon={<GraduationCap />}>Study</Item>}
+        {show("study") && (study || page === "study") && <Item active={page === "study"} onClick={go("study")} icon={<GraduationCap />}>Study</Item>}
         <Item active={page === "meetings"} onClick={go("meetings")} icon={<Users />}>Meetings</Item>
         <Item active={page === "voice"} onClick={go("voice")} icon={<Mic />}>Voice</Item>
-        <Item active={page === "character"} onClick={go("character")} tour="nav-character" icon={<PawPrint />}>Character</Item>
-        <Item active={page === "mcp"} onClick={go("mcp")} icon={<Plug />}>MCP</Item>
+        {show("character") && <Item active={page === "character"} onClick={go("character")} tour="nav-character" icon={<PawPrint />}>Character</Item>}
+        {show("mcp") && <Item active={page === "mcp"} onClick={go("mcp")} icon={<Plug />}>MCP</Item>}
       </Group>
 
       <Group title="Library">
-        <Item active={page === "archive"} onClick={go("archive")} icon={<Archive />}>Archive</Item>
+        {show("archive") && <Item active={page === "archive"} onClick={go("archive")} icon={<Archive />}>Archive</Item>}
         <Item active={page === "bin"} onClick={go("bin")} icon={<Trash2 />} count={counts.bin}>Bin</Item>
       </Group>
 

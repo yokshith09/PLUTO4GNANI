@@ -33,6 +33,7 @@ export function SettingsPage() {
   const [noteGlobal] = useSetting("shortcuts.global_new_note");
   const [petGlobal] = useSetting("shortcuts.global_pet");
   const globals: Record<string, string | null | undefined> = { "shortcuts.global_open": openGlobal, "shortcuts.global_new_note": noteGlobal, "shortcuts.global_pet": petGlobal };
+  const [demoOnly, setDemoOnly] = useSetting("advanced.demo_pages_only");
   const [confirmReset, setConfirmReset] = useState(false);
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -79,6 +80,9 @@ export function SettingsPage() {
       <DataSection />
       <Section title="Advanced">
         {/* Log rows removed (FR-47, owner V2-07): logging stays on for bug reports, it is just not shown. */}
+        <Row label="Show only the main pages" hint="Hides Time, Study, Character, MCP and Archive. Nothing is deleted; turn it off to bring them back.">
+          <Switch checked={demoOnly ?? false} onCheckedChange={(v) => void setDemoOnly(v)} aria-label="Show only the main pages" />
+        </Row>
         <Row label="Reset settings" hint="Every setting on this page back to its default. Your notes, tasks, meetings and layout stay.">
           {confirmReset ? (
             <div className="flex gap-2">
