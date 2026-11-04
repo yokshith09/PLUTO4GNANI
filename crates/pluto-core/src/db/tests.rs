@@ -6,20 +6,26 @@ use super::migrate::{self, validate_chain, Migration, MIGRATIONS};
 use super::*;
 use crate::error::ErrorCode;
 
-const EXPECTED_TABLES: [&str; 28] = [
+const EXPECTED_TABLES: [&str; 36] = [
+    "action_item_meta",
     "app_sessions",
     "courses",
     "daily_logs",
+    "decision_meta",
     "diary_entries",
     "diary_meta",
     "domain_sessions",
     "domains",
     "exams",
     "focus_sessions",
+    "glossary_terms",
     "labels",
     "meeting_action_items",
+    "meeting_ai",
     "meeting_decisions",
+    "meeting_insights",
     "meeting_participants",
+    "meeting_recordings",
     "meetings",
     "note_course",
     "note_labels",
@@ -33,13 +39,15 @@ const EXPECTED_TABLES: [&str; 28] = [
     "task_ticks",
     "task_work_updates",
     "tasks",
+    "transcript_segments",
+    "transcription_jobs",
     "usage_open",
     "user_preferences",
 ];
 
 fn tables(conn: &Connection) -> Vec<String> {
     let mut stmt = conn
-        .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'transcript\\_fts%' ESCAPE '\\' ORDER BY name")
         .unwrap();
     stmt.query_map([], |r| r.get(0))
         .unwrap()
@@ -63,7 +71,7 @@ fn a_fresh_database_is_created_at_the_latest_version_with_exactly_the_schema_tab
     assert_eq!(
         tables(&conn),
         EXPECTED_TABLES,
-        "no search tables (ADR-017), no strays"
+        "no strays (the transcript search index is derived and excluded)"
     );
 }
 
