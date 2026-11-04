@@ -204,6 +204,13 @@ export function createVoiceMock({ now, createMeeting, applyItems, delayMs = 250 
       if (!String(a.question).trim()) voiceError("core", "Ask a question first.");
       return structuredClone(recallOk.data) as RecallAnswer;
     },
+    meeting_recap_text: (a: Args) => {
+      const lang = String(a.language);
+      if (!lang) voiceError("core", "Choose a language.");
+      return lang.startsWith("hi")
+        ? "लॉन्च 20 नवंबर को होगा। रवि गुरुवार तक प्राइसिंग पेज की कॉपी पूरी करेंगे और मीना सोमवार तक कानूनी टीम से अनुबंध की पुष्टि करेंगी।"
+        : "Launch is on 20 November, starting with the annual plan. Ravi will finish the pricing page copy by Thursday, and Meena will confirm the vendor contract with legal by Monday.";
+    },
     meeting_recap: (a: Args) => (a.export ? "C:\\Users\\you\\Documents\\Pluto\\recap-launch-sync.mp3" : null),
     commitments_list: (a: Args): Commitment[] =>
       items().filter((i) => i.kind === "action_item" && (!a.owner || i.owner === a.owner)).map((i) => ({

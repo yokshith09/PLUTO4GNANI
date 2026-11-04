@@ -304,6 +304,7 @@ pub fn run() {
             meeting_ai::meeting_extraction_apply,
             meeting_ai::meeting_items_get,
             meeting_ai::meeting_recall,
+            meeting_ai::meeting_recap_text,
             meeting_ai::meeting_recap,
             meeting_ai::commitments_list,
         ])

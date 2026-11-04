@@ -341,6 +341,7 @@ type PcmSink = mpsc::Sender<Vec<u8>>;   // PCM16 24 kHz chunks; a closed receive
 | `meeting_extraction_apply` *(D2)* | `input: ApplyExtraction` | `Meeting` |
 | `meeting_items_get` *(D2)* | `meeting_id` | `Vec<ExtractedItem>` (applied) |
 | `meeting_recall` *(D2)* | `question, language: Option<String>` | `RecallAnswer` |
+| `meeting_recap_text` *(D2)* | `meeting_id, language` | `String` (a 60–90 word recap written only from the applied items; fails if nothing is applied) |
 | `meeting_recap` *(D2)* | `meeting_id, language, speak: bool, export: bool, playback: Option<Channel<Vec<u8>>>` | `Option<String>` (mp3 path) |
 | `commitments_list` *(D2)* | `owner: Option<String>, status: Option<CommitmentStatus>` | `Vec<Commitment>` |
 | `glossary_list` / `glossary_add` / `glossary_delete` | `term` / `id` | `Vec<GlossaryTerm>` |

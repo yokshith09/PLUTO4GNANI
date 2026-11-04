@@ -28,6 +28,8 @@ export const meetingAi = {
   extractionApply: (input: ApplyExtraction) => call<Meeting>("meeting_extraction_apply", { input }),
   itemsGet: (meetingId: string) => call<ExtractedItem[]>("meeting_items_get", { meetingId }),
   recall: (question: string, language: string | null = null) => call<RecallAnswer>("meeting_recall", { question, language }),
+  /** A short written recap in `language` (for example `hi-IN`), from the applied items only. */
+  recapText: (meetingId: string, language: string) => call<string>("meeting_recap_text", { meetingId, language }),
   /** Returns the mp3 path when `export` is true. */
   recap: (meetingId: string, language: string, speak: boolean, exportMp3: boolean, playback: Channel<ArrayBuffer> | null = null) =>
     call<string | null>("meeting_recap", { meetingId, language, speak, export: exportMp3, playback }),

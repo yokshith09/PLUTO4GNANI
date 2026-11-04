@@ -229,16 +229,30 @@ pub async fn meeting_items_get(
     shell.ai(&core).items(&meeting_id).await
 }
 
+/// Real: searches the transcripts and answers only from what it finds, with citations (T-305).
 #[tauri::command]
 pub async fn meeting_recall(
     question: String,
     language: Option<String>,
+    core: State<'_, Core>,
+    shell: State<'_, MeetingShell>,
 ) -> VoiceResult<RecallAnswer> {
-    let _ = (question, language);
-    fixture(fixtures::RECALL_OK)
+    shell.ai(&core).recall(&question, language.as_deref()).await
 }
 
-/// Stub: nothing is spoken or exported yet (T-205); returns no file.
+/// Real: a short written recap from the applied items (T-205).
+#[tauri::command]
+pub async fn meeting_recap_text(
+    meeting_id: String,
+    language: String,
+    core: State<'_, Core>,
+    shell: State<'_, MeetingShell>,
+) -> VoiceResult<String> {
+    shell.ai(&core).recap_text(&meeting_id, &language).await
+}
+
+/// Reading the recap aloud or exporting it needs the speech engine (T-102): until then this says so
+/// instead of silently doing nothing. Without `speak` or `export` there is nothing to do.
 ///
 /// `playback` is optional, which Tauri's `Channel` argument can't be, so it arrives as a channel
 /// id and becomes a `Channel` on the calling window only when it is given.
@@ -252,7 +266,13 @@ pub async fn meeting_recap(
     webview: Webview,
 ) -> VoiceResult<Option<String>> {
     let playback: Option<Channel<InvokeResponseBody>> = playback.map(|id| id.channel_on(webview));
-    let _ = (meeting_id, language, speak, export, playback);
+    let _ = (meeting_id, language, playback);
+    if speak || export {
+        return Err(VoiceError::new(
+            VoiceErrorCode::Core,
+            "Spoken recaps arrive with the voice engine. The written recap is ready now.",
+        ));
+    }
     Ok(None)
 }
 

@@ -56,3 +56,25 @@ describe("Meetings audio (T-202)", () => {
     await user.click(await screen.findByRole("button", { name: /Import recording/ }));
   });
 });
+
+describe("Recap (T-205)", () => {
+  it("writes a recap in the chosen language for a meeting that has items", async () => {
+    const user = userEvent.setup();
+    wrap();
+    await user.click(await screen.findByRole("button", { name: /Open meeting “Sprint planning”/ }));
+    const recap = await screen.findByRole("region", { name: "Recap" });
+    await user.click(within(recap).getByRole("button", { name: "Write recap" }));
+    expect(await within(recap).findByText(/Launch is on 20 November/)).toBeTruthy();
+    await user.selectOptions(within(recap).getByLabelText("Recap language"), "hi-IN");
+    await user.click(within(recap).getByRole("button", { name: "Write again" }));
+    expect(await within(recap).findByText(/लॉन्च 20 नवंबर/)).toBeTruthy();
+  });
+
+  it("is not offered for a meeting with no decisions or action items", async () => {
+    const user = userEvent.setup();
+    wrap();
+    await user.click(await screen.findByRole("button", { name: /New meeting/ }));
+    await screen.findByText("Decisions");
+    expect(screen.queryByRole("region", { name: "Recap" })).toBeNull();
+  });
+});
