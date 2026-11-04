@@ -180,6 +180,151 @@ pub fn update_job(
     Ok(())
 }
 
+// ---- provenance: where each approved item came from (T-204) ---------------------------------
+
+/// The segment and words an approved item was taken from, plus what the model said about it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ActionMeta {
+    pub action_item_id: String,
+    pub source_segment_id: Option<String>,
+    pub quote: String,
+    pub due_phrase: Option<String>,
+    pub due_date: Option<String>,
+    pub priority: Option<String>,
+    pub confidence: Option<f64>,
+}
+
+/// Record (or replace) the provenance of an action item.
+pub fn link_action_item(conn: &Connection, m: &ActionMeta) -> Result<()> {
+    conn.execute(
+        "INSERT OR REPLACE INTO action_item_meta
+           (action_item_id, source_segment_id, quote, due_phrase, due_date, priority, confidence)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![
+            m.action_item_id,
+            m.source_segment_id,
+            m.quote,
+            m.due_phrase,
+            m.due_date,
+            m.priority,
+            m.confidence
+        ],
+    )?;
+    Ok(())
+}
+
+pub fn link_decision(
+    conn: &Connection,
+    decision_id: &str,
+    source_segment_id: Option<&str>,
+    quote: &str,
+) -> Result<()> {
+    conn.execute(
+        "INSERT OR REPLACE INTO decision_meta (decision_id, source_segment_id, quote) VALUES (?1, ?2, ?3)",
+        params![decision_id, source_segment_id, quote],
+    )?;
+    Ok(())
+}
+
+pub fn get_action_meta(conn: &Connection, action_item_id: &str) -> Result<Option<ActionMeta>> {
+    Ok(conn
+        .query_row(
+            "SELECT action_item_id, source_segment_id, quote, due_phrase, due_date, priority, confidence
+             FROM action_item_meta WHERE action_item_id = ?1",
+            [action_item_id],
+            |r| {
+                Ok(ActionMeta {
+                    action_item_id: r.get(0)?,
+                    source_segment_id: r.get(1)?,
+                    quote: r.get(2)?,
+                    due_phrase: r.get(3)?,
+                    due_date: r.get(4)?,
+                    priority: r.get(5)?,
+                    confidence: r.get(6)?,
+                })
+            },
+        )
+        .optional()?)
+}
+
+/// The action item of this meeting that already came from this segment (so applying twice reuses
+/// it instead of adding a copy). If a segment produced several, the first by position.
+pub fn find_action_item_from(
+    conn: &Connection,
+    meeting_id: &str,
+    segment_id: &str,
+) -> Result<Vec<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT a.id FROM meeting_action_items a JOIN action_item_meta m ON m.action_item_id = a.id
+         WHERE a.meeting_id = ?1 AND m.source_segment_id = ?2 ORDER BY a.position",
+    )?;
+    let ids = stmt
+        .query_map(params![meeting_id, segment_id], |r| r.get(0))?
+        .collect::<rusqlite::Result<_>>()?;
+    Ok(ids)
+}
+
+pub fn find_decision_from(
+    conn: &Connection,
+    meeting_id: &str,
+    segment_id: &str,
+) -> Result<Vec<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT d.id FROM meeting_decisions d JOIN decision_meta m ON m.decision_id = d.id
+         WHERE d.meeting_id = ?1 AND m.source_segment_id = ?2 ORDER BY d.position",
+    )?;
+    let ids = stmt
+        .query_map(params![meeting_id, segment_id], |r| r.get(0))?
+        .collect::<rusqlite::Result<_>>()?;
+    Ok(ids)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InsightRow {
+    pub id: String,
+    pub kind: String,
+    pub body: String,
+    pub source_segment_id: Option<String>,
+}
+
+/// Replace a meeting's open questions and risks (the base has no table for them).
+pub fn set_insights(
+    conn: &Connection,
+    meeting_id: &str,
+    rows: &[InsightRow],
+    now: i64,
+) -> Result<()> {
+    conn.execute(
+        "DELETE FROM meeting_insights WHERE meeting_id = ?1",
+        [meeting_id],
+    )?;
+    for r in rows {
+        conn.execute(
+            "INSERT INTO meeting_insights (id, meeting_id, kind, body, source_segment_id, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![r.id, meeting_id, r.kind, r.body, r.source_segment_id, now],
+        )?;
+    }
+    Ok(())
+}
+
+pub fn list_insights(conn: &Connection, meeting_id: &str) -> Result<Vec<InsightRow>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, kind, body, source_segment_id FROM meeting_insights WHERE meeting_id = ?1 ORDER BY created_at, rowid",
+    )?;
+    let rows = stmt
+        .query_map([meeting_id], |r| {
+            Ok(InsightRow {
+                id: r.get(0)?,
+                kind: r.get(1)?,
+                body: r.get(2)?,
+                source_segment_id: r.get(3)?,
+            })
+        })?
+        .collect::<rusqlite::Result<_>>()?;
+    Ok(rows)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -288,5 +433,98 @@ mod tests {
             (id.as_str(), st.as_str(), err.as_deref()),
             ("g-1", "failed", Some("boom"))
         );
+    }
+
+    fn seed_item(c: &Connection) {
+        replace_segments(c, "m1", &[seg("s1", 0, "I will send the report Friday")]).unwrap();
+        c.execute("INSERT INTO meeting_action_items (id, meeting_id, position, body) VALUES ('a1','m1',0,'Send the report')", []).unwrap();
+        c.execute("INSERT INTO meeting_decisions (id, meeting_id, position, body) VALUES ('d1','m1',0,'Ship on Friday')", []).unwrap();
+    }
+
+    #[test]
+    fn provenance_is_stored_replaced_and_found_again() {
+        let c = db();
+        seed_item(&c);
+        let meta = ActionMeta {
+            action_item_id: "a1".into(),
+            source_segment_id: Some("s1".into()),
+            quote: "send the report Friday".into(),
+            due_phrase: Some("Friday".into()),
+            due_date: Some("2026-11-06".into()),
+            priority: Some("HIGH".into()),
+            confidence: None,
+        };
+        link_action_item(&c, &meta).unwrap();
+        link_decision(&c, "d1", Some("s1"), "Ship on Friday").unwrap();
+        assert_eq!(get_action_meta(&c, "a1").unwrap().unwrap(), meta);
+        assert_eq!(find_action_item_from(&c, "m1", "s1").unwrap(), ["a1"]);
+        assert_eq!(find_decision_from(&c, "m1", "s1").unwrap(), ["d1"]);
+        link_action_item(
+            &c,
+            &ActionMeta {
+                quote: "edited".into(),
+                ..meta
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            get_action_meta(&c, "a1").unwrap().unwrap().quote,
+            "edited",
+            "replaced, not duplicated"
+        );
+        assert!(
+            link_action_item(
+                &c,
+                &ActionMeta {
+                    due_date: Some("Friday".into()),
+                    ..get_action_meta(&c, "a1").unwrap().unwrap()
+                }
+            )
+            .is_err(),
+            "bad date refused by the schema"
+        );
+        assert!(find_action_item_from(&c, "m1", "nope").unwrap().is_empty());
+    }
+
+    #[test]
+    fn insights_are_replaced_as_a_set_and_follow_the_meeting() {
+        let c = db();
+        replace_segments(&c, "m1", &[seg("s1", 0, "who owns it?")]).unwrap();
+        let row = |id: &str, kind: &str| InsightRow {
+            id: id.into(),
+            kind: kind.into(),
+            body: "x".into(),
+            source_segment_id: Some("s1".into()),
+        };
+        set_insights(&c, "m1", &[row("i1", "question"), row("i2", "risk")], 5).unwrap();
+        assert_eq!(list_insights(&c, "m1").unwrap().len(), 2);
+        set_insights(&c, "m1", &[row("i3", "risk")], 6).unwrap();
+        assert_eq!(list_insights(&c, "m1").unwrap(), [row("i3", "risk")]);
+        assert!(
+            set_insights(&c, "m1", &[row("i4", "chitchat")], 7).is_err(),
+            "only question or risk"
+        );
+        c.execute("DELETE FROM meetings WHERE id = 'm1'", [])
+            .unwrap();
+        let n: i64 = c
+            .query_row("SELECT count(*) FROM meeting_insights", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 0);
+    }
+
+    #[test]
+    fn deleting_a_segment_keeps_the_item_but_clears_its_source() {
+        let c = db();
+        seed_item(&c);
+        link_decision(&c, "d1", Some("s1"), "q").unwrap();
+        replace_segments(&c, "m1", &[]).unwrap();
+        let src: Option<String> = c
+            .query_row(
+                "SELECT source_segment_id FROM decision_meta WHERE decision_id='d1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(src, None);
     }
 }

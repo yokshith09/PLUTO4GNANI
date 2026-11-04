@@ -20,7 +20,7 @@ Work top to bottom. **Wait** = a task of the other developer that must be merged
 | 8 | T-106 | Migration 012 | M | P0a | 1–2 | T-003 | Done (merged, PR #8) |
 | 9 | T-202 | Meetings UI | L | P0a | 2–3 | — | To do |
 | 10 | T-203 | Extraction | L | P0a | 3 | — | In review (PR #14; validator, dates and batching built and tested on a scripted LLM; live accuracy T-ML-02 needs keys) |
-| 11 | T-204 | Review and apply | L | P0a | 3 | — | To do |
+| 11 | T-204 | Review and apply | L | P0a | 3 | — | In progress (backend built in PR #14: apply with provenance, tasks, no duplicates; review screen still to build) |
 | 12 | T-205 | Recap | S | P0a | 3 | T-102 | To do |
 | 13 | T-206 | Integration C2 | S | P0a | 3 | — | To do |
 | 14 | T-207 | Recorder | L | P0b | 3–4 | T-013 | To do |
