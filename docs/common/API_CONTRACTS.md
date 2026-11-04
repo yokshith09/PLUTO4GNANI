@@ -190,6 +190,7 @@ struct Commitment { action_item_id: String, meeting_id: String, meeting_title: S
   due_date: Option<String>, task_id: Option<String>, status: CommitmentStatus, days_overdue: Option<i64> }
 enum CommitmentStatus { Open, Done, Overdue, NoTask }
 ```
+`RecallAnswer` is implemented in `meeting.rs` by a contract PR after D1's `Proposal` (T-004) is on `main`; the other §3.3 types are in code (T-005).
 
 ### 3.4 Decisions (`crates/pluto-contracts/src/decide.rs`)
 ```rust
