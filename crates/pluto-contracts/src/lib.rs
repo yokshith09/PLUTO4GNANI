@@ -15,6 +15,9 @@ pub mod decide;
 pub mod error;
 pub mod llm;
 pub mod meeting;
+/// Test doubles for the D1 traits. Feature `mock`; `MockStt` / `MockTts` are in `pluto-gnani::mock`.
+#[cfg(any(test, feature = "mock"))]
+pub mod mock;
 pub mod speech;
 pub mod voice;
 

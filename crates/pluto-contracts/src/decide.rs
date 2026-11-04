@@ -2,7 +2,10 @@
 //!
 //! Owner: **D2** (T-005).
 
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+
+use crate::error::VoiceResult;
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -33,6 +36,7 @@ pub enum DecisionSource {
 pub struct Decision {
     pub intent: Intent,
     pub tool: Option<String>,
+    #[cfg_attr(feature = "ts", ts(type = "unknown"))]
     pub args: serde_json::Value,
     pub confidence: Option<f32>,
     pub source: DecisionSource,
@@ -47,11 +51,12 @@ pub struct DecideContext {
     pub open_task_titles: Vec<String>,
     pub participants: Vec<String>,
     pub timezone: String,
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub now_ms: i64,
 }
 
-/// Rules first, then the LLM. Synchronous as written in API_CONTRACTS §3.7; D1 and D2 may agree an
-/// async variant in the T-004 PR (contract change).
+/// Rules first, then the LLM. Async and fallible: the LLM call can fail (`llm_unavailable`).
+#[async_trait]
 pub trait Decider: Send + Sync {
-    fn decide(&self, text: &str, ctx: &DecideContext) -> Decision;
+    async fn decide(&self, text: &str, ctx: &DecideContext) -> VoiceResult<Decision>;
 }

@@ -3,16 +3,16 @@
 //! Owner: **D2**. Clients and router: T-104. `MockLlm` was added by T-005.
 
 use std::collections::VecDeque;
-use std::sync::Mutex;
+use std::sync::{Mutex, PoisonError};
 
 use async_trait::async_trait;
+use pluto_contracts::error::{VoiceError, VoiceErrorCode, VoiceResult};
 use pluto_contracts::llm::{Llm, LlmProvider, LlmRequest, LlmResponse};
-use pluto_core::error::AppError;
 
 /// Scripted `Llm`: returns queued results in order; records every request.
 #[derive(Default)]
 pub struct MockLlm {
-    script: Mutex<VecDeque<Result<serde_json::Value, AppError>>>,
+    script: Mutex<VecDeque<VoiceResult<serde_json::Value>>>,
     seen: Mutex<Vec<LlmRequest>>,
 }
 
@@ -22,25 +22,42 @@ impl MockLlm {
     }
 
     pub fn push_json(&self, json: serde_json::Value) -> &Self {
-        self.script.lock().unwrap().push_back(Ok(json));
+        self.script
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push_back(Ok(json));
         self
     }
 
-    pub fn push_error(&self, err: AppError) -> &Self {
-        self.script.lock().unwrap().push_back(Err(err));
+    pub fn push_error(&self, err: VoiceError) -> &Self {
+        self.script
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push_back(Err(err));
         self
     }
 
     pub fn requests(&self) -> Vec<LlmRequest> {
-        self.seen.lock().unwrap().clone()
+        self.seen
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
     }
 }
 
 #[async_trait]
 impl Llm for MockLlm {
-    async fn complete_json(&self, req: LlmRequest) -> Result<LlmResponse, AppError> {
-        self.seen.lock().unwrap().push(req);
-        match self.script.lock().unwrap().pop_front() {
+    async fn complete_json(&self, req: LlmRequest) -> VoiceResult<LlmResponse> {
+        self.seen
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(req);
+        match self
+            .script
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .pop_front()
+        {
             Some(Ok(json)) => Ok(LlmResponse {
                 json,
                 provider: LlmProvider::Mock,
@@ -49,7 +66,10 @@ impl Llm for MockLlm {
                 fell_back: false,
             }),
             Some(Err(e)) => Err(e),
-            None => Err(AppError::internal("MockLlm script is empty")),
+            None => Err(VoiceError::new(
+                VoiceErrorCode::LlmUnavailable,
+                "MockLlm script is empty",
+            )),
         }
     }
 }

@@ -1,9 +1,10 @@
 //! Transcript, meeting-AI, extraction and commitment types (API_CONTRACTS §3.3).
 //!
-//! Owner: **D2** (T-005). `RecallAnswer` is added by a contract PR once D1's `Proposal` (T-004) is
-//! on `main`; it is the only §3.3 type not defined here.
+//! Owner: **D2** (T-005).
 
 use pluto_core::tasks::Priority;
+
+use crate::voice::Proposal;
 use serde::{Deserialize, Serialize};
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
@@ -12,6 +13,7 @@ pub struct MeetingAiStatus {
     pub meeting_id: String,
     pub status: AiStatus,
     pub dominant_language: Option<String>,
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub updated_at: i64,
 }
 
@@ -54,7 +56,9 @@ pub struct TranscriptSegment {
     pub meeting_id: Option<String>,
     pub source: SegmentSource,
     pub index: u32,
+    #[cfg_attr(feature = "ts", ts(type = "number | null"))]
     pub start_ms: Option<i64>,
+    #[cfg_attr(feature = "ts", ts(type = "number | null"))]
     pub end_ms: Option<i64>,
     pub speaker_label: Option<u8>,
     pub participant: Option<String>,
@@ -68,6 +72,7 @@ pub struct TranscriptSegment {
 pub struct RecordingSession {
     pub id: String,
     pub meeting_id: String,
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub started_at: i64,
     pub live_captions: bool,
     pub chunk_count: u32,
@@ -81,6 +86,7 @@ pub struct TranscriptionJob {
     pub gnani_job_id: Option<String>,
     pub status: JobStatus,
     pub error: Option<String>,
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub updated_at: i64,
 }
 
@@ -164,7 +170,17 @@ pub struct Citation {
     pub segment_id: String,
     pub speaker: Option<String>,
     pub quote: String,
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub starts_at: i64,
+}
+
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RecallAnswer {
+    pub answer_text: String,
+    pub language: String,
+    pub citations: Vec<Citation>,
+    pub proposal: Option<Proposal>,
 }
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
@@ -178,6 +194,7 @@ pub struct Commitment {
     pub due_date: Option<String>,
     pub task_id: Option<String>,
     pub status: CommitmentStatus,
+    #[cfg_attr(feature = "ts", ts(type = "number | null"))]
     pub days_overdue: Option<i64>,
 }
 

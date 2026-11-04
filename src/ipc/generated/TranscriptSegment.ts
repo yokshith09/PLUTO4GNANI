@@ -2,4 +2,4 @@
 import type { Relevance } from "./Relevance";
 import type { SegmentSource } from "./SegmentSource";
 
-export type TranscriptSegment = { id: string, meeting_id: string | null, source: SegmentSource, index: number, start_ms: bigint | null, end_ms: bigint | null, speaker_label: number | null, participant: string | null, text: string, language: string | null, relevance: Relevance | null, };
+export type TranscriptSegment = { id: string, meeting_id: string | null, source: SegmentSource, index: number, start_ms: number | null, end_ms: number | null, speaker_label: number | null, participant: string | null, text: string, language: string | null, relevance: Relevance | null, };

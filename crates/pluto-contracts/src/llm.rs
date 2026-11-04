@@ -2,8 +2,8 @@
 //!
 //! Owner: **D2** (T-005). `MockLlm` lives in `pluto-intel::llm`.
 
+use crate::error::VoiceResult;
 use async_trait::async_trait;
-use pluto_core::error::AppError;
 use serde::{Deserialize, Serialize};
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
@@ -48,6 +48,7 @@ pub struct LlmRequest {
     pub task: LlmTask,
     pub system: String,
     pub messages: Vec<LlmMessage>,
+    #[cfg_attr(feature = "ts", ts(type = "unknown"))]
     pub json_schema: serde_json::Value,
     pub timeout_ms: u32,
 }
@@ -55,6 +56,7 @@ pub struct LlmRequest {
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LlmResponse {
+    #[cfg_attr(feature = "ts", ts(type = "unknown"))]
     pub json: serde_json::Value,
     pub provider: LlmProvider,
     pub model: String,
@@ -65,5 +67,5 @@ pub struct LlmResponse {
 /// Returns schema-shaped JSON. Adapters (Gemini, Groq), the router and `MockLlm` implement it.
 #[async_trait]
 pub trait Llm: Send + Sync {
-    async fn complete_json(&self, req: LlmRequest) -> Result<LlmResponse, AppError>;
+    async fn complete_json(&self, req: LlmRequest) -> VoiceResult<LlmResponse>;
 }

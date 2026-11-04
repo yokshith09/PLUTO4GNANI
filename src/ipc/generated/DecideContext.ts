@@ -3,4 +3,4 @@
 /**
  * Context for one decision: the last 6 turns, today's open task titles, participants, timezone, now.
  */
-export type DecideContext = { recent_turns: Array<string>, open_task_titles: Array<string>, participants: Array<string>, timezone: string, now_ms: bigint, };
+export type DecideContext = { recent_turns: Array<string>, open_task_titles: Array<string>, participants: Array<string>, timezone: string, now_ms: number, };

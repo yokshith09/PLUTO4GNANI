@@ -159,6 +159,10 @@ enum SttFormat { Codemix, Transliterate, Verbatim, Transcribe }
 struct VoiceSettings { cloud_voice_enabled: bool, languages: Vec<String>, stt_format: SttFormat,
   tts_voice: String, tts_model: String, hotkey: String, audio_tags: bool, always_on_enabled: bool,
   has_gnani_key: bool, has_gemini_key: bool, has_groq_key: bool }
+// Argument of voice_settings_set. Every field optional; a missing field is unchanged.
+// Keys are set with voice_key_set, so the has_*_key flags are not patchable.
+struct VoiceSettingsPatch { cloud_voice_enabled: Option<bool>, languages: Option<Vec<String>>, stt_format: Option<SttFormat>,
+  tts_voice: Option<String>, tts_model: Option<String>, hotkey: Option<String>, audio_tags: Option<bool>, always_on_enabled: Option<bool> }
 ```
 
 ### 3.3 Transcript and meetings (`crates/pluto-contracts/src/meeting.rs`)
@@ -190,7 +194,6 @@ struct Commitment { action_item_id: String, meeting_id: String, meeting_title: S
   due_date: Option<String>, task_id: Option<String>, status: CommitmentStatus, days_overdue: Option<i64> }
 enum CommitmentStatus { Open, Done, Overdue, NoTask }
 ```
-`RecallAnswer` is implemented in `meeting.rs` by a contract PR after D1's `Proposal` (T-004) is on `main`; the other §3.3 types are in code (T-005).
 
 ### 3.4 Decisions (`crates/pluto-contracts/src/decide.rs`)
 ```rust
@@ -221,11 +224,16 @@ Each tool calls an existing `pluto-core` function. **W** = write (needs an appro
 
 ```rust
 struct Proposal { id: String, interaction_id: String, tool: String, args: serde_json::Value, summary_text: String, language: String, expires_at: i64 }
+// Tagged by "kind": {"kind":"approve"} | {"kind":"reject"} | {"kind":"edit","args":{…}}
 enum ProposalResponse { Approve, Reject, Edit { args: serde_json::Value } }
 struct ToolResult { tool: String, ok: bool, message: String, record_id: Option<String> }
 struct AssistantTurn { interaction_id: String, transcript: String, language: Option<String>, decision: Decision,
-  reply_text: Option<String>, proposal: Option<Proposal>, result: Option<ToolResult> }
+  reply_text: Option<String>, proposal: Option<Proposal>, result: Option<ToolResult> }   // added once T-005 (Decision) is on main
+// Rust only: what a caller asks ToolExecutor::propose to create.
+struct ProposalRequest { interaction_id: Option<String> /* None → a new interaction is logged */, tool: String,
+  args: serde_json::Value, summary_text: String, language: String }
 ```
+Tool names are constants in `pluto_contracts::voice::tools`, with `tools::WRITE` and `tools::READ` listing the two groups.
 
 ### 3.6 Privacy and usage
 ```rust
@@ -247,11 +255,43 @@ These are the only way `voice` and `intel` talk to each other. `app` creates the
 | `ToolExecutor` | `voice.rs` (D1) | `pluto-voice::assistant` | `pluto-intel` (recall follow-up proposals) |
 
 ```rust
-#[async_trait] trait Llm { async fn complete_json(&self, req: LlmRequest) -> Result<LlmResponse, AppError>; }
-trait Decider { fn decide(&self, text: &str, ctx: &DecideContext) -> Decision; }     // may call Llm internally; blocking-free via block_in_place or an async variant agreed in the T-004 PR
-#[async_trait] trait SpeechToText { async fn open(&self, cfg: RtConfig) -> Result<RtSession, AppError>; }
-#[async_trait] trait TextToSpeech { async fn stream(&self, req: TtsRequest, out: PcmSink) -> Result<(), AppError>; }
+#[async_trait] trait Llm { async fn complete_json(&self, req: LlmRequest) -> VoiceResult<LlmResponse>; }
+#[async_trait] trait Decider { async fn decide(&self, text: &str, ctx: &DecideContext) -> VoiceResult<Decision>; }   // rules first, then Llm; can fail with llm_unavailable
 ```
+**D1's traits (agreed in T-004, `speech.rs` / `voice.rs`).** They return `VoiceError` (`VoiceResult<T>`), not `AppError`, so Gnani failures such as `InvalidApiKey`, `RateLimited` or `InsufficientCredit` reach the commands unchanged. These types are Rust only (not exported to TypeScript).
+```rust
+const CAPTURE_SAMPLE_RATE: u32 = 16_000; const FRAME_BYTES: usize = 1_024; const PLAYBACK_SAMPLE_RATE: u32 = 24_000;
+
+struct AudioFrame { session_id: String, seq: u64, pcm: Vec<u8> /* exactly FRAME_BYTES */ }
+trait FrameSink: Send + Sync {          // called ~31×/s on the command thread: must not block
+  fn name(&self) -> &'static str;
+  fn push(&self, frame: &AudioFrame) -> VoiceResult<()>;   // an error is reported; other sinks still get the frame
+  fn end(&self, session_id: &str) -> VoiceResult<()> { Ok(()) }
+}
+
+struct RtConfig { language_code: String /* "indic-auto" or 1–4 codes */, format: SttFormat, keyterms: Vec<String>,
+  idle_timeout_sec: Option<u16>, min_silence_ms: Option<u32> }          // model and 16 kHz are fixed by the client
+enum RtInput { Frame(Vec<u8>), Commit, Close }
+struct RtTranscript { text: String, segment_index: u32, language: Option<String>, audio_duration_ms: Option<u32>, latency_ms: Option<u32> }
+enum RtEvent { Connected { request_id: Option<String> }, SpeechStart, Processing, Transcript(RtTranscript),
+  Reconnecting { attempt: u32 }, Error(VoiceError), Closed }
+struct RtSession { id: String, input: mpsc::Sender<RtInput>, events: mpsc::Receiver<RtEvent> }   // events end with Closed
+#[async_trait] trait SpeechToText: Send + Sync { async fn open(&self, config: RtConfig) -> VoiceResult<RtSession>; }
+
+struct TtsRequest { text: String, language: String, voice: Option<String>, model: Option<String>, speed: Option<f32> }
+enum AudioContainer { Mp3, Wav }
+type PcmSink = mpsc::Sender<Vec<u8>>;   // PCM16 24 kHz chunks; a closed receiver = barge-in, ends the stream without error
+#[async_trait] trait TextToSpeech: Send + Sync {
+  async fn stream(&self, request: TtsRequest, out: PcmSink) -> VoiceResult<()>;
+  async fn synthesize(&self, request: TtsRequest, container: AudioContainer) -> VoiceResult<Vec<u8>>;   // recap export
+}
+
+#[async_trait] trait ToolExecutor: Send + Sync {
+  async fn run_read(&self, tool: &str, args: &Value) -> VoiceResult<ToolResult>;   // a write tool → ToolFailed, nothing runs
+  async fn propose(&self, request: ProposalRequest) -> VoiceResult<Proposal>;      // stores a pending proposal; never executes
+}
+```
+**Mocks for D1's traits:** `MockStt`, `MockTts` in `pluto-gnani::mock` (feature `mock`); `MockToolExecutor`, `RecordingSink` in `pluto_contracts::mock` (feature `mock`; here because `pluto-intel` never depends on `pluto-voice`). Enable the feature from `[dev-dependencies]`.
 `DecideContext` holds the last 6 turns, today's open task titles, participant names, the user's timezone and "now". Each trait ships with a mock implementation in its owner's crate in the same PR that defines it.
 
 ---
