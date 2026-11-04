@@ -169,6 +169,8 @@ export function createMock() {
     "shortcuts.global_open": null, "shortcuts.global_new_note": null, "shortcuts.global_new_task": null, "shortcuts.global_pet": null,
     "tracking.apps": true, "tracking.exclude_apps": [], "tracking.sites": false, "tracking.safari": false,
     "advanced.log_level": "info",
+    "voice.cloud_enabled": false, "voice.languages": [], "voice.stt_format": "codemix", "voice.tts_voice": "Arya", "voice.tts_model": "timbre-v3",
+    "voice.audio_tags": true, "voice.always_on": false, "llm.gemini_model": "gemini-2.5-flash", "llm.groq_model": "llama-3.3-70b-versatile",
   });
   const settings = defaultSettings();
 
