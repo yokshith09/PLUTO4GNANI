@@ -19,8 +19,8 @@ Work top to bottom. **Wait** = a task of the other developer that must be merged
 | 7 | T-105 | Secrets | S | P0a | 1–2 | T-003 | Done (merged, PR #13; `voice.*` settings keys still to add) |
 | 8 | T-106 | Migration 012 | M | P0a | 1–2 | T-003 | Done (merged, PR #8) |
 | 9 | T-202 | Meetings UI | L | P0a | 2–3 | — | In review (PR #14; import dialog, status chips, progress, transcript and speakers tabs built on the mock; live data after T-007 and T-201) |
-| 10 | T-203 | Extraction | L | P0a | 3 | — | In review (PR #14; validator, dates and batching built and tested on a scripted LLM; live accuracy T-ML-02 needs keys) |
-| 11 | T-204 | Review and apply | L | P0a | 3 | — | In review (PR #14; backend and review screen built on the mock; live after T-007 wiring) |
+| 10 | T-203 | Extraction | L | P0a | 3 | — | In review (PR; extraction runs in the real shell on the database transcript; live accuracy T-ML-02 needs keys and T-201) |
+| 11 | T-204 | Review and apply | L | P0a | 3 | — | In review (PR; apply and review screen run in the real shell; needs a transcript from T-201) |
 | 12 | T-205 | Recap | S | P0a | 3 | T-102 | To do |
 | 13 | T-206 | Integration C2 | S | P0a | 3 | — | To do |
 | 14 | T-207 | Recorder | L | P0b | 3–4 | T-013 | To do |

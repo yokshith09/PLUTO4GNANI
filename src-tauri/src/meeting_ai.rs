@@ -2,15 +2,14 @@
 //! from here on (WORKING_AGREEMENT §2), who replaces them with thin wrappers over `pluto-intel`.
 //!
 //! Every stub returns the shared fixtures in `test-data/fixtures/meetings/` (the AS-1 meeting), so
-//! the Meetings UI can be built against the real shell. Two rules are already real because the
-//! contract requires them everywhere: recording needs consent (`consent_required`), and
-//! `meeting_extraction_apply` returns the real meeting (`pluto_core::meetings::get`).
+//! the Meetings UI can be built against the real shell. Real now: recording needs consent,
+//! and transcript, speakers, extraction, apply and items run on `pluto_intel::meeting::service`.
 //!
 //! Not registered yet (P1, arrive with their tasks): `glossary_list` / `glossary_add` /
 //! `glossary_delete` (T-505) and `compare_transcribe` (T-504).
 
 use std::collections::HashMap;
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use pluto_contracts::error::{VoiceError, VoiceErrorCode, VoiceResult};
 use pluto_contracts::meeting::{
@@ -18,7 +17,14 @@ use pluto_contracts::meeting::{
     RecordingSession, SpeakerMapping, TranscriptSegment, TranscriptionJob,
 };
 use pluto_core::clock::Clock;
-use pluto_core::meetings::{self, Meeting};
+use pluto_core::meetings::Meeting;
+use pluto_core::secrets::{KeychainSecrets, SecretStore};
+use pluto_gnani::http::OutboundLog;
+use pluto_intel::llm::gemini::{self, GeminiClient};
+use pluto_intel::llm::groq::{self, GroqClient};
+use pluto_intel::llm::privacy::DbOutboundLog;
+use pluto_intel::llm::router::Router;
+use pluto_intel::meeting::service::MeetingAi;
 use tauri::ipc::{Channel, InvokeResponseBody, JavaScriptChannelId};
 use tauri::{AppHandle, State, Webview};
 use tauri_plugin_dialog::DialogExt;
@@ -30,6 +36,8 @@ use crate::Core;
 #[derive(Default)]
 pub(crate) struct MeetingShell {
     sessions: Mutex<HashMap<String, RecordingSession>>,
+    /// The real transcript/extraction service, built on first use (keys come from the keychain).
+    ai: OnceLock<Arc<MeetingAi>>,
 }
 
 impl MeetingShell {
@@ -37,6 +45,21 @@ impl MeetingShell {
         self.sessions
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// The meeting-AI service: Gemini and Groq through the router, calls written to the privacy log.
+    fn ai(&self, core: &Core) -> Arc<MeetingAi> {
+        self.ai
+            .get_or_init(|| {
+                let secrets: Arc<dyn SecretStore> = Arc::new(KeychainSecrets);
+                let log: Arc<dyn OutboundLog> =
+                    Arc::new(DbOutboundLog::new(core.db.clone(), core.clock.clone()));
+                let gemini = GeminiClient::new(gemini::DEFAULT_MODEL, secrets.clone(), log.clone());
+                let groq = GroqClient::new(groq::DEFAULT_MODEL, secrets, log);
+                let llm = Arc::new(Router::new(Arc::new(gemini), Arc::new(groq)));
+                Arc::new(MeetingAi::new(core.db.clone(), core.clock.clone(), llm))
+            })
+            .clone()
     }
 
     fn get(&self, session_id: &str) -> VoiceResult<RecordingSession> {
@@ -155,42 +178,55 @@ pub async fn meeting_job_retry(meeting_id: String) -> VoiceResult<TranscriptionJ
     fixture(fixtures::TRANSCRIPTION_JOB)
 }
 
+/// The transcript from the database, with each speaker's name once mapped.
 #[tauri::command]
-pub async fn meeting_transcript_get(meeting_id: String) -> VoiceResult<Vec<TranscriptSegment>> {
-    let _ = meeting_id;
-    fixture(fixtures::TRANSCRIPT_AS1)
+pub async fn meeting_transcript_get(
+    meeting_id: String,
+    core: State<'_, Core>,
+    shell: State<'_, MeetingShell>,
+) -> VoiceResult<Vec<TranscriptSegment>> {
+    shell.ai(&core).transcript(&meeting_id).await
 }
 
 #[tauri::command]
 pub async fn meeting_speakers_set(
     meeting_id: String,
     mapping: Vec<SpeakerMapping>,
+    core: State<'_, Core>,
+    shell: State<'_, MeetingShell>,
 ) -> VoiceResult<()> {
-    let _ = (meeting_id, mapping);
-    Ok(())
+    shell.ai(&core).set_speakers(&meeting_id, &mapping).await
 }
 
 // ---- extraction, recall, recap -------------------------------------------------------------
 
+/// Real: reads the transcript, asks Gemini (Groq as fallback), checks every item (T-203).
 #[tauri::command]
-pub async fn meeting_extract(meeting_id: String) -> VoiceResult<ExtractionResult> {
-    let _ = meeting_id;
-    fixture(fixtures::EXTRACTION_AS1)
+pub async fn meeting_extract(
+    meeting_id: String,
+    core: State<'_, Core>,
+    shell: State<'_, MeetingShell>,
+) -> VoiceResult<ExtractionResult> {
+    shell.ai(&core).extract(&meeting_id).await
 }
 
-/// Stub: applies nothing yet; returns the meeting as it is (T-204).
+/// Real: writes the approved items, their provenance and the chosen tasks (T-204).
 #[tauri::command]
 pub async fn meeting_extraction_apply(
     input: ApplyExtraction,
     core: State<'_, Core>,
+    shell: State<'_, MeetingShell>,
 ) -> VoiceResult<Meeting> {
-    Ok(meetings::get(&core.db, &input.meeting_id).await?)
+    Ok(shell.ai(&core).apply(&input).await?.meeting)
 }
 
 #[tauri::command]
-pub async fn meeting_items_get(meeting_id: String) -> VoiceResult<Vec<ExtractedItem>> {
-    let _ = meeting_id;
-    fixture::<ExtractionResult>(fixtures::EXTRACTION_AS1).map(|r| r.items)
+pub async fn meeting_items_get(
+    meeting_id: String,
+    core: State<'_, Core>,
+    shell: State<'_, MeetingShell>,
+) -> VoiceResult<Vec<ExtractedItem>> {
+    shell.ai(&core).items(&meeting_id).await
 }
 
 #[tauri::command]
