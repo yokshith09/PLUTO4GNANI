@@ -1,0 +1,46 @@
+{
+  "id": "AS-3",
+  "meeting_date": "2026-11-02",
+  "timezone": "Asia/Kolkata",
+  "participants": [
+    "Suresh",
+    "Lakshmi"
+  ],
+  "decisions": [
+    {
+      "body": "Shift to the new office on 15 December",
+      "quote": "December 15 ge shift aagbeku, adu final"
+    }
+  ],
+  "action_items": [
+    {
+      "body": "Get the movers' quotation",
+      "owner": "Lakshmi",
+      "due_phrase": "Wednesday",
+      "due_date": "2026-11-04",
+      "quote": "movers quotation Wednesday olage togondu baa"
+    },
+    {
+      "body": "Confirm the internet date with the IT team",
+      "owner": "Lakshmi",
+      "due_phrase": "Friday",
+      "due_date": "2026-11-06",
+      "quote": "IT team jothe Friday olage confirm maadu"
+    }
+  ],
+  "questions": [
+    {
+      "body": "Who will set up the internet connection?",
+      "quote": "internet connection yaaru set maadtaare"
+    }
+  ],
+  "risks": [
+    {
+      "body": "Work stops if the internet is late",
+      "quote": "internet late aadre kelasa nillutte"
+    }
+  ],
+  "chitchat": [
+    "Chai kudiyona?"
+  ]
+}
