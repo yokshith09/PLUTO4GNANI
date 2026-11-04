@@ -12,11 +12,11 @@ Work top to bottom. **Wait** = a task of the other developer that must be merged
 |---|---|---|---|---|---|---|---|
 | 1 | T-002 | Base | M | P0a | 0–1 | — | Done (`docs/results/d1-base-verification.md`) |
 | 2 | T-003 | Skeleton | M | P0a | 1 | — | Done (merged, PR #3) |
-| 3 | T-004 | Contracts A | M | P0a | 1 | — | In review |
+| 3 | T-004 | Contracts A | M | P0a | 1 | — | Done (merged, PR #7) |
 | 4 | T-007 | Shell stubs | S | P0a | 1 | T-005 | To do |
 | 5 | T-010 | Gnani check | S | P0a | 1 | — | To do |
 | 6 | T-011 | Mic check | S | P0a | 2 | — | To do |
-| 7 | T-012 | UI audio | L | P0a | 1–2 | — | To do |
+| 7 | T-012 | UI audio | L | P0a | 1–2 | — | In review |
 | 8 | T-013 | Rust audio IPC | M | P0a | 1 | — | To do |
 | 9 | T-101 | Prisma Realtime | L | P0a | 2 | — | To do |
 | 10 | T-102 | Timbre | M | P0a | 2 | — | To do |
