@@ -423,6 +423,64 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn voice_history_proposals_and_privacy_log_survive_export_and_import() {
+        use crate::voice_store as vs;
+        let f = setup();
+        f.db.write(|tx| {
+            vs::insert_interaction(
+                tx,
+                &vs::InteractionRow {
+                    id: "i1".into(),
+                    started_at: 1,
+                    transcript: "haan".into(),
+                    outcome: Some("executed".into()),
+                    ..Default::default()
+                },
+            )?;
+            vs::insert_proposal(
+                tx,
+                &vs::ProposalRow {
+                    id: "p1".into(),
+                    interaction_id: "i1".into(),
+                    tool: "task_update".into(),
+                    args_json: "{}".into(),
+                    summary_text: "Move it to Monday?".into(),
+                    status: "pending".into(),
+                    created_at: 1,
+                    expires_at: 31_001,
+                    decided_at: None,
+                },
+            )?;
+            vs::decide_proposal(tx, "p1", vs::Answer::Approve, 2)?;
+            vs::log_outbound(tx, 3, "groq", "intent", 512, None)?;
+            Ok(((), vec![]))
+        })
+        .await
+        .unwrap();
+        let doc = dump(&f).await;
+        for table in ["voice_interactions", "voice_proposals", "privacy_log"] {
+            assert_eq!(
+                doc["tables"][table].as_array().map(Vec::len),
+                Some(1),
+                "{table}"
+            );
+        }
+
+        delete_all(&f.db, &f.clock, CONFIRM_WORD).await.unwrap();
+        let cleared = f.db.read(|c| vs::recent_interactions(c, 10)).await.unwrap();
+        assert!(cleared.is_empty(), "delete-all clears voice history");
+
+        import(&f.db, &f.clock, doc.clone()).await.unwrap();
+        assert_eq!(dump(&f).await, doc, "identical after the round trip");
+        let p =
+            f.db.read(|c| vs::get_proposal(c, "p1"))
+                .await
+                .unwrap()
+                .unwrap();
+        assert_eq!(p.status, "approved");
+    }
+
+    #[tokio::test]
     async fn export_delete_import_gives_back_identical_data() {
         let f = setup();
         populate(&f).await;
