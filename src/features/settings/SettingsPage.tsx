@@ -5,6 +5,7 @@ import { GuideSection } from "@/features/guide/GuideSection";
 import { CREDIT } from "@/features/guide/content";
 import { DataSection } from "./DataSection";
 import { AutoDeleteSettings } from "./AutoDeleteSettings";
+import { VoiceSection } from "./VoiceSection";
 import { Row, Section } from "./parts";
 import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -73,6 +74,7 @@ export function SettingsPage() {
           <Row key={keys} label={what ?? ""}><span className="rounded-md border bg-muted px-2 py-0.5 font-mono text-[12px]">{keys}</span></Row>
         ))}
       </Section>
+      <VoiceSection />
       <AutoDeleteSettings />
       <DataSection />
       <Section title="Advanced">

@@ -27,7 +27,7 @@ Work top to bottom. **Wait** = a task of the other developer that must be merged
 | 15 | T-302 | Decisions | M | P0a | 3 | — | In review (PR #14; rules plus intent prompt built; routing accuracy on the real model (T-ML-04) needs keys) |
 | 16 | T-304 | Voice UI | M | P0a | 3–4 | — | To do |
 | 17 | T-305 | Recall | L | P0a | 4 | — | In progress (recall merged, PR #19; spoken answer and the follow-up proposal wait for T-303) |
-| 18 | T-401 | Voice settings | M | P0a | 4–5 | — | To do |
+| 18 | T-401 | Voice settings | M | P0a | 4–5 | — | In review (Voice and privacy section built on the mock: opt-in with disclosure, keys, languages, what was sent; live once D1 stores the voice settings) |
 | 19 | T-402 | Demo build | S | P0a | 4 | — | To do |
 | 20 | T-405 | Measurement | M | P0b | 5 | T-306 | To do |
 | 21 | T-406 | Integration C4 | S | P0a | 5 | — | To do |
