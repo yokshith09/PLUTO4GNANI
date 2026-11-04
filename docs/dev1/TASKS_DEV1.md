@@ -17,7 +17,7 @@ Work top to bottom. **Wait** = a task of the other developer that must be merged
 | 5 | T-010 | Gnani check | S | P0a | 1 | — | To do |
 | 6 | T-011 | Mic check | S | P0a | 2 | — | To do |
 | 7 | T-012 | UI audio | L | P0a | 1–2 | — | Done (merged, PR #9) |
-| 8 | T-013 | Rust audio IPC | M | P0a | 1 | — | In review (shell wiring with T-007) |
+| 8 | T-013 | Rust audio IPC | M | P0a | 1 | — | Done (merged, PR #10; shell wiring with T-007) |
 | 9 | T-101 | Prisma Realtime | L | P0a | 2 | — | To do |
 | 10 | T-102 | Timbre | M | P0a | 2 | — | To do |
 | 11 | T-103 | Gnani base | M | P0a | 2 | — | To do |
