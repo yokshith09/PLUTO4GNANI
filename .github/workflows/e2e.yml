@@ -8,10 +8,15 @@ name: End-to-end
 #    the app starts, opens its database, logs, and stays up.
 # Every run uses a fresh temporary data folder (PLUTO_DATA_DIR), never real data.
 
+# Same schedule as ci.yml (owner rule, 4 Nov 2026): the Windows e2e runs on every PR; the macOS
+# smoke test runs once per merge to main (and on manual runs). No duplicate runs for D1/D2 pushes;
+# docs-only changes skip it.
 on:
   push:
-    branches: [main, D1, D2]
+    branches: [main]
+    paths-ignore: ["**.md", "docs/**"]
   pull_request:
+    paths-ignore: ["**.md", "docs/**"]
   workflow_dispatch:
 
 concurrency:
@@ -99,6 +104,7 @@ jobs:
 
   macos:
     name: smoke (macos)
+    if: github.event_name != 'pull_request'
     runs-on: macos-latest
     timeout-minutes: 45
     steps:

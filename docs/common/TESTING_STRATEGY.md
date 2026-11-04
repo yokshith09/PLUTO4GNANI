@@ -93,8 +93,10 @@ Each set has a ground-truth file (expected items and intents). Noise is mixed wi
 - `cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace`
 
 ## 9. CI (imported from Pluto, `.github/workflows/`)
-- **`ci.yml`** on Windows and macOS: `cargo fmt --check`, `cargo clippy -D warnings`, `cargo check --workspace --locked`, `cargo test --workspace --locked`, generated types up to date, coverage (`pluto-core` ≥ 90% lines), `pnpm typecheck`, `pnpm lint`, `pnpm test:coverage` (frontend floors 80 / 80 / 70 / 55 in `vite.config.ts`), script tests, `pnpm check:core-deps`, and `pnpm tauri build --no-bundle`.
-- **`e2e.yml`**: on Windows, the real app is driven by WebDriver (welcome, a task, a note, a meeting with an action item turned into a task, restart to prove persistence); on macOS, a start-up smoke test.
+- **When CI runs** (owner rule, 4 Nov 2026 — keep PRs fast, run everything once per merge): on every **pull request** and every **push to `main`**. Pushes to `D1`/`D2` do not run CI on their own (their PR already does). Changes that touch only Markdown or `docs/` skip CI. Any workflow can also be started by hand ("Run workflow").
+- **`ci.yml`, on a pull request (Windows):** `cargo fmt --check`, `cargo clippy -D warnings`, `cargo check --workspace --locked`, `cargo test --workspace --locked`, generated types up to date, `pluto-core` coverage floor (≥ 90% lines), `pnpm typecheck`, `pnpm lint`, `pnpm test:coverage` (frontend floors 80 / 80 / 70 / 55 in `vite.config.ts`), script tests, `pnpm check:core-deps`.
+- **`ci.yml`, on a push to `main`:** all of the above on **Windows and macOS**, plus the whole-workspace coverage report and `pnpm tauri build --no-bundle`.
+- **`e2e.yml`**: on Windows (every PR and every push to `main`), the real app is driven by WebDriver (welcome, a task, a note, a meeting with an action item turned into a task, restart to prove persistence); on macOS (pushes to `main` only), a start-up smoke test.
 - **`release.yml`**: Windows and macOS installers into a private draft release (version change, `v*` tag or manual run).
 - **New code must keep the floors green**, so new modules in `pluto-core` and new UI need tests. The new crates join the workspace jobs automatically.
 
