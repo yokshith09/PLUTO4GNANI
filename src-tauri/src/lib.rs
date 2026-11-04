@@ -6,6 +6,7 @@ mod earlier_app;
 mod ipc;
 mod logs;
 mod media;
+mod meeting_ai;
 mod note_window;
 mod notify;
 mod pet;
@@ -16,6 +17,7 @@ mod tabs;
 mod tracking;
 mod tray;
 mod typing;
+mod voice;
 
 use std::sync::Arc;
 
@@ -270,6 +272,40 @@ pub fn run() {
             ipc::folder_open,
             ipc::settings_reset,
             notify::notification_settings_open,
+            // Voice and meeting-AI commands (API_CONTRACTS §4.2, §4.3), registered once at T-007.
+            // Later additions go through a contract PR (WORKING_AGREEMENT §3).
+            voice::voice_settings_get,
+            voice::voice_settings_set,
+            voice::voice_key_set,
+            voice::voice_key_clear,
+            voice::voice_status,
+            voice::voice_ptt_start,
+            voice::voice_ptt_stop,
+            voice::voice_cancel,
+            voice::audio_push,
+            voice::voice_proposal_respond,
+            voice::voice_speak,
+            voice::voice_stop_speaking,
+            voice::voice_usage,
+            voice::voice_history,
+            voice::privacy_log_list,
+            voice::privacy_log_clear,
+            meeting_ai::meeting_rec_start,
+            meeting_ai::meeting_rec_pause,
+            meeting_ai::meeting_rec_resume,
+            meeting_ai::meeting_rec_stop,
+            meeting_ai::meeting_audio_pick,
+            meeting_ai::meeting_import,
+            meeting_ai::meeting_job_get,
+            meeting_ai::meeting_job_retry,
+            meeting_ai::meeting_transcript_get,
+            meeting_ai::meeting_speakers_set,
+            meeting_ai::meeting_extract,
+            meeting_ai::meeting_extraction_apply,
+            meeting_ai::meeting_items_get,
+            meeting_ai::meeting_recall,
+            meeting_ai::meeting_recap,
+            meeting_ai::commitments_list,
         ])
         .on_window_event(|window, event| {
             // Closing the main window hides it; the process keeps running (R0-03).
@@ -354,6 +390,8 @@ pub fn run() {
             let usage_service = Arc::new(UsageService::new(db.clone(), clock.clone()));
             app.manage(usage_service.clone());
             forward_events(app.handle().clone(), &bus);
+            app.manage(voice::VoiceShell::new()?);
+            app.manage(meeting_ai::MeetingShell::default());
             app.manage(Core {
                 db: db.clone(),
                 bus: bus.clone(),
