@@ -139,7 +139,7 @@ A contract is anything the other developer builds against: `docs/common/API_CONT
 **Where each rule lives (so it exists once)**
 | Rule | Single home |
 |---|---|
-| Natural-language dates ("kal 5 baje", "Friday tak") → ISO | `pluto-intel` only. `Decision.args` reach `pluto-voice` and `pluto-core` already resolved |
+| Natural-language dates ("kal 5 baje", "Friday tak") → ISO | `pluto-intel` only. `AssistantDecision.args` reach `pluto-voice` and `pluto-core` already resolved |
 | Approval of writes | `pluto-voice::assistant`, nowhere else |
 | Retry, request queues, rate limits for Gnani | `pluto-gnani::http`, nowhere else |
 | Fallback between Gemini and Groq | `pluto-intel::llm`, nowhere else |
