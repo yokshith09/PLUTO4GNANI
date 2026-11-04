@@ -5,7 +5,7 @@
 ## 1. Levels
 | Level | Scope | Tools | Owner |
 |---|---|---|---|
-| Base regression | The base's existing 492 core tests and 486 UI tests must keep passing | `cargo test -p pluto-core`, `pnpm test` | Both |
+| Base regression | The base's existing tests must keep passing (492 core tests; 468 UI tests after the diary page was removed) | `cargo test -p pluto-core`, `pnpm test` | Both |
 | Unit (Rust) | WAV chunking, retries and request queues, Realtime rotation, Batch parsing, date resolution, rules, LLM router fallback, grounding validator, proposal gate | `cargo test` | Module owner |
 | Unit (DB) | Migrations 012–013, checks, cascades, FTS5 | `cargo test -p pluto-core` | D1 (013), D2 (012) |
 | Unit (UI) | Every screen in every state on mocks; worklet downsampling (pure function) | Vitest + Testing Library | Page owner |

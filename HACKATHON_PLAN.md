@@ -6,7 +6,7 @@
 This plan improves the odds of a working demo. It cannot guarantee one: Gnani, Gemini and Groq limits and the Windows shell are still unverified, and §5 lists the fallbacks.
 
 ## Current Focus
-**M0 — Base verified, skeleton and contracts.**
+**M0 — Base verified, skeleton and contracts.** (4 Nov: skeleton T-003 built by D1 and in review as PR #3; workflows in PR #4; CI green on Windows and macOS.) **Next:** merge both PRs, then D1 → T-004 / T-007 / T-013 / T-010 / T-012; D2 → T-009, T-008, T-005, T-006, T-105, T-106.
 - **D2:** T-001 tonight → T-009, T-008, T-005, T-006, T-105, T-106.
 - **D1:** T-002 → **T-003 (merge within the first hour of Day 1)** → T-004 → T-007, T-013, T-010, T-012.
 
