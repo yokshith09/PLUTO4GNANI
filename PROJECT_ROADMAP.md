@@ -92,7 +92,7 @@ Tray, hotkeys, notifications, autostart and tracking on a real Windows desktop (
 | T-010 | Gnani check | T-GN-01: examples for a REST clip, a Realtime clip and TTS; record credits used | D1 | P0a | — | S | All three succeed with the team key | T-GN-01 | To do |
 | T-011 | Mic check | T-IPC-01: 10 s capture → Rust → WAV plays back; tone playback; result recorded. If it fails: `cpal` capture in Rust | D1 | P0a | T-012, T-013 | S | Result recorded in `docs/results/` | T-IPC-01 | To do |
 | T-012 | UI audio | `src/audio`: capture worklet (→ 16 kHz PCM16, 1,024-byte frames), frame sender, gapless player with `stop()` | D1 | P0a | — | L | Frames carry the right sample count; no gaps between chunks | Unit (downsampler) | In review |
-| T-013 | Rust audio IPC | `audio_push` (raw body + `x-session-id`), `FrameSink` fan-out, WAV writer, playback Channel with a test tone | D1 | P0a | T-004 | M | Ordered 1,024-byte frames received; tone audible | Unit; T-IPC-01 | To do |
+| T-013 | Rust audio IPC | `audio_push` (raw body + `x-session-id`), `FrameSink` fan-out, WAV writer, playback Channel with a test tone | D1 | P0a | T-004 | M | Ordered 1,024-byte frames received; tone audible | Unit; T-IPC-01 | In review (router + WAV sink; the `audio_push` command and the test tone are wired with T-007's single registration) |
 
 ### M1 — Voice I/O and LLM live (Day 1–2)
 | ID | Story / Feature | Task → deliverable | Owner | Priority | Dependencies | Est. | Acceptance criteria | Tests | Status |
