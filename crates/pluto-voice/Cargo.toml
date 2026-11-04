@@ -1,0 +1,22 @@
+[package]
+name = "pluto-voice"
+description = "Voice runtime, assistant (tools and approval gate) and privacy. No tauri."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+pluto-core.workspace = true
+pluto-contracts.workspace = true
+pluto-gnani.workspace = true
+async-trait.workspace = true
+hound.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "test-util"] }

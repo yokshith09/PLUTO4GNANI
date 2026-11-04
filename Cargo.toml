@@ -1,12 +1,38 @@
 [workspace]
 resolver = "2"
-members = ["src-tauri", "crates/pluto-core"]
+# Glob so a new crate never needs an edit here (WORKING_AGREEMENT §3).
+members = ["src-tauri", "crates/*"]
 
 [workspace.package]
 version = "0.5.7"
 edition = "2021"
 license = "MIT"
 publish = false
+
+# Shared versions for the new crates (pluto-contracts, pluto-gnani, pluto-voice, pluto-intel).
+# A crate opts in with `name.workspace = true`. Adding one here follows the tiny-PR rule
+# (WORKING_AGREEMENT §3). pluto-core and src-tauri keep their own pins from the base.
+[workspace.dependencies]
+pluto-core = { path = "crates/pluto-core" }
+pluto-contracts = { path = "crates/pluto-contracts" }
+pluto-gnani = { path = "crates/pluto-gnani" }
+pluto-voice = { path = "crates/pluto-voice" }
+pluto-intel = { path = "crates/pluto-intel" }
+
+async-trait = "0.1.92"
+base64 = "0.22"
+futures-util = { version = "0.3.34", default-features = false, features = ["sink", "std"] }
+hound = "3.5.1"
+keyring = { version = "3", features = ["windows-native", "apple-native"] }
+reqwest = { version = "0.13", features = ["json", "multipart", "stream"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+thiserror = "2.0.21"
+tokio = { version = "1.53.2", features = ["sync", "rt", "time", "macros"] }
+tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }
+tracing = "0.1.44"
+ts-rs = { version = "11", features = ["serde-json-impl"] }
+wiremock = "0.6.5"
 
 [profile.release]
 # Size and idle cost matter more than peak speed for a tray app (09 budgets).
