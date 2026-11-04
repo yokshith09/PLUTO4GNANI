@@ -128,7 +128,7 @@ Tray, hotkeys, notifications, autostart and tracking on a real Windows desktop (
 ### M4 — P0 hardened and demo-ready (Day 4–5 noon)
 | ID | Story / Feature | Task → deliverable | Owner | Priority | Dependencies | Est. | Acceptance criteria | Tests | Status |
 |---|---|---|---|---|---|---|---|---|---|
-| T-401 | Voice settings | "Voice & privacy" section in Settings: opt-in disclosure, keys, languages, caption style, voice preview, hotkey (shortcut row), model IDs | D2 | P0a | T-105 | M | Cloud voice off → assistant disabled; keys show "Saved" only | Vitest; T-PR-04 | To do |
+| T-401 | Voice settings | "Voice & privacy" section in Settings: opt-in disclosure, keys, languages, caption style, voice preview, hotkey (shortcut row), model IDs | D2 | P0a | T-105 | M | Cloud voice off → assistant disabled; keys show "Saved" only | Vitest; T-PR-04 | In review (Voice and privacy section built on the mock: opt-in with disclosure, keys, languages, what was sent; live once D1 stores the voice settings) |
 | T-402 | Demo build | Hide the remaining non-product pages (time, study, mcp, archive) behind one setting; app tracking stays off. The diary page was already removed (PORTING_FROM_PLUTO §7) | D2 | P0a | T-006 | S | The demo build shows only Today, Tasks, Notes, Projects, Meetings, Voice, Settings (and the pet) | Vitest | To do |
 | T-403 | Safety | Automate T-AS-05 (no write without approval), T-PR-01..04 (keys, privacy log, consent, cloud-off = zero outbound) | D1 | P0a | T-303 | S | All pass | Listed | To do |
 | T-404 | Build | Windows installer (`pnpm tauri build`), demo-machine setup, rollback installer kept | D1 | P0a | T-306 | S | Fresh install on the demo machine passes the voice test | Manual | To do |
