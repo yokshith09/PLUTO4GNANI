@@ -3273,6 +3273,7 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "futures-util",
+ "hound",
  "pluto-contracts",
  "pluto-core",
  "reqwest",
