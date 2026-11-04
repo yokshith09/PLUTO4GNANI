@@ -20,7 +20,8 @@ use pluto_contracts::meeting::{
 use pluto_core::clock::Clock;
 use pluto_core::meetings::{self, Meeting};
 use tauri::ipc::{Channel, InvokeResponseBody, JavaScriptChannelId};
-use tauri::{State, Webview};
+use tauri::{AppHandle, State, Webview};
+use tauri_plugin_dialog::DialogExt;
 
 use crate::voice::{fixture, fixtures};
 use crate::Core;
@@ -103,6 +104,33 @@ pub async fn meeting_rec_stop(
 }
 
 // ---- import and transcription --------------------------------------------------------------
+
+/// Opens the system "open" dialog for an audio file and returns the chosen path, or `None` if the
+/// person cancelled. The path comes only from the dialog, never from the webview (like
+/// `data_import`), so the UI cannot ask Pluto to read an arbitrary file.
+#[tauri::command]
+pub async fn meeting_audio_pick(app: AppHandle) -> VoiceResult<Option<String>> {
+    let chosen = tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .add_filter("Audio", &["wav", "mp3", "m4a", "flac", "ogg"])
+            .blocking_pick_file()
+    })
+    .await
+    .map_err(|_| {
+        VoiceError::new(
+            VoiceErrorCode::Core,
+            "The open dialog stopped unexpectedly.",
+        )
+    })?;
+    let Some(chosen) = chosen else {
+        return Ok(None);
+    };
+    let path = chosen
+        .into_path()
+        .map_err(|_| VoiceError::new(VoiceErrorCode::Core, "Pluto can't open that file."))?;
+    Ok(Some(path.to_string_lossy().into_owned()))
+}
 
 /// Stub: the completed AS-1 job. T-201 uploads the file to Gnani Batch.
 #[tauri::command]

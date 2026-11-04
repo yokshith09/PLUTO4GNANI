@@ -3,7 +3,7 @@
 // UI and the Rust side agree. Every state is reachable, including the errors.
 import { emitNamed } from "./namedEvents";
 import type {
-  Commitment, ExtractionResult, PrivacyLogEntry, Proposal, ProposalResponse, RecallAnswer, RecordingSession, ToolResult,
+  ApplyExtraction, Commitment, ExtractionResult, PrivacyLogEntry, Proposal, ProposalResponse, RecallAnswer, RecordingSession, SpeakerMapping, ToolResult,
   TranscriptionJob, TranscriptSegment, UsageCounters, VoiceError, VoiceErrorCode, VoiceSettings, VoiceSettingsPatch, VoiceStatus,
 } from "./generated";
 import type { Meeting } from "./types";
@@ -21,8 +21,10 @@ const KEY_FLAGS = { gnani: "has_gnani_key", gemini: "has_gemini_key", groq: "has
 
 export interface VoiceMockDeps {
   now: () => number;
-  /** The base's meeting by id (throws NOT_FOUND like the real command). */
-  getMeeting: (id: string) => Meeting;
+  /** Create the meeting row an import or recording makes; returns its id. */
+  createMeeting: (title: string, participants: string[]) => string;
+  /** Add decisions and action items to a base meeting, and make tasks for the ones asked; returns the meeting. */
+  applyItems: (meetingId: string, decisions: string[], actions: { body: string; assignee: string | null; createTask: boolean }[]) => Meeting;
   /** Delay before simulated pipeline steps; tests pass 0. */
   delayMs?: number;
 }
@@ -34,13 +36,14 @@ const voiceError = (code: VoiceErrorCode, message: string, retryable = false): n
 // Module-level so ids stay unique across mock instances (window events are shared by all of them).
 let seq = 0;
 
-export function createVoiceMock({ now, getMeeting, delayMs = 250 }: VoiceMockDeps) {
+export function createVoiceMock({ now, createMeeting, applyItems, delayMs = 250 }: VoiceMockDeps) {
   const id = (p: string) => `${p}-${++seq}`;
   const settings: VoiceSettings = structuredClone(settingsDefault.data) as VoiceSettings;
   let status: VoiceStatus = structuredClone(statusIdle.data) as VoiceStatus;
   const pending = new Map<string, Proposal>();
   const sessions = new Map<string, RecordingSession>();
   const jobs = new Map<string, TranscriptionJob>();
+  const mappings = new Map<string, SpeakerMapping[]>();
   const privacy: PrivacyLogEntry[] = [
     { id: 1, at: now() - 120_000, destination: "gnani_realtime", purpose: "assistant command", bytes: 51_200, ref_id: null },
     { id: 2, at: now() - 90_000, destination: "groq", purpose: "assistant intent", bytes: 640, ref_id: null },
@@ -145,7 +148,7 @@ export function createVoiceMock({ now, getMeeting, delayMs = 250 }: VoiceMockDep
     meeting_rec_start: (a: Args): RecordingSession => {
       if (!a.consent) voiceError("consent_required", "Confirm everyone knows the meeting is being recorded.");
       busy();
-      const s: RecordingSession = { id: id("rec"), meeting_id: id("m"), started_at: now(), live_captions: Boolean(a.liveCaptions), chunk_count: 0 };
+      const s: RecordingSession = { id: id("rec"), meeting_id: createMeeting(String(a.title), (a.participants as string[]) ?? []), started_at: now(), live_captions: Boolean(a.liveCaptions), chunk_count: 0 };
       sessions.set(s.id, s);
       setStatus({ state: "recording", mode: "meeting", detail: "Recording", session_id: s.id });
       return s;
@@ -160,10 +163,11 @@ export function createVoiceMock({ now, getMeeting, delayMs = 250 }: VoiceMockDep
       runJob({ id: id("job"), meeting_id: s.meeting_id, gnani_job_id: null, status: "queued", error: null, updated_at: now() });
       return { ...s, chunk_count: s.chunk_count + 1 };
     },
+    meeting_audio_pick: () => "C:\\Users\\you\\Recordings\\launch-sync.wav",
     meeting_import: (a: Args): TranscriptionJob => {
       const path = String(a.path);
       if (!/\.(wav|mp3|m4a|flac|ogg)$/i.test(path)) voiceError("unsupported_audio", "Choose a WAV, MP3, M4A, FLAC or OGG file.");
-      const job: TranscriptionJob = { id: id("job"), meeting_id: id("m"), gnani_job_id: null, status: "queued", error: null, updated_at: now() };
+      const job: TranscriptionJob = { id: id("job"), meeting_id: createMeeting(String(a.title), (a.participants as string[]) ?? []), gnani_job_id: null, status: "queued", error: null, updated_at: now() };
       log("gnani_batch", "meeting transcript", 2_400_000, job.meeting_id);
       runJob(job);
       return job;
@@ -175,10 +179,26 @@ export function createVoiceMock({ now, getMeeting, delayMs = 250 }: VoiceMockDep
       runJob(job);
       return job;
     },
-    meeting_transcript_get: () => structuredClone(segmentsAs1.data) as TranscriptSegment[],
-    meeting_speakers_set: () => null,
-    meeting_extract: () => structuredClone(extractionAs1.data) as ExtractionResult,
-    meeting_extraction_apply: (a: Args) => getMeeting(String((a.input as { meeting_id: string }).meeting_id)),
+    // Speakers start unnamed (as straight from the transcription) until the user maps them.
+    meeting_transcript_get: (a: Args) => {
+      const map = mappings.get(String(a.meetingId));
+      return (structuredClone(segmentsAs1.data) as TranscriptSegment[]).map((s) => ({
+        ...s, participant: map?.find((m) => m.speaker_label === s.speaker_label)?.participant ?? null,
+      }));
+    },
+    meeting_speakers_set: (a: Args) => { mappings.set(String(a.meetingId), a.mapping as SpeakerMapping[]); return null; },
+    meeting_extract: (a: Args) => ({ ...(structuredClone(extractionAs1.data) as ExtractionResult), meeting_id: String(a.meetingId) }),
+    meeting_extraction_apply: (a: Args) => {
+      const input = a.input as ApplyExtraction;
+      const byId = new Map(items().map((i) => [i.id, i]));
+      const picked = input.accepted.flatMap((e) => { const o = byId.get(e.item_id); return o ? [{ e, o }] : []; });
+      if (!picked.length && input.accepted.length) voiceError("core", "Those items are no longer in this review.");
+      return applyItems(
+        input.meeting_id,
+        picked.filter((p) => p.o.kind === "decision").map((p) => p.e.body),
+        picked.filter((p) => p.o.kind === "action_item").map((p) => ({ body: p.e.body, assignee: p.e.owner, createTask: p.e.create_task })),
+      );
+    },
     meeting_items_get: () => structuredClone(items()),
     meeting_recall: (a: Args): RecallAnswer => {
       if (!String(a.question).trim()) voiceError("core", "Ask a question first.");

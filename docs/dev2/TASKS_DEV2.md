@@ -12,19 +12,19 @@ Work top to bottom. **Wait** = a task of the other developer that must be merged
 |---|---|---|---|---|---|---|---|
 | 1 | T-001 | Base | S | P0a | 0 | — | In progress (CI green on Windows and macOS; local run pending) |
 | 2 | T-005 | Contracts B | M | P0a | 1 | T-003 | Done (merged, PR #8) |
-| 3 | T-006 | UI plumbing | M | P0a | 1 | T-004 | In review (PR from D2) |
-| 4 | T-008 | Test data | M | P0a | 1–2 | — | In review (PR #13; scripts and ground truth done, audio recordings pending) |
+| 3 | T-006 | UI plumbing | M | P0a | 1 | T-004 | Done (merged, PR #13) |
+| 4 | T-008 | Test data | M | P0a | 1–2 | — | Done (scripts and ground truth merged, PR #13; audio recordings pending) |
 | 5 | T-009 | LLM check | S | P0a | 1 | — | To do |
-| 6 | T-104 | LLM | M | P0a | 2 | — | To do |
-| 7 | T-105 | Secrets | S | P0a | 1–2 | T-003 | In review (PR #13; keychain store built, `voice.*` settings keys still to add) |
+| 6 | T-104 | LLM | M | P0a | 2 | — | In review (clients, router, fallback and repair built; model IDs final after T-009) |
+| 7 | T-105 | Secrets | S | P0a | 1–2 | T-003 | Done (merged, PR #13; `voice.*` settings keys still to add) |
 | 8 | T-106 | Migration 012 | M | P0a | 1–2 | T-003 | Done (merged, PR #8) |
-| 9 | T-202 | Meetings UI | L | P0a | 2–3 | — | To do |
-| 10 | T-203 | Extraction | L | P0a | 3 | — | To do |
-| 11 | T-204 | Review and apply | L | P0a | 3 | — | To do |
+| 9 | T-202 | Meetings UI | L | P0a | 2–3 | — | In review (PR #14; import dialog, status chips, progress, transcript and speakers tabs built on the mock; live data after T-007 and T-201) |
+| 10 | T-203 | Extraction | L | P0a | 3 | — | In review (PR #14; validator, dates and batching built and tested on a scripted LLM; live accuracy T-ML-02 needs keys) |
+| 11 | T-204 | Review and apply | L | P0a | 3 | — | In review (PR #14; backend and review screen built on the mock; live after T-007 wiring) |
 | 12 | T-205 | Recap | S | P0a | 3 | T-102 | To do |
 | 13 | T-206 | Integration C2 | S | P0a | 3 | — | To do |
 | 14 | T-207 | Recorder | L | P0b | 3–4 | T-013 | To do |
-| 15 | T-302 | Decisions | M | P0a | 3 | — | To do |
+| 15 | T-302 | Decisions | M | P0a | 3 | — | In review (PR #14; rules plus intent prompt built; routing accuracy on the real model (T-ML-04) needs keys) |
 | 16 | T-304 | Voice UI | M | P0a | 3–4 | — | To do |
 | 17 | T-305 | Recall | L | P0a | 4 | — | To do |
 | 18 | T-401 | Voice settings | M | P0a | 4–5 | — | To do |

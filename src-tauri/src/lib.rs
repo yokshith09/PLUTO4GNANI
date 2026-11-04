@@ -294,6 +294,7 @@ pub fn run() {
             meeting_ai::meeting_rec_pause,
             meeting_ai::meeting_rec_resume,
             meeting_ai::meeting_rec_stop,
+            meeting_ai::meeting_audio_pick,
             meeting_ai::meeting_import,
             meeting_ai::meeting_job_get,
             meeting_ai::meeting_job_retry,
