@@ -12,7 +12,7 @@ Work top to bottom. **Wait** = a task of the other developer that must be merged
 |---|---|---|---|---|---|---|---|
 | 1 | T-001 | Base | S | P0a | 0 | — | In progress (CI green on Windows and macOS; local run pending) |
 | 2 | T-005 | Contracts B | M | P0a | 1 | T-003 | In review (PR #8; approved by D1) |
-| 3 | T-006 | UI plumbing | M | P0a | 1 | T-004 | To do |
+| 3 | T-006 | UI plumbing | M | P0a | 1 | T-004 | In review (PR from D2) |
 | 4 | T-008 | Test data | M | P0a | 1–2 | — | To do |
 | 5 | T-009 | LLM check | S | P0a | 1 | — | To do |
 | 6 | T-104 | LLM | M | P0a | 2 | — | To do |
