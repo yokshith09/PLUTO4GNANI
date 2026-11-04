@@ -6,7 +6,7 @@ use super::migrate::{self, validate_chain, Migration, MIGRATIONS};
 use super::*;
 use crate::error::ErrorCode;
 
-const EXPECTED_TABLES: [&str; 28] = [
+const EXPECTED_TABLES: [&str; 31] = [
     "app_sessions",
     "courses",
     "daily_logs",
@@ -24,6 +24,7 @@ const EXPECTED_TABLES: [&str; 28] = [
     "note_course",
     "note_labels",
     "notes",
+    "privacy_log",
     "reminders",
     "settings",
     "task_course",
@@ -35,6 +36,8 @@ const EXPECTED_TABLES: [&str; 28] = [
     "tasks",
     "usage_open",
     "user_preferences",
+    "voice_interactions",
+    "voice_proposals",
 ];
 
 fn tables(conn: &Connection) -> Vec<String> {
