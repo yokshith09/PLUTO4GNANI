@@ -13,6 +13,7 @@ It is built on Gnani **Prisma** (speech-to-text) and **Timbre** (text-to-speech)
 |---|---|
 | [`PROJECT_ROADMAP.md`](PROJECT_ROADMAP.md) | **What exists now**, milestones, epics, **task board** (single source for tasks), effort summary, Definition of Done, criteria → evidence |
 | [`FEATURE_ROADMAP.md`](FEATURE_ROADMAP.md) | **Feature view:** phases → milestones → features, who builds each, what exists and what is to build |
+| [`docs/dev1/START_HERE.md`](docs/dev1/START_HERE.md) · [`docs/dev2/START_HERE.md`](docs/dev2/START_HERE.md) | **Start point per developer:** sync, setup, first tasks, owned files |
 | [`HACKATHON_PLAN.md`](HACKATHON_PLAN.md) | Team allocation, dependency order, timeboxed milestones, PR/integration cadence, risks, cut rules, critical path |
 
 ## Documentation layout
