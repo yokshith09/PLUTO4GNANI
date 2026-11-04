@@ -14,8 +14,8 @@ Work top to bottom. **Wait** = a task of the other developer that must be merged
 | 2 | T-005 | Contracts B | M | P0a | 1 | T-003 | Done (merged, PR #8) |
 | 3 | T-006 | UI plumbing | M | P0a | 1 | T-004 | Done (merged, PR #13) |
 | 4 | T-008 | Test data | M | P0a | 1–2 | — | Done (scripts and ground truth merged, PR #13; audio recordings pending) |
-| 5 | T-009 | LLM check | S | P0a | 1 | — | To do |
-| 6 | T-104 | LLM | M | P0a | 2 | — | Done (merged, PR #14; model IDs final after T-009) |
+| 5 | T-009 | LLM check | S | P0a | 1 | — | Done (Gemini 5/5 and Groq 5/5 valid; models fixed; `docs/results/d2-llm-check.md`; Gemini limits to copy from AI Studio) |
+| 6 | T-104 | LLM | M | P0a | 2 | — | Done (merged, PR #14; models fixed by T-009) |
 | 7 | T-105 | Secrets | S | P0a | 1–2 | T-003 | Done (keychain store merged, PR #13; `voice.*` and `llm.*` settings keys in this PR) |
 | 8 | T-106 | Migration 012 | M | P0a | 1–2 | T-003 | Done (merged, PR #8) |
 | 9 | T-202 | Meetings UI | L | P0a | 2–3 | — | Done (merged, PR #14; live data after T-201) |

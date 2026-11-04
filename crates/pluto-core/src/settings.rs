@@ -251,7 +251,7 @@ impl SettingsKey {
             Self::VoiceAudioTags => json!(true),
             Self::VoiceAlwaysOn => json!(false),
             Self::LlmGeminiModel => json!("gemini-2.5-flash"),
-            Self::LlmGroqModel => json!("llama-3.3-70b-versatile"),
+            Self::LlmGroqModel => json!("openai/gpt-oss-120b"),
         }
     }
 
