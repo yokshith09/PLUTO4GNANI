@@ -92,7 +92,7 @@ Tray, hotkeys, notifications, autostart and tracking on a real Windows desktop (
 | T-010 | Gnani check | T-GN-01: examples for a REST clip, a Realtime clip and TTS; record credits used | D1 | P0a | — | S | All three succeed with the team key | T-GN-01 | To do |
 | T-011 | Mic check | T-IPC-01: 10 s capture → Rust → WAV plays back; tone playback; result recorded. If it fails: `cpal` capture in Rust | D1 | P0a | T-012, T-013 | S | Result recorded in `docs/results/` | T-IPC-01 | To do |
 | T-012 | UI audio | `src/audio`: capture worklet (→ 16 kHz PCM16, 1,024-byte frames), frame sender, gapless player with `stop()` | D1 | P0a | — | L | Frames carry the right sample count; no gaps between chunks | Unit (downsampler) | Done (merged, PR #9) |
-| T-013 | Rust audio IPC | `audio_push` (raw body + `x-session-id`), `FrameSink` fan-out, WAV writer, playback Channel with a test tone | D1 | P0a | T-004 | M | Ordered 1,024-byte frames received; tone audible | Unit; T-IPC-01 | In review (router + WAV sink; the `audio_push` command and the test tone are wired with T-007's single registration) |
+| T-013 | Rust audio IPC | `audio_push` (raw body + `x-session-id`), `FrameSink` fan-out, WAV writer, playback Channel with a test tone | D1 | P0a | T-004 | M | Ordered 1,024-byte frames received; tone audible | Unit; T-IPC-01 | Done (merged, PR #10; the `audio_push` command and the test tone are wired with T-007's single registration) |
 
 ### M1 — Voice I/O and LLM live (Day 1–2)
 | ID | Story / Feature | Task → deliverable | Owner | Priority | Dependencies | Est. | Acceptance criteria | Tests | Status |
@@ -103,7 +103,7 @@ Tray, hotkeys, notifications, autostart and tracking on a real Windows desktop (
 | T-104 | LLM | Gemini and Groq clients, router per task, timeouts, one JSON-repair attempt, fallback with `fell_back` flag | D2 | P0a | T-009, T-005 | M | A mocked 429 on the primary is answered by the fallback; both failing → `LlmUnavailable` | T-FH-07, T-FH-08 | To do |
 | T-105 | Secrets | `SecretStore` (OS keychain) for the Gnani, Gemini and Groq keys; key commands; `voice.*` / `llm.*` settings keys through Pluto's settings service | D2 | P0a | T-003 | S | Keys survive a restart; never in the database or logs | T-PR-01 | To do |
 | T-106 | Migration 012 | `012_meeting_ai.sql` + `meeting_ai_store`: recordings, jobs, segments + FTS5, provenance, pipeline status (DATA_SCHEMA) | D2 | P0a | T-003 | M | Chain applies; FTS5 query returns inserted segments; delete cascades | T-DB-01..04 | In review (PR #8; approved by D1) |
-| T-107 | Migration 013 | `013_voice.sql` + `voice_store`: interactions, proposals, privacy log | D1 | P0a | T-003 | S | Chain applies; constraints hold | T-DB-05 | To do |
+| T-107 | Migration 013 | `013_voice.sql` + `voice_store`: interactions, proposals, privacy log | D1 | P0a | T-003 | S | Chain applies; constraints hold | T-DB-05 | In review |
 
 ### M2 — Meeting MVP end to end (Day 2–3)
 | ID | Story / Feature | Task → deliverable | Owner | Priority | Dependencies | Est. | Acceptance criteria | Tests | Status |
