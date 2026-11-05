@@ -462,6 +462,37 @@ pub fn commitment_rows(conn: &Connection) -> Result<Vec<CommitmentRow>> {
     Ok(rows)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JobRow {
+    pub id: String,
+    pub meeting_id: String,
+    pub gnani_job_id: Option<String>,
+    pub status: String,
+    pub error: Option<String>,
+    pub updated_at: i64,
+}
+
+/// The newest transcription attempt of a meeting, if it has any (a hand-typed meeting has none).
+pub fn latest_job(conn: &Connection, meeting_id: &str) -> Result<Option<JobRow>> {
+    Ok(conn
+        .query_row(
+            "SELECT id, meeting_id, gnani_job_id, status, error, updated_at FROM transcription_jobs
+             WHERE meeting_id = ?1 ORDER BY created_at DESC, rowid DESC LIMIT 1",
+            [meeting_id],
+            |r| {
+                Ok(JobRow {
+                    id: r.get(0)?,
+                    meeting_id: r.get(1)?,
+                    gnani_job_id: r.get(2)?,
+                    status: r.get(3)?,
+                    error: r.get(4)?,
+                    updated_at: r.get(5)?,
+                })
+            },
+        )
+        .optional()?)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -787,5 +818,24 @@ mod tests {
             (None, None)
         );
         assert_eq!(a2.meeting_title, "Sync");
+    }
+
+    #[test]
+    fn the_latest_job_is_the_newest_and_typed_meetings_have_none() {
+        let c = db();
+        assert!(latest_job(&c, "m1").unwrap().is_none());
+        insert_job(&c, "j1", "m1", "{}", 1).unwrap();
+        insert_job(&c, "j2", "m1", "{}", 2).unwrap();
+        update_job(&c, "j2", "completed", Some("g-2"), None, 3).unwrap();
+        let j = latest_job(&c, "m1").unwrap().unwrap();
+        assert_eq!(
+            (
+                j.id.as_str(),
+                j.status.as_str(),
+                j.gnani_job_id.as_deref(),
+                j.updated_at
+            ),
+            ("j2", "completed", Some("g-2"), 3)
+        );
     }
 }
