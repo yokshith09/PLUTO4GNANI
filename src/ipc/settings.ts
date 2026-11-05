@@ -31,6 +31,20 @@ export interface Settings {
   /** macOS: also read Safari (can't tell private windows apart). */
   "tracking.safari": boolean;
   "advanced.log_level": "trace" | "debug" | "info" | "warn" | "error";
+  /** Show only the product pages (Today, Tasks, Notes, Projects, Meetings, Voice, Settings). */
+  "advanced.demo_pages_only": boolean;
+  /** Cloud voice is opt-in: audio goes to Gnani and transcript text to Gemini/Groq only when on. */
+  "voice.cloud_enabled": boolean;
+  /** Up to 4 language codes such as `hi-IN`; empty = detect automatically. */
+  "voice.languages": string[];
+  "voice.stt_format": "codemix" | "transliterate" | "verbatim" | "transcribe";
+  "voice.tts_voice": string;
+  "voice.tts_model": string;
+  "voice.audio_tags": boolean;
+  /** Always-on listening is opt-in. */
+  "voice.always_on": boolean;
+  "llm.gemini_model": string;
+  "llm.groq_model": string;
 }
 
 export type SettingsKey = keyof Settings;

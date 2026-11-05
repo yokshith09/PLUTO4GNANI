@@ -3,7 +3,7 @@
 // UI and the Rust side agree. Every state is reachable, including the errors.
 import { emitNamed } from "./namedEvents";
 import type {
-  ApplyExtraction, Commitment, ExtractionResult, PrivacyLogEntry, Proposal, ProposalResponse, RecallAnswer, RecordingSession, SpeakerMapping, ToolResult,
+  ApplyExtraction, AssistantTurn, Commitment, ExtractionResult, PrivacyLogEntry, Proposal, ProposalResponse, RecallAnswer, RecordingSession, SpeakerMapping, ToolResult,
   TranscriptionJob, TranscriptSegment, UsageCounters, VoiceError, VoiceErrorCode, VoiceSettings, VoiceSettingsPatch, VoiceStatus,
 } from "./generated";
 import type { Meeting } from "./types";
@@ -39,8 +39,10 @@ let seq = 0;
 export function createVoiceMock({ now, createMeeting, applyItems, delayMs = 250 }: VoiceMockDeps) {
   const id = (p: string) => `${p}-${++seq}`;
   const settings: VoiceSettings = structuredClone(settingsDefault.data) as VoiceSettings;
-  let status: VoiceStatus = structuredClone(statusIdle.data) as VoiceStatus;
+  // Starts off while cloud voice is off, like the real runtime.
+  let status: VoiceStatus = { ...(structuredClone(statusIdle.data) as VoiceStatus), state: settings.cloud_voice_enabled ? "idle" : "disabled" };
   const pending = new Map<string, Proposal>();
+  const turns: AssistantTurn[] = [];
   const sessions = new Map<string, RecordingSession>();
   const jobs = new Map<string, TranscriptionJob>();
   const mappings = new Map<string, SpeakerMapping[]>();
@@ -115,6 +117,14 @@ export function createVoiceMock({ now, createMeeting, applyItems, delayMs = 250 
       later(() => {
         const p = proposeTask();
         pending.set(p.id, p);
+        const turn: AssistantTurn = {
+          interaction_id: p.interaction_id, transcript: "Kal tak budget report bhejna hai, task add karo", language: "hi-IN",
+          decision: { intent: "task", tool: "task_create", args: p.args, confidence: 0.92, source: "llm", latency_ms: 840 },
+          reply_text: p.summary_text, proposal: p, result: null,
+        };
+        turns.unshift(turn);
+        emitNamed("voice://transcript", { id: `heard-${turn.interaction_id}`, meeting_id: null, source: "realtime", index: 0, start_ms: null, end_ms: null, speaker_label: null, participant: null, text: turn.transcript, language: "hi-IN", relevance: null });
+        emitNamed("voice://turn", turn);
         emitNamed("voice://proposal", p);
         setStatus({ state: "awaiting_approval", detail: null });
       });
@@ -136,11 +146,16 @@ export function createVoiceMock({ now, createMeeting, applyItems, delayMs = 250 
       }
       const response = a.response as ProposalResponse;
       setStatus(idle);
-      if (response.kind === "reject") return { tool: p.tool, ok: false, message: "Okay, I didn't change anything.", record_id: null };
-      return structuredClone(toolOk.data) as ToolResult;
+      const result: ToolResult = response.kind === "reject"
+        ? { tool: p.tool, ok: false, message: "Okay, I didn't change anything.", record_id: null }
+        : structuredClone(toolOk.data) as ToolResult;
+      const turn = turns.find((t) => t.interaction_id === p.interaction_id);
+      if (turn) { turn.result = result; emitNamed("voice://turn", structuredClone(turn)); }
+      return result;
     },
     voice_speak: () => null,
     voice_stop_speaking: () => null,
+    voice_history: (a: Args) => structuredClone(turns.slice(0, Number(a.limit ?? 50))),
     voice_usage: () => structuredClone(usageSample.data) as UsageCounters,
     privacy_log_list: (a: Args) => privacy.slice(0, Number(a.limit ?? 100)),
     privacy_log_clear: () => { privacy.length = 0; return null; },
@@ -204,11 +219,26 @@ export function createVoiceMock({ now, createMeeting, applyItems, delayMs = 250 
       if (!String(a.question).trim()) voiceError("core", "Ask a question first.");
       return structuredClone(recallOk.data) as RecallAnswer;
     },
+    meeting_recap_text: (a: Args) => {
+      const lang = String(a.language);
+      if (!lang) voiceError("core", "Choose a language.");
+      return lang.startsWith("hi")
+        ? "लॉन्च 20 नवंबर को होगा। रवि गुरुवार तक प्राइसिंग पेज की कॉपी पूरी करेंगे और मीना सोमवार तक कानूनी टीम से अनुबंध की पुष्टि करेंगी।"
+        : "Launch is on 20 November, starting with the annual plan. Ravi will finish the pricing page copy by Thursday, and Meena will confirm the vendor contract with legal by Monday.";
+    },
     meeting_recap: (a: Args) => (a.export ? "C:\\Users\\you\\Documents\\Pluto\\recap-launch-sync.mp3" : null),
-    commitments_list: (a: Args): Commitment[] =>
-      items().filter((i) => i.kind === "action_item" && (!a.owner || i.owner === a.owner)).map((i) => ({
-        action_item_id: i.id, meeting_id: "m-as1", meeting_title: "Launch sync", owner: i.owner, body: i.body,
-        due_date: i.due_date, task_id: null, status: "no_task" as const, days_overdue: null,
-      })).filter((c) => !a.status || c.status === a.status),
+    commitments_list: (a: Args): Commitment[] => {
+      const today = new Date(now()).toISOString().slice(0, 10);
+      return items()
+        .filter((i) => i.kind === "action_item" && (!a.owner || i.owner === a.owner))
+        .map((i): Commitment => {
+          const late = i.due_date && i.due_date < today ? Math.round((Date.parse(today) - Date.parse(i.due_date)) / 86_400_000) : null;
+          return {
+            action_item_id: i.id, meeting_id: "m-as1", meeting_title: "Launch sync", owner: i.owner, body: i.body,
+            due_date: i.due_date, task_id: null, status: late ? "overdue" : "no_task", days_overdue: late,
+          };
+        })
+        .filter((c) => !a.status || c.status === a.status);
+    },
   };
 }

@@ -8,6 +8,14 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
+/// Language codes the cloud voice accepts (API_CONTRACTS section 0), and how many may be chosen at once.
+pub const VOICE_LANGUAGES: [&str; 10] = [
+    "hi-IN", "en-IN", "ta-IN", "te-IN", "kn-IN", "ml-IN", "mr-IN", "pa-IN", "bn-IN", "gu-IN",
+];
+pub const VOICE_LANGUAGES_MAX: usize = 4;
+/// Longest voice or model name.
+pub const MODEL_NAME_MAX: usize = 80;
+
 /// How many apps the "do not track" list can hold, and the longest name in it.
 pub const EXCLUDE_APPS_MAX: usize = 200;
 pub const EXCLUDE_APP_LEN_MAX: usize = 100;
@@ -79,6 +87,29 @@ pub enum SettingsKey {
     // advanced
     #[serde(rename = "advanced.log_level")]
     AdvancedLogLevel,
+    /// Show only the product pages (Today, Tasks, Notes, Projects, Meetings, Voice, Settings). Off by default.
+    #[serde(rename = "advanced.demo_pages_only")]
+    AdvancedDemoPagesOnly,
+
+    // voice and language models (T-105/T-401; API keys are never settings, see secrets.rs)
+    #[serde(rename = "voice.cloud_enabled")]
+    VoiceCloudEnabled,
+    #[serde(rename = "voice.languages")]
+    VoiceLanguages,
+    #[serde(rename = "voice.stt_format")]
+    VoiceSttFormat,
+    #[serde(rename = "voice.tts_voice")]
+    VoiceTtsVoice,
+    #[serde(rename = "voice.tts_model")]
+    VoiceTtsModel,
+    #[serde(rename = "voice.audio_tags")]
+    VoiceAudioTags,
+    #[serde(rename = "voice.always_on")]
+    VoiceAlwaysOn,
+    #[serde(rename = "llm.gemini_model")]
+    LlmGeminiModel,
+    #[serde(rename = "llm.groq_model")]
+    LlmGroqModel,
 }
 
 /// A global shortcut as stored: `Mod+…+Key`, e.g. `CmdOrCtrl+Shift+L`. It needs Ctrl, Alt, Cmd
@@ -136,6 +167,16 @@ impl SettingsKey {
             Self::TrackingSites => "tracking.sites",
             Self::TrackingSafari => "tracking.safari",
             Self::AdvancedLogLevel => "advanced.log_level",
+            Self::AdvancedDemoPagesOnly => "advanced.demo_pages_only",
+            Self::VoiceCloudEnabled => "voice.cloud_enabled",
+            Self::VoiceLanguages => "voice.languages",
+            Self::VoiceSttFormat => "voice.stt_format",
+            Self::VoiceTtsVoice => "voice.tts_voice",
+            Self::VoiceTtsModel => "voice.tts_model",
+            Self::VoiceAudioTags => "voice.audio_tags",
+            Self::VoiceAlwaysOn => "voice.always_on",
+            Self::LlmGeminiModel => "llm.gemini_model",
+            Self::LlmGroqModel => "llm.groq_model",
         }
     }
 
@@ -163,6 +204,16 @@ impl SettingsKey {
             "tracking.sites" => Some(Self::TrackingSites),
             "tracking.safari" => Some(Self::TrackingSafari),
             "advanced.log_level" => Some(Self::AdvancedLogLevel),
+            "advanced.demo_pages_only" => Some(Self::AdvancedDemoPagesOnly),
+            "voice.cloud_enabled" => Some(Self::VoiceCloudEnabled),
+            "voice.languages" => Some(Self::VoiceLanguages),
+            "voice.stt_format" => Some(Self::VoiceSttFormat),
+            "voice.tts_voice" => Some(Self::VoiceTtsVoice),
+            "voice.tts_model" => Some(Self::VoiceTtsModel),
+            "voice.audio_tags" => Some(Self::VoiceAudioTags),
+            "voice.always_on" => Some(Self::VoiceAlwaysOn),
+            "llm.gemini_model" => Some(Self::LlmGeminiModel),
+            "llm.groq_model" => Some(Self::LlmGroqModel),
             _ => None,
         }
     }
@@ -191,6 +242,16 @@ impl SettingsKey {
             Self::TrackingSites => json!(false),
             Self::TrackingSafari => json!(false),
             Self::AdvancedLogLevel => json!("info"),
+            Self::AdvancedDemoPagesOnly => json!(false),
+            Self::VoiceCloudEnabled => json!(false),
+            Self::VoiceLanguages => json!([]),
+            Self::VoiceSttFormat => json!("codemix"),
+            Self::VoiceTtsVoice => json!("Arya"),
+            Self::VoiceTtsModel => json!("timbre-v3"),
+            Self::VoiceAudioTags => json!(true),
+            Self::VoiceAlwaysOn => json!(false),
+            Self::LlmGeminiModel => json!("gemini-2.5-flash"),
+            Self::LlmGroqModel => json!("openai/gpt-oss-120b"),
         }
     }
 
@@ -206,7 +267,11 @@ impl SettingsKey {
             | Self::PetMedia
             | Self::TrackingApps
             | Self::TrackingSites
-            | Self::TrackingSafari => {
+            | Self::TrackingSafari
+            | Self::VoiceCloudEnabled
+            | Self::VoiceAudioTags
+            | Self::VoiceAlwaysOn
+            | Self::AdvancedDemoPagesOnly => {
                 if !value.is_boolean() {
                     return Err(AppError::validation(self.as_str(), "must be a boolean"));
                 }
@@ -300,6 +365,50 @@ impl SettingsKey {
                     }
                 }
             }
+            Self::VoiceLanguages => {
+                let list = value.as_array().ok_or_else(|| {
+                    AppError::validation(self.as_str(), "must be a list of language codes")
+                })?;
+                let ok = list.len() <= VOICE_LANGUAGES_MAX
+                    && list
+                        .iter()
+                        .all(|v| v.as_str().is_some_and(|c| VOICE_LANGUAGES.contains(&c)))
+                    && list.iter().enumerate().all(|(i, v)| !list[..i].contains(v));
+                if !ok {
+                    return Err(AppError::validation(
+                        self.as_str(),
+                        "must be up to 4 different Indian language codes such as hi-IN",
+                    ));
+                }
+            }
+            Self::VoiceSttFormat => {
+                let s = value
+                    .as_str()
+                    .ok_or_else(|| AppError::validation(self.as_str(), "must be a string"))?;
+                if !["codemix", "transliterate", "verbatim", "transcribe"].contains(&s) {
+                    return Err(AppError::validation(
+                        self.as_str(),
+                        "must be 'codemix', 'transliterate', 'verbatim' or 'transcribe'",
+                    ));
+                }
+            }
+            Self::VoiceTtsVoice
+            | Self::VoiceTtsModel
+            | Self::LlmGeminiModel
+            | Self::LlmGroqModel => {
+                let s = value
+                    .as_str()
+                    .ok_or_else(|| AppError::validation(self.as_str(), "must be a string"))?;
+                let plain = s
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '/' | ':'));
+                if s.is_empty() || s.chars().count() > MODEL_NAME_MAX || !plain {
+                    return Err(AppError::validation(
+                        self.as_str(),
+                        "must be a short name made of letters, digits and - _ . / :",
+                    ));
+                }
+            }
             Self::AdvancedLogLevel => {
                 let s = value
                     .as_str()
@@ -351,6 +460,16 @@ pub fn all_defaults() -> BTreeMap<String, Value> {
         SettingsKey::TrackingSites,
         SettingsKey::TrackingSafari,
         SettingsKey::AdvancedLogLevel,
+        SettingsKey::AdvancedDemoPagesOnly,
+        SettingsKey::VoiceCloudEnabled,
+        SettingsKey::VoiceLanguages,
+        SettingsKey::VoiceSttFormat,
+        SettingsKey::VoiceTtsVoice,
+        SettingsKey::VoiceTtsModel,
+        SettingsKey::VoiceAudioTags,
+        SettingsKey::VoiceAlwaysOn,
+        SettingsKey::LlmGeminiModel,
+        SettingsKey::LlmGroqModel,
     ]
     .iter()
     .map(|k| (k.as_str().to_string(), k.default_value()))
@@ -398,7 +517,17 @@ mod tests {
     #[test]
     fn all_defaults_exist() {
         let defaults = all_defaults();
-        assert_eq!(defaults.len(), 21);
+        assert_eq!(defaults.len(), 31);
+        assert_eq!(
+            defaults["advanced.demo_pages_only"],
+            json!(false),
+            "all pages show unless asked"
+        );
+        assert_eq!(
+            defaults["voice.cloud_enabled"],
+            json!(false),
+            "cloud voice is opt-in"
+        );
         assert_eq!(
             defaults["pet.hover_card"],
             json!(true),
@@ -523,5 +652,44 @@ mod tests {
     fn parse_invalid_keys() {
         assert_eq!(SettingsKey::parse("invalid.key"), None);
         assert_eq!(SettingsKey::parse(""), None);
+    }
+
+    #[test]
+    fn voice_and_model_settings_are_checked() {
+        use SettingsKey::*;
+        assert!(VoiceCloudEnabled.validate(&json!(true)).is_ok());
+        assert!(VoiceCloudEnabled.validate(&json!("yes")).is_err());
+        assert!(VoiceLanguages.validate(&json!([])).is_ok());
+        assert!(VoiceLanguages
+            .validate(&json!(["hi-IN", "en-IN", "ta-IN", "kn-IN"]))
+            .is_ok());
+        for bad in [
+            json!(["hi-IN", "en-IN", "ta-IN", "kn-IN", "te-IN"]),
+            json!(["fr-FR"]),
+            json!(["hi-IN", "hi-IN"]),
+            json!("hi-IN"),
+            json!([1]),
+        ] {
+            assert!(VoiceLanguages.validate(&bad).is_err(), "{bad}");
+        }
+        assert!(VoiceSttFormat.validate(&json!("codemix")).is_ok());
+        assert!(VoiceSttFormat.validate(&json!("loud")).is_err());
+        assert!(LlmGeminiModel.validate(&json!("gemini-2.5-flash")).is_ok());
+        assert!(LlmGroqModel.validate(&json!("openai/gpt-oss-120b")).is_ok());
+        for bad in [
+            json!(""),
+            json!("has space"),
+            json!("a".repeat(81)),
+            json!(5),
+            json!("x;rm"),
+        ] {
+            assert!(LlmGroqModel.validate(&bad).is_err(), "{bad}");
+        }
+        assert_eq!(SettingsKey::parse("voice.always_on"), Some(VoiceAlwaysOn));
+        assert_eq!(
+            VoiceAlwaysOn.default_value(),
+            json!(false),
+            "always-on listening is opt-in"
+        );
     }
 }

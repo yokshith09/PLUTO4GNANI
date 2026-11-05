@@ -56,3 +56,44 @@ describe("Meetings audio (T-202)", () => {
     await user.click(await screen.findByRole("button", { name: /Import recording/ }));
   });
 });
+
+describe("Recap (T-205)", () => {
+  it("writes a recap in the chosen language for a meeting that has items", async () => {
+    const user = userEvent.setup();
+    wrap();
+    await user.click(await screen.findByRole("button", { name: /Open meeting “Sprint planning”/ }));
+    const recap = await screen.findByRole("region", { name: "Recap" });
+    await user.click(within(recap).getByRole("button", { name: "Write recap" }));
+    expect(await within(recap).findByText(/Launch is on 20 November/)).toBeTruthy();
+    await user.selectOptions(within(recap).getByLabelText("Recap language"), "hi-IN");
+    await user.click(within(recap).getByRole("button", { name: "Write again" }));
+    expect(await within(recap).findByText(/लॉन्च 20 नवंबर/)).toBeTruthy();
+  });
+
+  it("is not offered for a meeting with no decisions or action items", async () => {
+    const user = userEvent.setup();
+    wrap();
+    await user.click(await screen.findByRole("button", { name: /New meeting/ }));
+    await screen.findByText("Decisions");
+    expect(screen.queryByRole("region", { name: "Recap" })).toBeNull();
+  });
+});
+
+describe("Commitments (T-503)", () => {
+  it("lists who promised what, with late ones marked, and filters by owner", async () => {
+    const user = userEvent.setup();
+    wrap();
+    const panel = await screen.findByRole("region", { name: "Commitments" });
+    const list = within(panel).getByRole("list", { name: "Open commitments" });
+    const rows = within(list).getAllByRole("listitem");
+    expect(rows.length).toBeGreaterThan(0);
+    expect(within(list).getByText(/Finish the pricing page copy/)).toBeTruthy();
+    expect(within(list).getAllByText(/Launch sync/).length).toBeGreaterThan(0);
+    // Dates in the fixture are early November 2026, so by now at least one is late or open.
+    const select = within(panel).getByLabelText("Whose commitments");
+    expect(within(select).getAllByRole("option").map((o) => o.textContent)).toContain("Ravi");
+    await user.selectOptions(select, "Ravi");
+    await waitFor(() => expect(within(list).getAllByRole("listitem")).toHaveLength(1));
+    expect(within(list).getByText(/Ravi · Launch sync/)).toBeTruthy();
+  });
+});

@@ -26,6 +26,8 @@ import { TimePage } from "@/features/time/TimePage";
 import { TodayOverviewPage } from "@/features/overview/TodayOverviewPage";
 import { MeetingsPage } from "@/features/meetings/MeetingsPage";
 import { VoicePage } from "@/features/voice/VoicePage";
+import { VoiceBar } from "@/features/voice/VoiceBar";
+import { VoiceProvider } from "@/features/voice/VoiceProvider";
 import { ProjectsPage } from "@/features/projects/ProjectsPage";
 import { StudyPage } from "@/features/student/StudyPage";
 import type { TaskFocus } from "@/features/overview/YesterdayLine";
@@ -34,6 +36,8 @@ import { Tour } from "@/features/guide/Tour";
 import { ROLE_PREF, parseRole } from "@/features/guide/roles";
 import { TOUR_PREF, parseTour, stepsFor } from "@/features/guide/tourSteps";
 import { usePref } from "@/features/guide/usePref";
+import { isPageVisible } from "@/features/shell/pages";
+import { useSetting } from "@/hooks/useTheme";
 
 const PAGES: readonly Page[] = ["today", "tasks", "time", "notes", "projects", "study", "meetings", "voice", "archive", "bin", "character", "mcp", "settings"];
 
@@ -48,6 +52,10 @@ function Screen() {
 
   useBusSync();
   const theme = useTheme();
+  // Demo view (T-402): only the product pages. Anything hidden is skipped, and a hidden page that
+  // was open (or remembered from last time) falls back to Today.
+  const [demoSetting] = useSetting("advanced.demo_pages_only");
+  const demoOnly = demoSetting === true;
   const firstRun = useFirstRun();
   const tour = usePref(TOUR_PREF, parseTour);
   const role = usePref(ROLE_PREF, parseRole);
@@ -76,10 +84,14 @@ function Screen() {
     void ipc.prefsGet<NotesLayout>("ui.notes_layout").then((l) => (l === "grid" || l === "list") && setLayoutState(l));
   }, []);
   const setPage = (p: Page) => {
+    if (!isPageVisible(p, demoOnly)) return;
     setPageState(p);
     setTaskFocus(null);
     void ipc.prefsSet("ui.last_view", p);
   };
+  useEffect(() => {
+    if (!isPageVisible(page, demoOnly)) setPageState("today");
+  }, [page, demoOnly]);
   const setLayout = (l: NotesLayout) => {
     setLayoutState(l);
     void ipc.prefsSet("ui.notes_layout", l);
@@ -158,7 +170,7 @@ function Screen() {
       <Sidebar
         page={page}
         counts={{ today: agenda.open, notes: allNotes.length, bin: bin.length }}
-        onPage={setPage} isDark={theme.isDark} onToggleTheme={() => void theme.toggle()}
+        onPage={setPage} demoOnly={demoOnly} isDark={theme.isDark} onToggleTheme={() => void theme.toggle()}
       />
       <div className="flex min-w-0 flex-1 flex-col">
         <main className="min-h-0 flex-1 overflow-y-auto">
@@ -186,6 +198,7 @@ function Screen() {
             {page === "mcp" && <ComingSoon icon={<Plug />} title="MCP" description="Connect external tools and services to Pluto through the Model Context Protocol. This arrives in a later release." />}
           </div>
         </main>
+        <VoiceBar onOpenSettings={() => setPage("settings")} />
       </div>
       <NoteEditor noteId={editing} onClose={() => setEditing(null)} />
       {tour.value === "pending" && role.value && (
@@ -201,7 +214,9 @@ export function App() {
   return (
     <QueryClientProvider client={client}>
       <TooltipProvider delayDuration={300}>
-        <Screen />
+        <VoiceProvider>
+          <Screen />
+        </VoiceProvider>
       </TooltipProvider>
     </QueryClientProvider>
   );

@@ -145,9 +145,9 @@ Exact contracts are in API_CONTRACTS §2.
 
 - **Fallback triggers:** timeout (intent 4 s, others 30 s), 429, 5xx, or invalid JSON after one repair attempt.
 - **Free-tier limits (third-party, March 2026; re-check on Day 1, L-1):**
-  - Groq: 30–60 requests/min. Token limits per minute range from 6,000 to 30,000 depending on the model (e.g. `llama-3.3-70b-versatile`: 1,000 requests/day, 12,000 tokens/min).
+  - Groq, measured on the team account for `openai/gpt-oss-120b`: 1,000 requests/day and 8,000 tokens/minute (response headers). A short voice command uses about 500 tokens, so about 15 a minute; longer prompts hit the token limit first, and the router then falls back to Gemini.
   - Gemini: limits shown in AI Studio. Not verified here.
-- **Model IDs:** chosen on Day 1 from each provider's current list. Candidates on Groq: `llama-3.3-70b-versatile`, `openai/gpt-oss-120b`. On Gemini: the current Flash model.
+- **Model IDs (chosen 4 Nov 2026, `docs/results/d2-llm-check.md`):** Gemini `gemini-2.5-flash`, Groq `openai/gpt-oss-120b` (`llama-3.3-70b-versatile` is not available on the team's Groq account). Both are settings (`llm.gemini_model`, `llm.groq_model`), so a model can be swapped without a release.
 - **Grounding (enforced in Rust):**
   - Every extracted item must reference an existing segment id; otherwise it is dropped.
   - Recall answers may quote only retrieved segments; otherwise the answer is "Not found in your meetings."

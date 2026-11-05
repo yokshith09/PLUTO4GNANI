@@ -14,7 +14,7 @@ use serde_json::{json, Value};
 use super::shared::{invalid_output, map_status, map_transport, missing_key, with_repair};
 
 pub const DEFAULT_BASE_URL: &str = "https://api.groq.com";
-pub const DEFAULT_MODEL: &str = "llama-3.3-70b-versatile";
+pub const DEFAULT_MODEL: &str = "openai/gpt-oss-120b";
 
 pub struct GroqClient {
     http: reqwest::Client,

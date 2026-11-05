@@ -10,6 +10,7 @@
 
 pub mod gemini;
 pub mod groq;
+pub mod privacy;
 pub mod router;
 mod shared;
 

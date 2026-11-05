@@ -82,10 +82,14 @@ pub(crate) mod fixtures {
         include_str!("../../test-data/fixtures/voice/usage_counters.sample.json");
     pub const TRANSCRIPTION_JOB: &str =
         include_str!("../../test-data/fixtures/meetings/transcription_job.completed.json");
+    // Only the fixture test uses these two now: the real commands read the database.
+    #[cfg(test)]
     pub const TRANSCRIPT_AS1: &str =
         include_str!("../../test-data/fixtures/meetings/transcript_segments.as1.json");
+    #[cfg(test)]
     pub const EXTRACTION_AS1: &str =
         include_str!("../../test-data/fixtures/meetings/extraction_result.as1.json");
+    #[cfg(test)]
     pub const RECALL_OK: &str =
         include_str!("../../test-data/fixtures/meetings/recall_answer.ok.json");
 }
