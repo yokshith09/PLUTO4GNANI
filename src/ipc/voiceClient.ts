@@ -2,8 +2,9 @@
 // not the base's `AppError`: use `voiceErrorMessage` for them. `audio_push` lives in `src/audio`.
 import { Channel } from "@tauri-apps/api/core";
 import { call } from "./transport";
+import type { PlaybackMessage } from "@/audio/ipc";
 import type {
-  PrivacyLogEntry, ProposalResponse, ToolResult, UsageCounters, VoiceError, VoiceSettings, VoiceSettingsPatch, VoiceStatus,
+  AssistantTurn, PrivacyLogEntry, ProposalResponse, ToolResult, UsageCounters, VoiceError, VoiceSettings, VoiceSettingsPatch, VoiceStatus,
 } from "./generated";
 
 export type KeyAccount = "gnani" | "gemini" | "groq";
@@ -22,10 +23,12 @@ export const voiceIpc = {
   proposalRespond: (proposalId: string, response: ProposalResponse) =>
     call<ToolResult>("voice_proposal_respond", { proposalId, response }),
   /** PCM16 24 kHz chunks arrive on `playback`; `src/audio` plays them. */
-  speak: (text: string, language: string | null, playback: Channel<ArrayBuffer>) =>
+  speak: (text: string, language: string | null, playback: Channel<PlaybackMessage>) =>
     call<null>("voice_speak", { text, language, playback }),
   stopSpeaking: () => call<null>("voice_stop_speaking"),
   usage: () => call<UsageCounters>("voice_usage"),
+  /** The assistant's turns, newest first. */
+  history: (limit = 50) => call<AssistantTurn[]>("voice_history", { limit }),
   privacyLogList: (limit = 100) => call<PrivacyLogEntry[]>("privacy_log_list", { limit }),
   privacyLogClear: () => call<null>("privacy_log_clear"),
 } as const;

@@ -1,63 +1,60 @@
-import { useEffect, useState } from "react";
-import { Mic } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { MessageSquare } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/features/shell/PageHeader";
 import { onNamed } from "@/ipc/namedEvents";
-import { voiceErrorMessage, voiceIpc } from "@/ipc/voiceClient";
-import type { Proposal, ToolResult, VoiceStatus } from "@/ipc/generated";
+import { voiceIpc } from "@/ipc/voiceClient";
+import type { AssistantTurn } from "@/ipc/generated";
 
-const LABEL: Record<VoiceStatus["state"], string> = {
-  disabled: "Cloud voice is off", idle: "Ready", listening: "Listening…", thinking: "Thinking…",
-  awaiting_approval: "Waiting for your answer", executing: "Working…", speaking: "Speaking…", recording: "Recording a meeting", error: "Something went wrong",
+export const INTENT_LABEL: Record<AssistantTurn["decision"]["intent"], string> = {
+  meeting_query: "Meetings", task: "Tasks", reminder: "Reminders", note: "Notes", focus: "Focus", project: "Projects",
+  approval: "Yes", reject: "No", cancel: "Cancel", noise: "Not a command",
 };
 
-/** Placeholder screen for T-006: it proves the commands and events work against the mock.
- *  The real design (UI_UX_SPEC) replaces it in T-303. */
+function outcome(t: AssistantTurn): { text: string; tone: "success" | "destructive" | "default" } {
+  if (t.result) return { text: t.result.message, tone: t.result.ok ? "success" : "default" };
+  if (t.proposal) return { text: "Waiting for your answer", tone: "default" };
+  return { text: t.decision.tool ? "Answered" : "No action", tone: "default" };
+}
+
+function Turn({ t }: { t: AssistantTurn }) {
+  const o = outcome(t);
+  return (
+    <li className="space-y-1.5 px-4 py-3">
+      <p className="text-[13.5px] font-medium">“{t.transcript}”</p>
+      <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+        <Badge>{INTENT_LABEL[t.decision.intent]}</Badge>
+        <Badge variant={t.decision.source === "rules" ? "default" : "violet"} title={t.decision.source === "rules" ? "Answered by a built-in rule: nothing was sent to the cloud for the decision" : "Understood by the language service"}>
+          {t.decision.source === "rules" ? "Rule" : "AI"}
+        </Badge>
+        {t.decision.tool && <Badge title="The action Pluto picked">{t.decision.tool}</Badge>}
+        {t.language && <span className="text-muted-foreground">{t.language}</span>}
+        <span className="text-muted-foreground tabular-nums">{t.decision.latency_ms} ms</span>
+      </div>
+      {t.reply_text && <p className="text-[13px] text-muted-foreground">Pluto: {t.reply_text}</p>}
+      <p className={o.tone === "success" ? "text-[12px] text-success" : "text-[12px] text-muted-foreground"}>{o.text}</p>
+    </li>
+  );
+}
+
+/** The Voice page (spec S3): how to use it, and the history of what you asked and what happened. */
 export function VoicePage() {
-  const [status, setStatus] = useState<VoiceStatus | null>(null);
-  const [proposal, setProposal] = useState<Proposal | null>(null);
-  const [result, setResult] = useState<ToolResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    void voiceIpc.status().then(setStatus);
-    const offs = [
-      onNamed("voice://status", setStatus),
-      onNamed("voice://proposal", (p) => { setProposal(p); setResult(null); }),
-      onNamed("voice://error", (e) => setError(e.message)),
-    ];
-    return () => offs.forEach((off) => off());
-  }, []);
-
-  const run = async (f: () => Promise<unknown>) => {
-    setError(null);
-    try { await f(); } catch (e) { setError(voiceErrorMessage(e)); }
-  };
-  const listening = status?.state === "listening";
-  const answer = (kind: "approve" | "reject") => run(async () => {
-    if (!proposal) return;
-    setResult(await voiceIpc.proposalRespond(proposal.id, { kind }));
-    setProposal(null);
-  });
+  const qc = useQueryClient();
+  const { data: turns = [] } = useQuery({ queryKey: ["voice-history"], queryFn: () => voiceIpc.history(50) });
+  useEffect(() => onNamed("voice://turn", () => void qc.invalidateQueries({ queryKey: ["voice-history"] })), [qc]);
 
   return (
-    <div className="space-y-6">
-      <PageHeader title="Voice" description="Talk to Pluto. Nothing changes until you approve it." />
-      <p role="status" className="text-[13px] text-muted-foreground">{status ? LABEL[status.state] : "…"}{status?.detail ? ` · ${status.detail}` : ""}</p>
-      <Button onClick={() => void run(() => (listening ? voiceIpc.pttStop() : voiceIpc.pttStart()))}>
-        <Mic className="size-4" />{listening ? "Stop and send" : "Push to talk"}
-      </Button>
-      {error && <p role="alert" className="text-[13px] text-destructive">{error}</p>}
-      {proposal && (
-        <section aria-label="Approval" className="max-w-md space-y-3 rounded-lg border p-4">
-          <p className="text-[13.5px]">{proposal.summary_text}</p>
-          <div className="flex gap-2">
-            <Button onClick={() => void answer("approve")}>Approve</Button>
-            <Button variant="outline" onClick={() => void answer("reject")}>Reject</Button>
-          </div>
-        </section>
-      )}
-      {result && <p className="text-[13px]">{result.message}</p>}
+    <div className="mx-auto max-w-3xl">
+      <PageHeader title="Voice" description="Press Talk at the bottom of the window and speak. Pluto asks before it changes anything." />
+      <section aria-label="History" className="overflow-hidden rounded-xl border bg-card">
+        <h2 className="flex items-center gap-2 border-b px-4 py-2.5 text-sm font-semibold"><MessageSquare className="size-4 text-muted-foreground" />History</h2>
+        {turns.length === 0 ? (
+          <p className="px-4 py-10 text-center text-[13px] text-muted-foreground">Nothing yet. Try “Aaj ke tasks dikhao” or “Add a task to send the report tomorrow”.</p>
+        ) : (
+          <ol aria-label="Assistant history" className="divide-y">{turns.map((t) => <Turn key={t.interaction_id} t={t} />)}</ol>
+        )}
+      </section>
     </div>
   );
 }

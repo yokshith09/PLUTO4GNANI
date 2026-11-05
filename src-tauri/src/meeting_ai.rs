@@ -276,11 +276,13 @@ pub async fn meeting_recap(
     Ok(None)
 }
 
+/// Real: who promised what across all meetings, and what is late (T-503).
 #[tauri::command]
 pub async fn commitments_list(
     owner: Option<String>,
     status: Option<CommitmentStatus>,
+    core: State<'_, Core>,
+    shell: State<'_, MeetingShell>,
 ) -> VoiceResult<Vec<Commitment>> {
-    let _ = (owner, status);
-    Ok(Vec::new())
+    shell.ai(&core).commitments(owner.as_deref(), status).await
 }

@@ -7,6 +7,7 @@ import { useMeetings, useParticipantSuggestions } from "@/hooks/usePluto";
 import { mod } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 import type { MeetingFilters, MeetingSummary } from "@/ipc";
+import { CommitmentsPanel } from "./CommitmentsPanel";
 import { ImportDialog } from "./ImportDialog";
 import { MeetingEditor } from "./MeetingEditor";
 
@@ -94,6 +95,7 @@ export function MeetingsPage({ newTick = 0 }: { newTick?: number }) {
         )}
       />
       <ImportDialog open={importing} onClose={() => setImporting(false)} onImported={(id) => { setImporting(false); setOpen({ id, key: Date.now() }); }} />
+      <CommitmentsPanel />
       <div className="mb-3 flex flex-wrap items-end gap-2">
         <div className="space-y-1">
           <label htmlFor="meetings-who" className="text-[11px] font-medium text-muted-foreground">Participant</label>

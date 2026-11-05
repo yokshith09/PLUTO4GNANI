@@ -164,12 +164,7 @@ async fn main() {
             "GEMINI_MODEL",
             "gemini-2.5-flash",
         ),
-        (
-            "Groq",
-            "GROQ_API_KEY",
-            "GROQ_MODEL",
-            "llama-3.3-70b-versatile",
-        ),
+        ("Groq", "GROQ_API_KEY", "GROQ_MODEL", "openai/gpt-oss-120b"),
     ] {
         let Ok(key) = std::env::var(key_var) else {
             println!("{name}: {key_var} is not set in .env, skipped");

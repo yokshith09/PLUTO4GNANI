@@ -269,3 +269,59 @@ async fn outbound_calls_reach_the_privacy_log_without_content() {
         ("groq", "intent", 640)
     );
 }
+
+#[tokio::test]
+async fn commitments_follow_the_task_from_open_to_done() {
+    use pluto_contracts::meeting::CommitmentStatus;
+    use pluto_core::tasks::{self, TaskStatus};
+    let r = rig().await;
+    r.llm.push_json(json!({"items": [
+        {"kind":"action_item","body":"Finish the copy.","owner":"Ravi","due_phrase":"Thursday","segment_id":"s2","quote":"copy Thursday tak complete kar dunga"},
+        {"kind":"action_item","body":"Call the vendor.","owner":"Asha","segment_id":"s1","quote":"annual plan se start karenge"},
+    ]}));
+    let ex = r.ai.extract(&r.meeting_id).await.unwrap();
+    let e = |i: usize, task| EditedItem {
+        item_id: ex.items[i].id.clone(),
+        body: ex.items[i].body.clone(),
+        owner: ex.items[i].owner.clone(),
+        due_date: ex.items[i].due_date.clone(),
+        priority: None,
+        create_task: task,
+    };
+    let out =
+        r.ai.apply(&ApplyExtraction {
+            meeting_id: r.meeting_id.clone(),
+            accepted: vec![e(0, true), e(1, false)],
+        })
+        .await
+        .unwrap();
+    assert_eq!(out.tasks_created, 1);
+
+    let all = r.ai.commitments(None, None).await.unwrap();
+    assert_eq!(all.len(), 2);
+    let ravi = r.ai.commitments(Some("ravi"), None).await.unwrap();
+    assert_eq!(
+        (ravi.len(), ravi[0].status, ravi[0].due_date.as_deref()),
+        (1, CommitmentStatus::Open, Some("2026-11-05"))
+    );
+    let asha = r.ai.commitments(Some("Asha"), None).await.unwrap();
+    assert_eq!(
+        (asha[0].status, asha[0].task_id.clone()),
+        (CommitmentStatus::NoTask, None)
+    );
+
+    let task_id = ravi[0].task_id.clone().unwrap();
+    tasks::transition(&r.db, &*r.clock, &task_id, TaskStatus::Completed)
+        .await
+        .unwrap();
+    assert_eq!(
+        r.ai.commitments(Some("Ravi"), None).await.unwrap()[0].status,
+        CommitmentStatus::Done
+    );
+    assert!(r
+        .ai
+        .commitments(None, Some(CommitmentStatus::Open))
+        .await
+        .unwrap()
+        .is_empty());
+}

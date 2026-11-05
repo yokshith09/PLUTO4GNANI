@@ -3,6 +3,7 @@
 //! Owner: **D2**. `extraction`: T-203. Recall, recap and the recorder follow.
 
 pub mod apply;
+pub mod commitments;
 pub mod extraction;
 pub mod recall;
 pub mod recap;
