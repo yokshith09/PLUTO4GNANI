@@ -10,8 +10,10 @@
 //! - `voice_speak` speaks with **Timbre** (T-102) when Cloud voice is on — nothing leaves the device
 //!   otherwise (NF-02) — and plays a local 1 s test tone when it is off (kept for the mic check,
 //!   T-011). `voice_stop_speaking` stops either (barge-in).
-//! - Everything else returns the shared fixtures in `test-data/fixtures/voice/`, so the UI can be
-//!   built against the real shell before the assistant (T-303) lands.
+//! - The assistant (`pluto_voice::assistant`, T-303) answers each turn: reads at once, writes as a
+//!   proposal that runs only after `voice_proposal_respond` (or a spoken "haan"). Decisions come
+//!   from D2's decider (rules, then Gemini with Groq as fallback).
+//! - `voice_usage` still returns the sample in `test-data/fixtures/voice/` (T-506).
 //!
 //! New commands return `VoiceError`, never core's `AppError` (API_CONTRACTS §0).
 
@@ -22,8 +24,8 @@ use pluto_contracts::error::{VoiceError, VoiceErrorCode, VoiceResult};
 use pluto_contracts::meeting::{SegmentSource, TranscriptSegment, TranscriptionJob};
 use pluto_contracts::speech::{FrameSink, RtConfig, RtTranscript, TextToSpeech, TtsRequest};
 use pluto_contracts::voice::{
-    AssistantTurn, Destination, PrivacyLogEntry, ProposalResponse, ToolResult, UsageCounters,
-    VoiceMode, VoiceSettings, VoiceSettingsPatch, VoiceState, VoiceStatus,
+    AssistantTurn, Destination, PrivacyLogEntry, Proposal, ProposalResponse, ToolResult,
+    UsageCounters, VoiceMode, VoiceSettings, VoiceSettingsPatch, VoiceState, VoiceStatus,
 };
 use pluto_core::clock::Clock;
 use pluto_core::db::Database;
@@ -33,9 +35,14 @@ use pluto_gnani::batch::BatchClient;
 use pluto_gnani::http::{ApiKeySource, GnaniHttp, OutboundLog, OutboundRecord, DEFAULT_BASE_URL};
 use pluto_gnani::realtime::{self, RealtimeClient};
 use pluto_gnani::tts::{TimbreClient, DEFAULT_WS_URL};
+use pluto_intel::decide::DefaultDecider;
+use pluto_intel::llm::gemini::{self, GeminiClient};
+use pluto_intel::llm::groq::{self, GroqClient};
+use pluto_intel::llm::router::Router;
+use pluto_voice::assistant::{Assistant, AssistantEvents};
 use pluto_voice::audio::{AudioRouter, WavSink};
 use pluto_voice::meeting_jobs::{JobEvents, MeetingJobs};
-use pluto_voice::runtime::{NoAssistant, RuntimeEvents, VoiceRuntime};
+use pluto_voice::runtime::{RuntimeEvents, TurnHandler, VoiceRuntime};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use tauri::ipc::{Channel, InvokeBody, InvokeResponseBody, Request};
@@ -82,6 +89,7 @@ pub(crate) fn fixture<T: DeserializeOwned>(json: &'static str) -> VoiceResult<T>
 pub(crate) mod fixtures {
     pub const SETTINGS_DEFAULT: &str =
         include_str!("../../test-data/fixtures/voice/voice_settings.default.json");
+    #[cfg(test)]
     pub const TOOL_RESULT_OK: &str =
         include_str!("../../test-data/fixtures/voice/tool_result.ok.json");
     pub const USAGE_SAMPLE: &str =
@@ -188,6 +196,19 @@ impl RuntimeEvents for AppRuntimeEvents {
     }
 }
 
+/// Sends assistant turns and proposals to the windows (`voice://turn`, `voice://proposal`).
+struct AppAssistantEvents(AppHandle);
+
+impl AssistantEvents for AppAssistantEvents {
+    fn turn(&self, turn: &AssistantTurn) {
+        emit(&self.0, events::TURN, turn);
+    }
+
+    fn proposal(&self, proposal: &Proposal) {
+        emit(&self.0, events::PROPOSAL, proposal);
+    }
+}
+
 /// What the voice shell keeps between calls. Managed by Tauri (`app.manage`).
 pub(crate) struct VoiceShell {
     pub(crate) router: Arc<AudioRouter>,
@@ -199,6 +220,8 @@ pub(crate) struct VoiceShell {
     log: Arc<dyn OutboundLog>,
     /// The state machine: push-to-talk, Realtime, barge-in (T-301).
     pub(crate) runtime: Arc<VoiceRuntime>,
+    /// Tools, proposals and the approval gate (T-303).
+    assistant: Arc<Assistant>,
     /// Stub settings until the settings service keys land (T-105 / T-401). Shared with the
     /// runtime, which reads the language and format for each press.
     settings: Arc<Mutex<VoiceSettings>>,
@@ -245,7 +268,10 @@ impl VoiceShell {
     ) -> VoiceResult<Self> {
         let secrets: Arc<dyn SecretStore> = Arc::new(KeychainSecrets);
         let keys: Arc<dyn ApiKeySource> = Arc::new(KeychainKey(secrets.clone()));
-        let log: Arc<dyn OutboundLog> = Arc::new(DbLog { db, clock });
+        let log: Arc<dyn OutboundLog> = Arc::new(DbLog {
+            db: db.clone(),
+            clock: clock.clone(),
+        });
         let http = Arc::new(GnaniHttp::new(DEFAULT_BASE_URL, keys.clone(), log.clone())?);
         let tts = Arc::new(TimbreClient::new(
             DEFAULT_WS_URL,
@@ -264,17 +290,28 @@ impl VoiceShell {
         ));
         let enabled = lock_settings(&settings).cloud_voice_enabled
             && secrets.has(Account::Gnani).unwrap_or(false);
+        let gemini = GeminiClient::new(gemini::DEFAULT_MODEL, secrets.clone(), log.clone());
+        let groq = GroqClient::new(groq::DEFAULT_MODEL, secrets.clone(), log.clone());
+        let llm = Arc::new(Router::new(Arc::new(gemini), Arc::new(groq)));
+        let assistant = Arc::new(Assistant::new(
+            db,
+            clock,
+            Arc::new(DefaultDecider::new(llm)),
+            Arc::new(AppAssistantEvents(app.clone())),
+        ));
+        let handler: Arc<dyn TurnHandler> = Arc::new(assistant.clone());
         let for_config = settings.clone();
         let runtime = Arc::new(
             VoiceRuntime::new(
                 stt,
                 router.clone(),
                 Arc::new(AppRuntimeEvents(app.clone())),
-                Arc::new(NoAssistant),
+                handler,
                 enabled,
             )
             .with_config(move || rt_config(&lock_settings(&for_config))),
         );
+        assistant.attach(&runtime);
         Ok(Self {
             router,
             secrets,
@@ -282,6 +319,7 @@ impl VoiceShell {
             http,
             log,
             runtime,
+            assistant,
             settings,
             data_dir,
             app,
@@ -571,14 +609,15 @@ pub async fn audio_push(
     Ok(())
 }
 
-/// Stub: always the sample "ok" result. T-303 runs the proposal gate here.
+/// The answer to a proposal (the card's Approve / Reject / Edit). The **only** path from a
+/// proposal to a write: the store's gate lets it run once, and only inside its 30 s window.
 #[tauri::command]
 pub async fn voice_proposal_respond(
     proposal_id: String,
     response: ProposalResponse,
+    shell: State<'_, VoiceShell>,
 ) -> VoiceResult<ToolResult> {
-    let _ = (proposal_id, response);
-    fixture(fixtures::TOOL_RESULT_OK)
+    shell.assistant.respond(&proposal_id, response).await
 }
 
 /// Speaks `text` to `playback` (PCM16 24 kHz chunks), reporting Speaking then Idle. With Cloud
@@ -646,11 +685,13 @@ pub async fn voice_usage() -> VoiceResult<UsageCounters> {
     fixture(fixtures::USAGE_SAMPLE)
 }
 
-/// Stub: empty until the assistant records turns (T-303).
+/// The assistant's turns this session, newest first (each is also in `voice_interactions`).
 #[tauri::command]
-pub async fn voice_history(limit: u32) -> VoiceResult<Vec<AssistantTurn>> {
-    let _ = limit;
-    Ok(Vec::new())
+pub async fn voice_history(
+    limit: u32,
+    shell: State<'_, VoiceShell>,
+) -> VoiceResult<Vec<AssistantTurn>> {
+    Ok(shell.assistant.history(limit.clamp(1, 200) as usize))
 }
 
 /// Real: newest first from `privacy_log`.
