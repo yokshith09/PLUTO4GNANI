@@ -532,8 +532,13 @@ async fn refused_settings_end_the_session_once_instead_of_reconnecting_forever()
     assert_eq!(errors.len(), 1, "{seen:?}");
     assert_eq!(errors[0].code, VoiceErrorCode::GnaniBadRequest);
     assert!(!errors[0].retryable);
-    assert!(!errors[0].message.contains("invalid"), "Gnani's text is never copied");
-    assert!(!seen.iter().any(|e| matches!(e, RtEvent::Reconnecting { .. })));
+    assert!(
+        !errors[0].message.contains("invalid"),
+        "Gnani's text is never copied"
+    );
+    assert!(!seen
+        .iter()
+        .any(|e| matches!(e, RtEvent::Reconnecting { .. })));
     assert!(matches!(seen.last(), Some(RtEvent::Closed)));
     assert_eq!(server.conns().len(), 1, "no reconnect");
 }
