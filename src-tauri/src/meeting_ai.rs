@@ -3,7 +3,8 @@
 //!
 //! Every stub returns the shared fixtures in `test-data/fixtures/meetings/` (the AS-1 meeting), so
 //! the Meetings UI can be built against the real shell. Real now: recording needs consent,
-//! and transcript, speakers, extraction, apply and items run on `pluto_intel::meeting::service`.
+//! import and transcription jobs run on `pluto_voice::meeting_jobs` (T-201), and transcript,
+//! speakers, extraction, apply and items run on `pluto_intel::meeting::service`.
 //!
 //! Not registered yet (P1, arrive with their tasks): `glossary_list` / `glossary_add` /
 //! `glossary_delete` (T-505) and `compare_transcribe` (T-504).
@@ -25,11 +26,11 @@ use pluto_intel::llm::groq::{self, GroqClient};
 use pluto_intel::llm::privacy::DbOutboundLog;
 use pluto_intel::llm::router::Router;
 use pluto_intel::meeting::service::MeetingAi;
+use pluto_voice::meeting_jobs::MeetingJobs;
 use tauri::ipc::{Channel, InvokeResponseBody, JavaScriptChannelId};
 use tauri::{AppHandle, State, Webview};
 use tauri_plugin_dialog::DialogExt;
 
-use crate::voice::{fixture, fixtures};
 use crate::Core;
 
 /// Open recording sessions (stub: in memory only).
@@ -155,27 +156,34 @@ pub async fn meeting_audio_pick(app: AppHandle) -> VoiceResult<Option<String>> {
     Ok(Some(path.to_string_lossy().into_owned()))
 }
 
-/// Stub: the completed AS-1 job. T-201 uploads the file to Gnani Batch.
+/// Creates the meeting, copies the file into the data folder and starts the Gnani Batch job
+/// (T-201, D1). Progress arrives as `meeting://job`. `path` must come from `meeting_audio_pick`.
 #[tauri::command]
 pub async fn meeting_import(
     title: String,
     participants: Vec<String>,
     path: String,
+    jobs: State<'_, Arc<MeetingJobs>>,
 ) -> VoiceResult<TranscriptionJob> {
-    let _ = (title, participants, path);
-    fixture(fixtures::TRANSCRIPTION_JOB)
+    jobs.import(&title, &participants, std::path::Path::new(&path))
+        .await
 }
 
 #[tauri::command]
-pub async fn meeting_job_get(meeting_id: String) -> VoiceResult<Option<TranscriptionJob>> {
-    let _ = meeting_id;
-    fixture(fixtures::TRANSCRIPTION_JOB).map(Some)
+pub async fn meeting_job_get(
+    meeting_id: String,
+    jobs: State<'_, Arc<MeetingJobs>>,
+) -> VoiceResult<Option<TranscriptionJob>> {
+    jobs.job(&meeting_id).await
 }
 
+/// Transcribes the meeting's audio again (after a failure or gaps) as a new job.
 #[tauri::command]
-pub async fn meeting_job_retry(meeting_id: String) -> VoiceResult<TranscriptionJob> {
-    let _ = meeting_id;
-    fixture(fixtures::TRANSCRIPTION_JOB)
+pub async fn meeting_job_retry(
+    meeting_id: String,
+    jobs: State<'_, Arc<MeetingJobs>>,
+) -> VoiceResult<TranscriptionJob> {
+    jobs.retry(&meeting_id).await
 }
 
 /// The transcript from the database, with each speaker's name once mapped.

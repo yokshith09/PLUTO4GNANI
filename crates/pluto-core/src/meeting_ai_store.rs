@@ -209,6 +209,105 @@ pub fn update_job(
     Ok(())
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JobRow {
+    pub id: String,
+    pub meeting_id: String,
+    pub gnani_job_id: Option<String>,
+    pub status: String,
+    pub config_json: String,
+    pub error: Option<String>,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+/// The newest transcription attempt of a meeting (added by D1 for T-201).
+pub fn latest_job(conn: &Connection, meeting_id: &str) -> Result<Option<JobRow>> {
+    Ok(conn
+        .query_row(
+            "SELECT id, meeting_id, gnani_job_id, status, config_json, error, created_at, updated_at
+             FROM transcription_jobs WHERE meeting_id = ?1
+             ORDER BY created_at DESC, rowid DESC LIMIT 1",
+            [meeting_id],
+            |r| {
+                Ok(JobRow {
+                    id: r.get(0)?,
+                    meeting_id: r.get(1)?,
+                    gnani_job_id: r.get(2)?,
+                    status: r.get(3)?,
+                    config_json: r.get(4)?,
+                    error: r.get(5)?,
+                    created_at: r.get(6)?,
+                    updated_at: r.get(7)?,
+                })
+            },
+        )
+        .optional()?)
+}
+
+// ---- recordings: the audio files of a meeting (T-201 import, T-207 recorder) ----------------
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecordingRow {
+    pub id: String,
+    pub meeting_id: String,
+    /// `mic`, `import` or `loopback`.
+    pub source: String,
+    pub chunk_index: u32,
+    pub offset_ms: i64,
+    pub file_path: String,
+    pub duration_ms: Option<i64>,
+    /// Required unless `source` is `import` (the table's CHECK enforces it).
+    pub consent_confirmed_at: Option<i64>,
+    pub created_at: i64,
+}
+
+/// Added by D1 for T-201.
+pub fn insert_recording(conn: &Connection, r: &RecordingRow) -> Result<()> {
+    conn.execute(
+        "INSERT INTO meeting_recordings (id, meeting_id, source, chunk_index, offset_ms, file_path,
+           duration_ms, consent_confirmed_at, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        params![
+            r.id,
+            r.meeting_id,
+            r.source,
+            r.chunk_index,
+            r.offset_ms,
+            r.file_path,
+            r.duration_ms,
+            r.consent_confirmed_at,
+            r.created_at
+        ],
+    )?;
+    Ok(())
+}
+
+/// A meeting's audio in order. Added by D1 for T-201.
+pub fn list_recordings(conn: &Connection, meeting_id: &str) -> Result<Vec<RecordingRow>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, meeting_id, source, chunk_index, offset_ms, file_path, duration_ms,
+           consent_confirmed_at, created_at
+         FROM meeting_recordings WHERE meeting_id = ?1 ORDER BY chunk_index, offset_ms",
+    )?;
+    let rows = stmt
+        .query_map([meeting_id], |r| {
+            Ok(RecordingRow {
+                id: r.get(0)?,
+                meeting_id: r.get(1)?,
+                source: r.get(2)?,
+                chunk_index: r.get(3)?,
+                offset_ms: r.get(4)?,
+                file_path: r.get(5)?,
+                duration_ms: r.get(6)?,
+                consent_confirmed_at: r.get(7)?,
+                created_at: r.get(8)?,
+            })
+        })?
+        .collect::<rusqlite::Result<_>>()?;
+    Ok(rows)
+}
+
 // ---- provenance: where each approved item came from (T-204) ---------------------------------
 
 /// The segment and words an approved item was taken from, plus what the model said about it.
@@ -787,5 +886,42 @@ mod tests {
             (None, None)
         );
         assert_eq!(a2.meeting_title, "Sync");
+    }
+
+    #[test]
+    fn jobs_and_recordings_round_trip() {
+        let c = db();
+        assert!(latest_job(&c, "m1").unwrap().is_none());
+        insert_job(&c, "j1", "m1", "{}", 10).unwrap();
+        insert_job(&c, "j2", "m1", "{\"a\":1}", 20).unwrap();
+        update_job(&c, "j2", "failed", Some("g-2"), Some("no"), 30).unwrap();
+        let j = latest_job(&c, "m1").unwrap().unwrap();
+        assert_eq!((j.id.as_str(), j.status.as_str()), ("j2", "failed"));
+        assert_eq!(
+            (j.gnani_job_id.as_deref(), j.error.as_deref()),
+            (Some("g-2"), Some("no"))
+        );
+
+        let rec = |id: &str, i: u32, source: &str, consent: Option<i64>| RecordingRow {
+            id: id.into(),
+            meeting_id: "m1".into(),
+            source: source.into(),
+            chunk_index: i,
+            offset_ms: i64::from(i) * 270_000,
+            file_path: format!("/a/{id}.wav"),
+            duration_ms: Some(270_000),
+            consent_confirmed_at: consent,
+            created_at: 1,
+        };
+        insert_recording(&c, &rec("r1", 1, "mic", Some(5))).unwrap();
+        insert_recording(&c, &rec("r0", 0, "import", None)).unwrap();
+        // The table refuses mic audio without consent.
+        assert!(insert_recording(&c, &rec("r2", 2, "mic", None)).is_err());
+        let ids: Vec<_> = list_recordings(&c, "m1")
+            .unwrap()
+            .into_iter()
+            .map(|r| r.id)
+            .collect();
+        assert_eq!(ids, ["r0", "r1"]);
     }
 }

@@ -17,6 +17,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use pluto_contracts::error::{VoiceError, VoiceErrorCode, VoiceResult};
+use pluto_contracts::meeting::TranscriptionJob;
 use pluto_contracts::speech::{FrameSink, TextToSpeech, TtsRequest};
 use pluto_contracts::voice::{
     AssistantTurn, Destination, PrivacyLogEntry, ProposalResponse, ToolResult, UsageCounters,
@@ -26,9 +27,11 @@ use pluto_core::clock::Clock;
 use pluto_core::db::Database;
 use pluto_core::secrets::{Account, KeychainSecrets, SecretStore};
 use pluto_core::voice_store;
+use pluto_gnani::batch::BatchClient;
 use pluto_gnani::http::{ApiKeySource, GnaniHttp, OutboundLog, OutboundRecord, DEFAULT_BASE_URL};
 use pluto_gnani::tts::{TimbreClient, DEFAULT_WS_URL};
 use pluto_voice::audio::{AudioRouter, WavSink};
+use pluto_voice::meeting_jobs::{JobEvents, MeetingJobs};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use tauri::ipc::{Channel, InvokeBody, InvokeResponseBody, Request};
@@ -80,9 +83,10 @@ pub(crate) mod fixtures {
         include_str!("../../test-data/fixtures/voice/tool_result.ok.json");
     pub const USAGE_SAMPLE: &str =
         include_str!("../../test-data/fixtures/voice/usage_counters.sample.json");
+    // Only the fixture test uses these now: the real commands read the database.
+    #[cfg(test)]
     pub const TRANSCRIPTION_JOB: &str =
         include_str!("../../test-data/fixtures/meetings/transcription_job.completed.json");
-    // Only the fixture test uses these two now: the real commands read the database.
     #[cfg(test)]
     pub const TRANSCRIPT_AS1: &str =
         include_str!("../../test-data/fixtures/meetings/transcript_segments.as1.json");
@@ -141,11 +145,24 @@ impl OutboundLog for DbLog {
     }
 }
 
+/// Sends every transcription-job update to the windows as `meeting://job`.
+struct AppJobEvents(AppHandle);
+
+impl JobEvents for AppJobEvents {
+    fn job(&self, job: &TranscriptionJob) {
+        emit(&self.0, events::MEETING_JOB, job);
+    }
+}
+
 /// What the voice shell keeps between calls. Managed by Tauri (`app.manage`).
 pub(crate) struct VoiceShell {
     pub(crate) router: Arc<AudioRouter>,
     secrets: Arc<dyn SecretStore>,
     tts: Arc<TimbreClient>,
+    /// The shared Gnani client (one request in flight per family) and privacy log, also used by
+    /// meeting transcription (T-201).
+    http: Arc<GnaniHttp>,
+    log: Arc<dyn OutboundLog>,
     inner: Mutex<Inner>,
 }
 
@@ -165,11 +182,18 @@ impl VoiceShell {
         let keys: Arc<dyn ApiKeySource> = Arc::new(KeychainKey(secrets.clone()));
         let log: Arc<dyn OutboundLog> = Arc::new(DbLog { db, clock });
         let http = Arc::new(GnaniHttp::new(DEFAULT_BASE_URL, keys.clone(), log.clone())?);
-        let tts = Arc::new(TimbreClient::new(DEFAULT_WS_URL, http, keys, log));
+        let tts = Arc::new(TimbreClient::new(
+            DEFAULT_WS_URL,
+            http.clone(),
+            keys,
+            log.clone(),
+        ));
         Ok(Self {
             router: Arc::new(AudioRouter::new()),
             secrets,
             tts,
+            http,
+            log,
             inner: Mutex::new(Inner {
                 status: VoiceStatus::new(VoiceState::Idle),
                 settings: fixture(fixtures::SETTINGS_DEFAULT)?,
@@ -177,6 +201,24 @@ impl VoiceShell {
                 speaking: None,
             }),
         })
+    }
+
+    /// Meeting transcription jobs on the shared Gnani client; updates go out as `meeting://job`.
+    pub(crate) fn meeting_jobs(
+        &self,
+        app: AppHandle,
+        db: Arc<Database>,
+        clock: Arc<dyn Clock>,
+        audio_dir: std::path::PathBuf,
+    ) -> VoiceResult<Arc<MeetingJobs>> {
+        let api = Arc::new(BatchClient::new(self.http.clone(), self.log.clone())?);
+        Ok(Arc::new(MeetingJobs::new(
+            db,
+            clock,
+            api,
+            audio_dir,
+            Arc::new(AppJobEvents(app)),
+        )))
     }
 
     fn lock(&self) -> MutexGuard<'_, Inner> {
