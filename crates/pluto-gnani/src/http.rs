@@ -409,6 +409,15 @@ pub fn map_status(family: Family, status: StatusCode, body: &str) -> VoiceError 
             VoiceErrorCode::GnaniUpstream,
             "Gnani is having trouble right now. Try again shortly.",
         ),
+        // Batch errors are `{error, message}` (Create Job reference).
+        _ if family == Family::Batch
+            && json.get("error").and_then(|v| v.as_str()) == Some("FILE_TOO_LARGE") =>
+        {
+            VoiceError::new(
+                VoiceErrorCode::FileTooLarge,
+                "That file is too large for Gnani (10 MB at most).",
+            )
+        }
         _ if family == Family::Batch => VoiceError::new(
             VoiceErrorCode::BatchJobFailed,
             "Gnani couldn't run that transcription job.",
@@ -657,7 +666,7 @@ mod tests {
 
     #[tokio::test]
     async fn other_4xx_are_not_retried_and_map_to_the_contract_codes() {
-        let cases: [(u16, &str, Family, VoiceErrorCode); 6] = [
+        let cases: [(u16, &str, Family, VoiceErrorCode); 7] = [
             (401, "{}", Family::SttRest, VoiceErrorCode::InvalidApiKey),
             (
                 403,
@@ -676,6 +685,12 @@ mod tests {
                 r#"{"error":"x","message":"bad config"}"#,
                 Family::Batch,
                 VoiceErrorCode::BatchJobFailed,
+            ),
+            (
+                400,
+                r#"{"error":"FILE_TOO_LARGE","message":"too big"}"#,
+                Family::Batch,
+                VoiceErrorCode::FileTooLarge,
             ),
             (413, "", Family::Batch, VoiceErrorCode::FileTooLarge),
             (415, "", Family::SttRest, VoiceErrorCode::UnsupportedAudio),

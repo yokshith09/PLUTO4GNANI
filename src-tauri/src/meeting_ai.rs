@@ -3,7 +3,8 @@
 //!
 //! Every stub returns the shared fixtures in `test-data/fixtures/meetings/` (the AS-1 meeting), so
 //! the Meetings UI can be built against the real shell. Real now: recording needs consent,
-//! and transcript, speakers, extraction, apply and items run on `pluto_intel::meeting::service`.
+//! import and transcription jobs run on `pluto_voice::meeting_jobs` (T-201), and transcript,
+//! speakers, extraction, apply and items run on `pluto_intel::meeting::service`.
 //!
 //! Not registered yet (P1, arrive with their tasks): `glossary_list` / `glossary_add` /
 //! `glossary_delete` (T-505) and `compare_transcribe` (T-504).
@@ -25,11 +26,11 @@ use pluto_intel::llm::groq::{self, GroqClient};
 use pluto_intel::llm::privacy::DbOutboundLog;
 use pluto_intel::llm::router::Router;
 use pluto_intel::meeting::service::MeetingAi;
+use pluto_voice::meeting_jobs::MeetingJobs;
 use tauri::ipc::{Channel, InvokeResponseBody, JavaScriptChannelId};
 use tauri::{AppHandle, State, Webview};
 use tauri_plugin_dialog::DialogExt;
 
-use crate::voice::{fixture, fixtures};
 use crate::Core;
 
 /// Open recording sessions (stub: in memory only).
@@ -155,64 +156,34 @@ pub async fn meeting_audio_pick(app: AppHandle) -> VoiceResult<Option<String>> {
     Ok(Some(path.to_string_lossy().into_owned()))
 }
 
-/// The audio types Gnani accepts, and the biggest file we send (API_CONTRACTS section 2.3).
-const AUDIO_EXTENSIONS: [&str; 5] = ["wav", "mp3", "m4a", "flac", "ogg"];
-const MAX_IMPORT_BYTES: u64 = 10 * 1024 * 1024;
-
-/// Checks the file for real (type, size), makes the meeting, and, **until Gnani Batch (T-201) is
-/// connected**, gives it the AS-1 sample transcript instead of uploading the audio. Nothing leaves
-/// the computer. D1's T-201 replaces the sample step with the real upload and transcript.
+/// Creates the meeting, copies the file into the data folder and starts the Gnani Batch job
+/// (T-201, D1). Progress arrives as `meeting://job`. `path` must come from `meeting_audio_pick`.
 #[tauri::command]
 pub async fn meeting_import(
     title: String,
     participants: Vec<String>,
     path: String,
-    core: State<'_, Core>,
-    shell: State<'_, MeetingShell>,
+    jobs: State<'_, Arc<MeetingJobs>>,
 ) -> VoiceResult<TranscriptionJob> {
-    let file = std::path::Path::new(&path);
-    let ext = file
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(str::to_ascii_lowercase)
-        .unwrap_or_default();
-    if !AUDIO_EXTENSIONS.contains(&ext.as_str()) {
-        return Err(VoiceError::new(
-            VoiceErrorCode::UnsupportedAudio,
-            "Choose a WAV, MP3, M4A, FLAC or OGG file.",
-        ));
-    }
-    let size = std::fs::metadata(file)
-        .map_err(|_| VoiceError::new(VoiceErrorCode::Core, "Pluto can't open that file."))?
-        .len();
-    if size > MAX_IMPORT_BYTES {
-        return Err(VoiceError::new(VoiceErrorCode::FileTooLarge, "That recording is over 10 MB. Cut it into shorter parts and import them one at a time."));
-    }
-    let sample: Vec<TranscriptSegment> = fixture(fixtures::TRANSCRIPT_AS1)?;
-    shell
-        .ai(&core)
-        .import_with_sample(&title, participants, sample)
+    jobs.import(&title, &participants, std::path::Path::new(&path))
         .await
 }
 
-/// The newest job of a meeting from the database; `None` for a meeting typed by hand.
 #[tauri::command]
 pub async fn meeting_job_get(
     meeting_id: String,
-    core: State<'_, Core>,
-    shell: State<'_, MeetingShell>,
+    jobs: State<'_, Arc<MeetingJobs>>,
 ) -> VoiceResult<Option<TranscriptionJob>> {
-    shell.ai(&core).job(&meeting_id).await
+    jobs.job(&meeting_id).await
 }
 
-/// Retrying a transcription needs the real Gnani Batch job (T-201).
+/// Transcribes the meeting's audio again (after a failure or gaps) as a new job.
 #[tauri::command]
-pub async fn meeting_job_retry(meeting_id: String) -> VoiceResult<TranscriptionJob> {
-    let _ = meeting_id;
-    Err(VoiceError::new(
-        VoiceErrorCode::Core,
-        "Retrying a transcription arrives with the Gnani connection.",
-    ))
+pub async fn meeting_job_retry(
+    meeting_id: String,
+    jobs: State<'_, Arc<MeetingJobs>>,
+) -> VoiceResult<TranscriptionJob> {
+    jobs.retry(&meeting_id).await
 }
 
 /// The transcript from the database, with each speaker's name once mapped.
