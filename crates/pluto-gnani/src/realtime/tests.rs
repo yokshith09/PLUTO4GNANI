@@ -152,7 +152,7 @@ async fn serve(script: Script) -> Server {
                             let reply = serde_json::json!({
                                 "type": "transcript", "text": text, "segment_id": format!("seg-{n}"),
                                 "segment_index": 0, "detected_language_code": "hi-IN",
-                                "audio_duration_ms": 1536.4, "latency": 0.42
+                                "audio_duration_ms": 1536.4, "latency": 420
                             });
                             let _ = ws.send(Message::Text(reply.to_string().into())).await;
                         }
@@ -522,10 +522,11 @@ fn ascii_json_escapes_everything_outside_ascii() {
 }
 
 #[test]
-fn latency_is_read_as_seconds_when_small_and_milliseconds_when_large() {
-    assert_eq!(latency_ms(0.42), 420);
-    assert_eq!(latency_ms(1.5), 1500);
-    assert_eq!(latency_ms(420.0), 420);
+fn latency_is_milliseconds_as_gnani_sends_it() {
+    assert_eq!(latency_ms(74.0), 74);
+    assert_eq!(latency_ms(25.4), 25);
+    assert_eq!(latency_ms(-3.0), 0);
+    assert_eq!(latency_ms(f64::NAN), 0);
 }
 
 #[test]
