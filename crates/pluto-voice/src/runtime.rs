@@ -16,6 +16,7 @@
 //! which is the session the UI's capture sends frames for. A press under 300 ms is ignored; a
 //! press held over 60 s is committed automatically.
 
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
@@ -247,7 +248,53 @@ impl TurnHandler for NoAssistant {
 
 /// Sends captured frames toward Realtime. Never blocks: when the buffer is full (Realtime far
 /// behind), the frame is refused and the router reports it once.
-struct RealtimeSink(mpsc::Sender<RtInput>);
+struct RealtimeSink(mpsc::Sender<RtInput>, Arc<CaptureStats>);
+
+/// What reached Rust during one press: how many frames, and the loudest sample. Tells "no audio
+/// arrived" and "only silence arrived" apart from "Gnani heard nothing it could transcribe".
+#[derive(Debug, Default)]
+pub struct CaptureStats {
+    frames: AtomicU64,
+    peak: AtomicU32,
+}
+
+impl CaptureStats {
+    pub fn add(&self, pcm: &[u8]) {
+        self.frames.fetch_add(1, Ordering::Relaxed);
+        let peak = pcm
+            .chunks_exact(2)
+            .map(|b| u32::from(i16::from_le_bytes([b[0], b[1]]).unsigned_abs()))
+            .max()
+            .unwrap_or(0);
+        self.peak.fetch_max(peak, Ordering::Relaxed);
+    }
+
+    pub fn frames(&self) -> u64 {
+        self.frames.load(Ordering::Relaxed)
+    }
+
+    /// The loudest sample (0–32768).
+    pub fn peak(&self) -> u32 {
+        self.peak.load(Ordering::Relaxed)
+    }
+}
+
+/// Below this peak (about −50 dBFS) a press is taken as silence: a muted or wrong microphone.
+pub const SILENCE_PEAK: u32 = 100;
+
+/// What to say when a press produced no words, from what actually arrived.
+pub fn nothing_heard_detail(frames: u64, peak: u32) -> String {
+    if frames == 0 {
+        "No sound reached Pluto from the microphone. Check that Windows lets Pluto use it \
+         (Settings → Privacy → Microphone)."
+            .into()
+    } else if peak < SILENCE_PEAK {
+        "Pluto only heard silence. Check the microphone isn't muted and is the one Windows uses."
+            .into()
+    } else {
+        "Didn't catch that. Hold the key while you speak.".into()
+    }
+}
 
 impl FrameSink for RealtimeSink {
     fn name(&self) -> &'static str {
@@ -255,6 +302,7 @@ impl FrameSink for RealtimeSink {
     }
 
     fn push(&self, frame: &AudioFrame) -> VoiceResult<()> {
+        self.1.add(&frame.pcm);
         self.0
             .try_send(RtInput::Frame(frame.pcm.clone()))
             .map_err(|_| {
@@ -276,6 +324,7 @@ struct Listen {
     pressed: Instant,
     /// Into the session's buffer (frames, then commit / close).
     tx: mpsc::Sender<RtInput>,
+    stats: Arc<CaptureStats>,
 }
 
 struct Inner {
@@ -492,8 +541,9 @@ impl VoiceRuntime {
                     Effect::Open => {
                         let session_id = pluto_core::ids::new_id();
                         let (tx, rx) = mpsc::channel(self.policy.buffer_frames + 2);
+                        let stats = Arc::new(CaptureStats::default());
                         let mut sinks: Vec<Arc<dyn FrameSink>> =
-                            vec![Arc::new(RealtimeSink(tx.clone()))];
+                            vec![Arc::new(RealtimeSink(tx.clone(), stats.clone()))];
                         sinks.extend((self.extra_sinks)(&session_id));
                         if let Err(e) = self.router.open(&session_id, sinks) {
                             // Only a duplicate id fails here, which new_id() rules out.
@@ -503,12 +553,28 @@ impl VoiceRuntime {
                             session_id: session_id.clone(),
                             pressed: Instant::now(),
                             tx,
+                            stats: stats.clone(),
                         });
                         inner.turn_session = Some(session_id.clone());
-                        work.push(Work::Listen(session_id, rx));
+                        work.push(Work::Listen(session_id, rx, stats));
                     }
                     Effect::Commit => {
                         if let Some(l) = inner.listen.take() {
+                            tracing::info!(
+                                frames = l.stats.frames(),
+                                peak = l.stats.peak(),
+                                held_ms = l.pressed.elapsed().as_millis() as u64,
+                                "push-to-talk released"
+                            );
+                            if cfg!(debug_assertions) {
+                                // Dev builds: visible in the `pnpm tauri dev` terminal.
+                                eprintln!(
+                                    "[voice] released after {} ms: {} frames reached Rust, peak {} of 32768",
+                                    l.pressed.elapsed().as_millis(),
+                                    l.stats.frames(),
+                                    l.stats.peak()
+                                );
+                            }
                             self.router.close(&l.session_id);
                             let _ = l.tx.try_send(RtInput::Commit);
                         }
@@ -541,9 +607,9 @@ impl VoiceRuntime {
                 },
                 detail: match state {
                     VoiceState::Error => detail,
-                    VoiceState::Idle if input == Input::NothingHeard => {
+                    VoiceState::Idle if input == Input::NothingHeard => detail.or_else(|| {
                         Some("Didn't catch that. Hold the key while you speak.".into())
-                    }
+                    }),
                     _ => None,
                 },
                 session_id: inner.listen.as_ref().map(|l| l.session_id.clone()),
@@ -557,9 +623,9 @@ impl VoiceRuntime {
         }
         for w in work {
             match w {
-                Work::Listen(session_id, rx) => {
+                Work::Listen(session_id, rx, stats) => {
                     let me = Arc::clone(self);
-                    tokio::spawn(async move { me.listen(session_id, rx).await });
+                    tokio::spawn(async move { me.listen(session_id, rx, stats).await });
                 }
             }
         }
@@ -568,7 +634,12 @@ impl VoiceRuntime {
 
     /// One push-to-talk session: connect, forward frames, and after the commit wait for the
     /// final words, then think.
-    async fn listen(self: Arc<Self>, session_id: String, mut rx: mpsc::Receiver<RtInput>) {
+    async fn listen(
+        self: Arc<Self>,
+        session_id: String,
+        mut rx: mpsc::Receiver<RtInput>,
+        stats: Arc<CaptureStats>,
+    ) {
         // Held too long: commit for the person.
         let me = Arc::clone(&self);
         let sid = session_id.clone();
@@ -656,7 +727,16 @@ impl VoiceRuntime {
             .collect::<Vec<_>>()
             .join(" ");
         if text.is_empty() {
-            let _ = self.apply(Input::NothingHeard, None);
+            let detail = nothing_heard_detail(stats.frames(), stats.peak());
+            tracing::info!(
+                frames = stats.frames(),
+                peak = stats.peak(),
+                "push-to-talk ended with no words"
+            );
+            if cfg!(debug_assertions) {
+                eprintln!("[voice] no words came back: {detail}");
+            }
+            let _ = self.apply(Input::NothingHeard, Some(detail));
             return;
         }
         let heard = Heard {
@@ -698,7 +778,7 @@ impl VoiceRuntime {
 }
 
 enum Work {
-    Listen(String, mpsc::Receiver<RtInput>),
+    Listen(String, mpsc::Receiver<RtInput>, Arc<CaptureStats>),
 }
 
 /// The language spoken longest across the turn's transcripts (by audio, else by count).

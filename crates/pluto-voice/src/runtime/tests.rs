@@ -276,9 +276,67 @@ async fn silence_comes_back_to_idle_after_three_seconds_with_a_hint() {
         waited >= Duration::from_secs(3) && waited < Duration::from_millis(3_100),
         "{waited:?}"
     );
+    // The frames were all zeros: the message says it was silence, not that Gnani missed it.
     let last = r.rt.status();
-    assert!(last.detail.unwrap().starts_with("Didn't catch that"));
+    assert!(last.detail.unwrap().starts_with("Pluto only heard silence"));
     assert!(r.assistant.heard.lock().unwrap().is_empty());
+}
+
+/// A loud frame (a square wave at about half scale).
+fn loud_frame() -> Vec<u8> {
+    (0..FRAME_BYTES / 2)
+        .flat_map(|i| {
+            if (i / 20) % 2 == 0 {
+                16_000i16
+            } else {
+                -16_000
+            }
+            .to_le_bytes()
+        })
+        .collect()
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_hint_says_whether_audio_arrived_was_silent_or_was_not_understood() {
+    // Nothing arrived at all (the page never sent frames).
+    let r = rig(MockStt::new(Vec::<String>::new()), Turn::Done);
+    r.rt.ptt_down().unwrap();
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    r.rt.ptt_up();
+    until(&r, S::Idle).await;
+    assert!(r
+        .rt
+        .status()
+        .detail
+        .unwrap()
+        .starts_with("No sound reached Pluto"));
+
+    // Real sound arrived, but no words came back.
+    let session = r.rt.ptt_down().unwrap();
+    for _ in 0..15 {
+        r.router.push(&session, loud_frame()).unwrap();
+        tokio::time::sleep(Duration::from_millis(32)).await;
+    }
+    r.rt.ptt_up();
+    until(&r, S::Idle).await;
+    assert!(r
+        .rt
+        .status()
+        .detail
+        .unwrap()
+        .starts_with("Didn't catch that"));
+}
+
+#[test]
+fn capture_stats_count_frames_and_the_loudest_sample() {
+    let s = CaptureStats::default();
+    assert_eq!((s.frames(), s.peak()), (0, 0));
+    s.add(&[0, 0, 0x10, 0x00]); // 0, 16
+    s.add(&(-300i16).to_le_bytes());
+    assert_eq!((s.frames(), s.peak()), (2, 300));
+    assert!(nothing_heard_detail(0, 0).starts_with("No sound"));
+    assert!(nothing_heard_detail(10, SILENCE_PEAK - 1).starts_with("Pluto only heard silence"));
+    assert!(nothing_heard_detail(10, 5_000).starts_with("Didn't catch that"));
 }
 
 #[tokio::test(start_paused = true)]

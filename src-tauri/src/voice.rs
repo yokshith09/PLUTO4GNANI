@@ -259,6 +259,29 @@ fn rt_config(settings: &VoiceSettings) -> RtConfig {
     }
 }
 
+/// Development builds also save every press to `<data>/voice-check/last-ptt.wav`, so what Pluto
+/// actually received can be played back when a turn hears nothing. Release builds save nothing.
+fn check_sinks(data_dir: PathBuf) -> impl Fn(&str) -> Vec<Arc<dyn FrameSink>> + Send + Sync {
+    if cfg!(debug_assertions) {
+        eprintln!(
+            "[voice] dev build: each press is saved to {}",
+            data_dir.join("voice-check").join("last-ptt.wav").display()
+        );
+    }
+    move |_session| {
+        if !cfg!(debug_assertions) {
+            return Vec::new();
+        }
+        match ptt_wav(&data_dir).and_then(WavSink::create) {
+            Ok(wav) => vec![Arc::new(wav) as Arc<dyn FrameSink>],
+            Err(e) => {
+                tracing::debug!(code = ?e.code, "couldn't open the voice-check WAV");
+                Vec::new()
+            }
+        }
+    }
+}
+
 impl VoiceShell {
     pub(crate) fn new(
         app: AppHandle,
@@ -309,7 +332,8 @@ impl VoiceShell {
                 handler,
                 enabled,
             )
-            .with_config(move || rt_config(&lock_settings(&for_config))),
+            .with_config(move || rt_config(&lock_settings(&for_config)))
+            .with_extra_sinks(check_sinks(data_dir.clone())),
         );
         assistant.attach(&runtime);
         Ok(Self {
