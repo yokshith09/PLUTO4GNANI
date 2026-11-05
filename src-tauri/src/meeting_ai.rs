@@ -155,27 +155,64 @@ pub async fn meeting_audio_pick(app: AppHandle) -> VoiceResult<Option<String>> {
     Ok(Some(path.to_string_lossy().into_owned()))
 }
 
-/// Stub: the completed AS-1 job. T-201 uploads the file to Gnani Batch.
+/// The audio types Gnani accepts, and the biggest file we send (API_CONTRACTS section 2.3).
+const AUDIO_EXTENSIONS: [&str; 5] = ["wav", "mp3", "m4a", "flac", "ogg"];
+const MAX_IMPORT_BYTES: u64 = 10 * 1024 * 1024;
+
+/// Checks the file for real (type, size), makes the meeting, and, **until Gnani Batch (T-201) is
+/// connected**, gives it the AS-1 sample transcript instead of uploading the audio. Nothing leaves
+/// the computer. D1's T-201 replaces the sample step with the real upload and transcript.
 #[tauri::command]
 pub async fn meeting_import(
     title: String,
     participants: Vec<String>,
     path: String,
+    core: State<'_, Core>,
+    shell: State<'_, MeetingShell>,
 ) -> VoiceResult<TranscriptionJob> {
-    let _ = (title, participants, path);
-    fixture(fixtures::TRANSCRIPTION_JOB)
+    let file = std::path::Path::new(&path);
+    let ext = file
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(str::to_ascii_lowercase)
+        .unwrap_or_default();
+    if !AUDIO_EXTENSIONS.contains(&ext.as_str()) {
+        return Err(VoiceError::new(
+            VoiceErrorCode::UnsupportedAudio,
+            "Choose a WAV, MP3, M4A, FLAC or OGG file.",
+        ));
+    }
+    let size = std::fs::metadata(file)
+        .map_err(|_| VoiceError::new(VoiceErrorCode::Core, "Pluto can't open that file."))?
+        .len();
+    if size > MAX_IMPORT_BYTES {
+        return Err(VoiceError::new(VoiceErrorCode::FileTooLarge, "That recording is over 10 MB. Cut it into shorter parts and import them one at a time."));
+    }
+    let sample: Vec<TranscriptSegment> = fixture(fixtures::TRANSCRIPT_AS1)?;
+    shell
+        .ai(&core)
+        .import_with_sample(&title, participants, sample)
+        .await
 }
 
+/// The newest job of a meeting from the database; `None` for a meeting typed by hand.
 #[tauri::command]
-pub async fn meeting_job_get(meeting_id: String) -> VoiceResult<Option<TranscriptionJob>> {
-    let _ = meeting_id;
-    fixture(fixtures::TRANSCRIPTION_JOB).map(Some)
+pub async fn meeting_job_get(
+    meeting_id: String,
+    core: State<'_, Core>,
+    shell: State<'_, MeetingShell>,
+) -> VoiceResult<Option<TranscriptionJob>> {
+    shell.ai(&core).job(&meeting_id).await
 }
 
+/// Retrying a transcription needs the real Gnani Batch job (T-201).
 #[tauri::command]
 pub async fn meeting_job_retry(meeting_id: String) -> VoiceResult<TranscriptionJob> {
     let _ = meeting_id;
-    fixture(fixtures::TRANSCRIPTION_JOB)
+    Err(VoiceError::new(
+        VoiceErrorCode::Core,
+        "Retrying a transcription arrives with the Gnani connection.",
+    ))
 }
 
 /// The transcript from the database, with each speaker's name once mapped.
