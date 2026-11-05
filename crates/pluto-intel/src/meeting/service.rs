@@ -7,14 +7,15 @@ use std::sync::Arc;
 use pluto_contracts::error::{VoiceError, VoiceErrorCode, VoiceResult};
 use pluto_contracts::llm::Llm;
 use pluto_contracts::meeting::{
-    ApplyExtraction, ExtractedItem, ExtractionResult, Relevance, SegmentSource, SpeakerMapping,
-    TranscriptSegment,
+    ApplyExtraction, ExtractedItem, ExtractionResult, JobStatus, Relevance, SegmentSource,
+    SpeakerMapping, TranscriptSegment, TranscriptionJob,
 };
 use pluto_core::clock::Clock;
 use pluto_core::db::Database;
 use pluto_core::error::AppError;
+use pluto_core::ids::new_id;
 use pluto_core::meeting_ai_store as store;
-use pluto_core::meetings::{self, Meeting};
+use pluto_core::meetings::{self, Meeting, MeetingInput};
 use pluto_core::tasks::{self, TaskFilters, TaskView};
 
 use super::apply::{apply, ApplyOutcome};
@@ -39,6 +40,19 @@ fn relevance_of(s: &str) -> Option<Relevance> {
     }
 }
 
+fn job_status_of(s: &str) -> JobStatus {
+    match s {
+        "uploading" => JobStatus::Uploading,
+        "created" => JobStatus::Created,
+        "in_progress" => JobStatus::InProgress,
+        "completed" => JobStatus::Completed,
+        "partial_failure" => JobStatus::PartialFailure,
+        "failed" => JobStatus::Failed,
+        "cancelled" => JobStatus::Cancelled,
+        _ => JobStatus::Queued,
+    }
+}
+
 pub struct MeetingAi {
     db: Arc<Database>,
     clock: Arc<dyn Clock>,
@@ -58,6 +72,88 @@ impl MeetingAi {
 
     async fn meeting(&self, id: &str) -> VoiceResult<Meeting> {
         meetings::get(&self.db, id).await.map_err(core)
+    }
+
+    /// The newest transcription job of a meeting; `None` for a meeting that was typed by hand.
+    pub async fn job(&self, meeting_id: &str) -> VoiceResult<Option<TranscriptionJob>> {
+        let id = meeting_id.to_owned();
+        let row = self
+            .db
+            .read(move |c| store::latest_job(c, &id))
+            .await
+            .map_err(core)?;
+        Ok(row.map(|r| TranscriptionJob {
+            id: r.id,
+            meeting_id: r.meeting_id,
+            gnani_job_id: r.gnani_job_id,
+            status: job_status_of(&r.status),
+            error: r.error,
+            updated_at: r.updated_at,
+        }))
+    }
+
+    /// **Stand-in until Gnani Batch (T-201) is connected.** Makes the meeting and gives it the sample
+    /// transcript instead of sending the audio anywhere, so the rest of the journey (speakers,
+    /// extraction, review, tasks, recap, recall) can run for real. The job it records is "completed".
+    pub async fn import_with_sample(
+        &self,
+        title: &str,
+        participants: Vec<String>,
+        sample: Vec<TranscriptSegment>,
+    ) -> VoiceResult<TranscriptionJob> {
+        let now = self.clock.now_ms();
+        let meeting = meetings::create(
+            &self.db,
+            &*self.clock,
+            MeetingInput {
+                title: if title.trim().is_empty() {
+                    "Imported meeting".into()
+                } else {
+                    title.trim().to_owned()
+                },
+                participants,
+                ..Default::default()
+            },
+        )
+        .await
+        .map_err(core)?;
+        let (mid, job_id) = (meeting.id.clone(), new_id());
+        let rows: Vec<store::SegmentRow> = sample
+            .into_iter()
+            .enumerate()
+            .map(|(i, s)| store::SegmentRow {
+                id: new_id(),
+                meeting_id: mid.clone(),
+                index: u32::try_from(i).unwrap_or(u32::MAX),
+                start_ms: s.start_ms.unwrap_or(0),
+                end_ms: s.end_ms.unwrap_or(0),
+                speaker_label: s.speaker_label,
+                participant_position: None,
+                text: s.text,
+                language: s.language,
+                relevance: None,
+            })
+            .collect();
+        let jid = job_id.clone();
+        let m2 = mid.clone();
+        self.db
+            .write(move |tx| {
+                store::replace_segments(tx, &m2, &rows)?;
+                store::insert_job(tx, &jid, &m2, "{\"source\":\"sample\"}", now)?;
+                store::update_job(tx, &jid, "completed", None, None, now)?;
+                store::set_status(tx, &m2, "needs_speakers", None, now)?;
+                Ok(((), vec![]))
+            })
+            .await
+            .map_err(core)?;
+        Ok(TranscriptionJob {
+            id: job_id,
+            meeting_id: mid,
+            gnani_job_id: None,
+            status: JobStatus::Completed,
+            error: None,
+            updated_at: now,
+        })
     }
 
     /// The transcript in order, each line with its speaker's name once mapped.

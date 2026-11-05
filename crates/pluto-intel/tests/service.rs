@@ -325,3 +325,64 @@ async fn commitments_follow_the_task_from_open_to_done() {
         .unwrap()
         .is_empty());
 }
+
+#[tokio::test]
+async fn a_typed_meeting_has_no_job_and_a_sample_import_runs_the_whole_journey() {
+    use pluto_contracts::meeting::{JobStatus, SegmentSource, TranscriptSegment};
+    let r = rig().await;
+    // The rig's meeting has segments but no job row: like a hand-typed meeting it has no job.
+    assert!(r.ai.job(&r.meeting_id).await.unwrap().is_none());
+
+    let sample: Vec<TranscriptSegment> = (0..3u32)
+        .map(|i| TranscriptSegment {
+            id: format!("fixture-{i}"),
+            meeting_id: None,
+            source: SegmentSource::Batch,
+            index: i,
+            start_ms: Some(i64::from(i) * 1000),
+            end_ms: Some(i64::from(i) * 1000 + 900),
+            speaker_label: Some(1 + (i % 2) as u8),
+            participant: Some("must be ignored".into()),
+            text: format!("line {i}"),
+            language: Some("hi-IN".into()),
+            relevance: None,
+        })
+        .collect();
+    let job =
+        r.ai.import_with_sample(
+            "  Launch review ",
+            vec!["Asha".into(), "Ravi".into()],
+            sample,
+        )
+        .await
+        .unwrap();
+    assert_eq!(job.status, JobStatus::Completed);
+    let mid = job.meeting_id.clone();
+
+    let got = r.ai.job(&mid).await.unwrap().unwrap();
+    assert_eq!((got.id, got.status), (job.id, JobStatus::Completed));
+    let lines = r.ai.transcript(&mid).await.unwrap();
+    assert_eq!(lines.len(), 3);
+    assert!(
+        lines.iter().all(|l| l.participant.is_none()),
+        "speakers start unnamed"
+    );
+    assert!(lines
+        .iter()
+        .all(|l| l.meeting_id.as_deref() == Some(mid.as_str())));
+    let m = pluto_core::meetings::get(&r.db, &mid).await.unwrap();
+    assert_eq!(
+        (m.title.as_str(), m.participants.len()),
+        ("Launch review", 2)
+    );
+    // Another import does not touch the first one.
+    let again = r.ai.import_with_sample("", vec![], vec![]).await.unwrap();
+    assert_ne!(again.meeting_id, mid);
+    assert_eq!(
+        pluto_core::meetings::get(&r.db, &again.meeting_id)
+            .await
+            .unwrap()
+            .title,
+        "Imported meeting"
+    );
+}

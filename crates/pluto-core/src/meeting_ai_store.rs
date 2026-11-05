@@ -924,4 +924,23 @@ mod tests {
             .collect();
         assert_eq!(ids, ["r0", "r1"]);
     }
+
+    #[test]
+    fn the_latest_job_is_the_newest_and_typed_meetings_have_none() {
+        let c = db();
+        assert!(latest_job(&c, "m1").unwrap().is_none());
+        insert_job(&c, "j1", "m1", "{}", 1).unwrap();
+        insert_job(&c, "j2", "m1", "{}", 2).unwrap();
+        update_job(&c, "j2", "completed", Some("g-2"), None, 3).unwrap();
+        let j = latest_job(&c, "m1").unwrap().unwrap();
+        assert_eq!(
+            (
+                j.id.as_str(),
+                j.status.as_str(),
+                j.gnani_job_id.as_deref(),
+                j.updated_at
+            ),
+            ("j2", "completed", Some("g-2"), 3)
+        );
+    }
 }

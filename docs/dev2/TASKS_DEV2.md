@@ -14,7 +14,7 @@ Work top to bottom. **Wait** = a task of the other developer that must be merged
 | 2 | T-005 | Contracts B | M | P0a | 1 | T-003 | Done (merged, PR #8) |
 | 3 | T-006 | UI plumbing | M | P0a | 1 | T-004 | Done (merged, PR #13) |
 | 4 | T-008 | Test data | M | P0a | 1–2 | — | Done (scripts and ground truth merged, PR #13; audio recordings pending) |
-| 5 | T-009 | LLM check | S | P0a | 1 | — | Done (Gemini 5/5 and Groq 5/5 valid; models fixed; `docs/results/d2-llm-check.md`; Gemini limits to copy from AI Studio) |
+| 5 | T-009 | LLM check | S | P0a | 1 | — | Done (Gemini 5/5, Groq 5/5; `docs/results/d2-llm-check.md`; Gemini limits to copy from AI Studio) |
 | 6 | T-104 | LLM | M | P0a | 2 | — | Done (merged, PR #14; models fixed by T-009) |
 | 7 | T-105 | Secrets | S | P0a | 1–2 | T-003 | Done (keychain store merged, PR #13; `voice.*` and `llm.*` settings keys in this PR) |
 | 8 | T-106 | Migration 012 | M | P0a | 1–2 | T-003 | Done (merged, PR #8) |
@@ -25,7 +25,7 @@ Work top to bottom. **Wait** = a task of the other developer that must be merged
 | 13 | T-206 | Integration C2 | S | P0a | 3 | — | To do |
 | 14 | T-207 | Recorder | L | P0b | 3–4 | T-013 | To do |
 | 15 | T-302 | Decisions | M | P0a | 3 | — | Done (merged, PR #14; routing accuracy on the real model (T-ML-04) needs keys) |
-| 16 | T-304 | Voice UI | M | P0a | 3–4 | — | In review (voice bar, approval card with countdown and edit, history, push-to-talk and playback wiring built on the mock; live with D1's runtime T-301) |
+| 16 | T-304 | Voice UI | M | P0a | 3–4 | — | Done (merged, PR #23; live with D1's runtime T-301) |
 | 17 | T-305 | Recall | L | P0a | 4 | — | In progress (recall merged, PR #19; spoken answer and the follow-up proposal wait for T-303) |
 | 18 | T-401 | Voice settings | M | P0a | 4–5 | — | In progress (Voice and privacy section merged, PR #21; hotkey row and voice preview wait for D1's runtime) |
 | 19 | T-402 | Demo build | S | P0a | 4 | — | Done (merged, PR #22) |
