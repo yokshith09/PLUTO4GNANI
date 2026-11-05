@@ -40,6 +40,8 @@ struct Script {
     accept_only: Option<usize>,
     /// Send `{"type":"error"}` right after `connected`.
     error_after_connect: bool,
+    /// Send `{"type":"error"}` instead of `connected` (Gnani refusing the settings), then close.
+    refuse_settings: bool,
 }
 
 struct Server {
@@ -107,6 +109,15 @@ async fn serve(script: Script) -> Server {
                     ..Conn::default()
                 });
                 let slot = state.lock().unwrap().len() - 1;
+                if script.refuse_settings {
+                    let _ = ws
+                        .send(Message::Text(
+                            r#"{"type":"error","message":"invalid language_code"}"#.into(),
+                        ))
+                        .await;
+                    let _ = ws.close(None).await;
+                    return;
+                }
                 let rid = format!(r#"{{"type":"connected","request_id":"rq-{index}"}}"#);
                 if ws.send(Message::Text(rid.into())).await.is_err() {
                     return;
@@ -486,6 +497,45 @@ async fn a_server_error_message_is_reported_without_its_text_and_the_session_con
         RtEvent::Transcript(_)
     ));
     let _ = s.input.send(RtInput::Close).await;
+}
+
+#[tokio::test]
+async fn refused_settings_end_the_session_once_instead_of_reconnecting_forever() {
+    let server = serve(Script {
+        refuse_settings: true,
+        ..Script::default()
+    })
+    .await;
+    let (c, _) = client(&server.url, Some("k"));
+    let mut s = c
+        .open(RtConfig {
+            language_code: "hi-IN,en-IN".into(),
+            ..RtConfig::default()
+        })
+        .await
+        .unwrap();
+    let mut seen = Vec::new();
+    while let Ok(Some(e)) = tokio::time::timeout(Duration::from_secs(5), s.events.recv()).await {
+        let closed = matches!(e, RtEvent::Closed);
+        seen.push(e);
+        if closed {
+            break;
+        }
+    }
+    let errors: Vec<_> = seen
+        .iter()
+        .filter_map(|e| match e {
+            RtEvent::Error(e) => Some(e.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(errors.len(), 1, "{seen:?}");
+    assert_eq!(errors[0].code, VoiceErrorCode::GnaniBadRequest);
+    assert!(!errors[0].retryable);
+    assert!(!errors[0].message.contains("invalid"), "Gnani's text is never copied");
+    assert!(!seen.iter().any(|e| matches!(e, RtEvent::Reconnecting { .. })));
+    assert!(matches!(seen.last(), Some(RtEvent::Closed)));
+    assert_eq!(server.conns().len(), 1, "no reconnect");
 }
 
 #[tokio::test]

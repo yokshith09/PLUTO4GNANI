@@ -239,8 +239,9 @@ fn lock_settings(s: &Mutex<VoiceSettings>) -> MutexGuard<'_, VoiceSettings> {
     s.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
-/// Prisma Realtime settings for a press, from the voice settings: the chosen languages (1–4)
-/// or `indic-auto`, and the output format.
+/// Prisma Realtime settings for a press, from the voice settings: the one chosen language, or
+/// `indic-auto` when none or several are chosen (the live service refuses a comma-separated list,
+/// seen live on 2026-11-06; Batch accepts one), and the output format.
 fn rt_config(settings: &VoiceSettings) -> RtConfig {
     let langs: Vec<&str> = settings
         .languages
@@ -249,10 +250,9 @@ fn rt_config(settings: &VoiceSettings) -> RtConfig {
         .filter(|l| !l.is_empty())
         .collect();
     RtConfig {
-        language_code: if (1..=4).contains(&langs.len()) {
-            langs.join(",")
-        } else {
-            "indic-auto".into()
+        language_code: match langs.as_slice() {
+            [one] => (*one).to_string(),
+            _ => "indic-auto".into(),
         },
         format: settings.stt_format,
         ..RtConfig::default()
@@ -755,6 +755,17 @@ pub async fn privacy_log_clear(core: State<'_, Core>) -> VoiceResult<()> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn realtime_gets_one_language_or_automatic_detection() {
+        let mut s: VoiceSettings = fixture(fixtures::SETTINGS_DEFAULT).unwrap();
+        assert_eq!(rt_config(&s).language_code, "indic-auto");
+        s.languages = vec!["hi-IN".into()];
+        assert_eq!(rt_config(&s).language_code, "hi-IN");
+        // Gnani's live service refuses a list, so several languages mean automatic detection.
+        s.languages = vec!["hi-IN".into(), "en-IN".into()];
+        assert_eq!(rt_config(&s).language_code, "indic-auto");
+    }
+
     use super::*;
     use pluto_contracts::meeting::{
         ExtractionResult, RecallAnswer, TranscriptSegment, TranscriptionJob,
