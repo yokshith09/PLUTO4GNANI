@@ -6,6 +6,10 @@
 //!
 //! `Mod+Shift+T` (new task) was removed by the owner on 2026-10-12. Its setting,
 //! `shortcuts.global_new_task`, is no longer read.
+//!
+//! **Push-to-talk** (T-301, the `VoicePtt` action) is the one shortcut that also acts on key
+//! **release**: press opens Listening, release commits. Its combination is the voice settings'
+//! `hotkey` (default `Ctrl+Shift+Space`), registered with the others and again when it changes.
 
 use std::str::FromStr;
 use std::sync::Arc;
@@ -75,7 +79,7 @@ fn run<R: Runtime>(app: &AppHandle<R>, action: Action) {
     }
 }
 
-fn register_all<R: Runtime>(app: &AppHandle<R>, combos: &[(Action, String)]) {
+fn register_all(app: &AppHandle, combos: &[(Action, String)]) {
     let gs = app.global_shortcut();
     if let Err(error) = gs.unregister_all() {
         tracing::warn!(%error, "couldn't clear the global shortcuts");
@@ -98,6 +102,38 @@ fn register_all<R: Runtime>(app: &AppHandle<R>, combos: &[(Action, String)]) {
             tracing::warn!(%error, ?action, "a global shortcut is taken by another app; skipped");
         }
     }
+    register_voice_ptt(app);
+}
+
+/// The push-to-talk hotkey: press and release both matter.
+fn register_voice_ptt(app: &AppHandle) {
+    let Some(combo) = crate::voice::hotkey_combo(app) else {
+        return;
+    };
+    let Ok(shortcut) = Shortcut::from_str(&combo) else {
+        tracing::warn!("the push-to-talk hotkey isn't a valid key combination; skipped");
+        return;
+    };
+    let result = app
+        .global_shortcut()
+        .on_shortcut(shortcut, move |app, _shortcut, event| {
+            crate::voice::hotkey(app, event.state() == ShortcutState::Pressed);
+        });
+    if let Err(error) = result {
+        tracing::warn!(%error, "the push-to-talk hotkey is taken by another app; skipped");
+    }
+}
+
+/// Registers everything again from the current settings (after the voice hotkey changes).
+pub fn reapply(app: &AppHandle) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let Some(settings) = app.try_state::<Arc<SettingsService>>() else {
+            return;
+        };
+        let all = settings.get_all().await.unwrap_or_default();
+        register_all(&app, &combos(&all));
+    });
 }
 
 /// Register from the settings now, and again whenever a shortcut setting changes.

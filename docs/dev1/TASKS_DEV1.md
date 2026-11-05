@@ -23,7 +23,7 @@ Work top to bottom. **Wait** = a task of the other developer that must be merged
 | 11 | T-103 | Gnani base | M | P0a | 2 | — | Done (merged, PR #12) |
 | 12 | T-107 | Migration 013 | S | P0a | 2 | — | Done (merged, PR #11) |
 | 13 | T-201 | Batch | L | P0a | 3 | T-106 | In review (PR #27; live job passed) |
-| 14 | T-301 | Voice runtime | L | P0a | 3–4 | — | To do |
+| 14 | T-301 | Voice runtime | L | P0a | 3–4 | — | Built (tests pass; PR after #27) |
 | 15 | T-303 | Assistant | L | P0a | 4 | T-302 | To do |
 | 16 | T-306 | Integration C3 | S | P0a | 4 | — | To do |
 | 17 | T-403 | Safety | S | P0a | 4–5 | — | To do |

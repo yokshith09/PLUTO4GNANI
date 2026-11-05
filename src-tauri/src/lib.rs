@@ -391,7 +391,12 @@ pub fn run() {
             let usage_service = Arc::new(UsageService::new(db.clone(), clock.clone()));
             app.manage(usage_service.clone());
             forward_events(app.handle().clone(), &bus);
-            let voice_shell = voice::VoiceShell::new(db.clone(), clock.clone())?;
+            let voice_shell = voice::VoiceShell::new(
+                app.handle().clone(),
+                db.clone(),
+                clock.clone(),
+                data_dir.clone(),
+            )?;
             app.manage(voice_shell.meeting_jobs(
                 app.handle().clone(),
                 db.clone(),
