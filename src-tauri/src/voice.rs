@@ -660,7 +660,9 @@ pub async fn voice_speak(
     let request = TtsRequest {
         text,
         language: language.unwrap_or_else(|| "auto".into()),
-        voice: Some(settings.tts_voice.clone()).filter(|v| !v.trim().is_empty()),
+        // Only a Timbre v3.0 voice works; an unknown name (the old "Arya" default) falls back.
+        voice: Some(settings.tts_voice.trim().to_string())
+            .filter(|v| pluto_gnani::tts::VOICES_V3.contains(&v.as_str())),
         // The client's documented default until the voice settings are real (T-105 / T-401).
         model: None,
         speed: None,

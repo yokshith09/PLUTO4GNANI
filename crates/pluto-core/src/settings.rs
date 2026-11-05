@@ -246,7 +246,7 @@ impl SettingsKey {
             Self::VoiceCloudEnabled => json!(false),
             Self::VoiceLanguages => json!([]),
             Self::VoiceSttFormat => json!("codemix"),
-            Self::VoiceTtsVoice => json!("Arya"),
+            Self::VoiceTtsVoice => json!("Shivani"),
             Self::VoiceTtsModel => json!("timbre-v3"),
             Self::VoiceAudioTags => json!(true),
             Self::VoiceAlwaysOn => json!(false),

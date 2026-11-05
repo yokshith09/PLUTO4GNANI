@@ -9,7 +9,7 @@ use pluto_core::clock::FakeClock;
 
 use super::*;
 
-const START: i64 = 1_762_329_600_000; // 2025-11-05 08:00 IST
+const START: i64 = 1_762_329_600_000; // 2025-11-05 13:30 IST
 
 /// Answers each command from a script (rules for "haan"/"nahi" like D2's table).
 struct Script(Vec<(&'static str, Intent, Option<&'static str>, Value)>);
@@ -498,4 +498,69 @@ fn matching_prefers_the_most_shared_words() {
     );
     assert_eq!(best_matches("report", &items).len(), 2);
     assert!(best_matches("xyz", &items).is_empty());
+}
+
+#[test]
+fn clock_times_in_spoken_phrases() {
+    for (p, t) in [
+        ("tomorrow at 6 am", Some((6, 0))),
+        ("today at 5 pm", Some((17, 0))),
+        ("5:30 PM", Some((17, 30))),
+        ("6 a.m.", Some((6, 0))),
+        ("at 17:00", Some((17, 0))),
+        ("kal 5 baje", Some((17, 0))),
+        ("five PM", Some((17, 0))),
+        ("12 am", Some((0, 0))),
+        ("12 pm", Some((12, 0))),
+        ("kal tak", None),
+        ("Friday", None),
+        ("in 2 days", None),
+    ] {
+        assert_eq!(clock_time(p), t, "{p}");
+    }
+    assert_eq!(friendly_date("2026-11-07"), "Sat, 7 Nov");
+    assert_eq!(friendly_date("soon"), "soon");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_task_with_a_time_also_gets_a_reminder_at_that_time() {
+    let r = rig(
+        Script(vec![(
+            "Have a meeting tomorrow at 6 am. Add it to the task.",
+            Intent::Task,
+            Some("task_create"),
+            json!({"title": "meeting", "due_date": "2025-11-06", "due_phrase": "tomorrow at 6 am"}),
+        )]),
+        PROPOSAL_WINDOW,
+    );
+    r.a.turn(heard("Have a meeting tomorrow at 6 am. Add it to the task.", "en-IN")).await.unwrap();
+    let p = r.seen.proposals.lock().unwrap()[0].clone();
+    assert_eq!(p.summary_text, "Add “Meeting” for Thu, 6 Nov, with a reminder at Thu, 6 Nov, 6:00 AM?");
+    r.a.respond(&p.id, ProposalResponse::Approve).await.unwrap();
+    let task = open_tasks(&r).await.into_iter().next().unwrap();
+    assert_eq!(task.title, "Meeting");
+    let rems = reminders::list(&r.db, false).await.unwrap();
+    assert_eq!(rems.len(), 1);
+    assert_eq!(rems[0].task_id.as_deref(), Some(task.id.as_str()));
+    // 2025-11-06 06:00 IST.
+    assert_eq!(rems[0].remind_at, 1_762_389_000_000);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_reminder_finds_its_time_in_the_when_phrase() {
+    let r = rig(
+        Script(vec![(
+            "five PM so add a reminder",
+            Intent::Reminder,
+            Some("reminder_create"),
+            json!({"title": "five PM", "remind_at": null, "when_phrase": "5 pm"}),
+        )]),
+        PROPOSAL_WINDOW,
+    );
+    assert_eq!(r.a.turn(heard("five PM so add a reminder", "en-IN")).await.unwrap(), Turn::Proposal);
+    let p = r.seen.proposals.lock().unwrap()[0].clone();
+    // START is 13:30 IST on 5 Nov, so 5 pm is later today (11:30 UTC).
+    assert_eq!(p.args["remind_at"], 1_762_342_200_000i64);
+    assert_eq!(p.args["title"], "Reminder");
+    assert_eq!(p.summary_text, "Remind you to “Reminder” at 5:00 PM?");
 }

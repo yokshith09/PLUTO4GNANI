@@ -42,6 +42,11 @@ pub const INFERENCE_PATH: &str = "/api/v1/tts/inference";
 /// Gnani's documented model and an example voice (API_CONTRACTS §2.4).
 pub const DEFAULT_MODEL: &str = "timbre-v3.0";
 pub const DEFAULT_VOICE: &str = "Shivani";
+/// Timbre v3.0's voices (docs.gnani.ai, Available Voices). Any other name is refused with 400.
+pub const VOICES_V3: [&str; 13] = [
+    "Shivani", "Lakshmi", "Kalpana", "Chetana", "Vasudha", "Riyaa", "Tarika", "Avinash", "Shubham",
+    "Prakash", "Devansh", "Yashraj", "Harshad",
+];
 /// The most characters sent in one Timbre request.
 pub const MAX_CHARS: usize = 500;
 /// The v3.0 audio-tag allow-list.

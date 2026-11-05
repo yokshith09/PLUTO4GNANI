@@ -101,6 +101,86 @@ fn spoken_list(items: &[String], lang: Lang) -> String {
     out
 }
 
+/// "Sat, 7 Nov" for `2026-11-07` (as it is read out), or the text itself if it isn't a date.
+pub fn friendly_date(d: &str) -> String {
+    NaiveDate::parse_from_str(d, "%Y-%m-%d")
+        .map(|d| d.format("%a, %-d %b").to_string())
+        .unwrap_or_else(|_| d.to_string())
+}
+
+fn capitalise(s: &str) -> String {
+    let mut c = s.trim().chars();
+    match c.next() {
+        Some(f) => f.to_uppercase().chain(c).collect(),
+        None => String::new(),
+    }
+}
+
+/// A clock time in a phrase: "5 pm", "5:30 PM", "6 a.m.", "17:00", "5 baje", "five pm".
+/// `None` when the phrase has no time.
+pub fn clock_time(phrase: &str) -> Option<(u32, u32)> {
+    let p = phrase
+        .to_lowercase()
+        .replace("a.m.", "am")
+        .replace("p.m.", "pm");
+    const NUMBERS: [&str; 12] = [
+        "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven",
+        "twelve",
+    ];
+    let tokens: Vec<String> = p
+        .split(|c: char| c.is_whitespace() || c == ',')
+        .filter(|t| !t.is_empty())
+        .map(str::to_string)
+        .collect();
+    for (i, tok) in tokens.iter().enumerate() {
+        // Split "5pm" / "5:30pm" into number and suffix.
+        let (num, mut suffix) = match tok.find(|c: char| c.is_ascii_alphabetic()) {
+            Some(at) if at > 0 => (tok[..at].to_string(), tok[at..].to_string()),
+            _ => (tok.clone(), String::new()),
+        };
+        let (h, m) = if let Some((h, m)) = num.split_once(':') {
+            (h.parse::<u32>().ok(), m.parse::<u32>().ok())
+        } else if let Ok(h) = num.parse::<u32>() {
+            (Some(h), Some(0))
+        } else if let Some(n) = NUMBERS.iter().position(|w| *w == num) {
+            (Some(n as u32 + 1), Some(0))
+        } else {
+            (None, None)
+        };
+        let (Some(mut h), Some(m)) = (h, m) else {
+            continue;
+        };
+        if suffix.is_empty() {
+            suffix = tokens.get(i + 1).cloned().unwrap_or_default();
+        }
+        let has_colon = num.contains(':');
+        match suffix.as_str() {
+            "pm" | "p" | "shaam" | "raat" if (1..=12).contains(&h) => {
+                if h != 12 {
+                    h += 12;
+                }
+            }
+            "am" | "a" | "subah" if (1..=12).contains(&h) => {
+                if h == 12 {
+                    h = 0;
+                }
+            }
+            "baje" | "o'clock" | "oclock" | "o" if (1..=12).contains(&h) => {
+                // "5 baje" with no am/pm: a working-hours guess, 1–7 → afternoon/evening.
+                if (1..=7).contains(&h) {
+                    h += 12;
+                }
+            }
+            _ if has_colon && h < 24 => {}
+            _ => continue,
+        }
+        if h < 24 && m < 60 {
+            return Some((h, m));
+        }
+    }
+    None
+}
+
 /// "pehla", "doosra", "first", "2", … → 0-based choice.
 pub fn ordinal(text: &str) -> Option<usize> {
     let t = text.trim().to_lowercase();
@@ -380,6 +460,16 @@ impl Assistant {
             .collect())
     }
 
+    /// `day` at `h:m` local time, in ms.
+    fn local_ms(&self, day: NaiveDate, h: u32, m: u32) -> Option<i64> {
+        let t = day.and_hms_opt(h, m, 0)?;
+        self.clock
+            .tz()
+            .from_local_datetime(&t)
+            .earliest()
+            .map(|d| d.timestamp_millis())
+    }
+
     fn time_text(&self, ms: i64) -> String {
         let tz = self.clock.tz();
         let Some(at) = tz.timestamp_millis_opt(ms).single() else {
@@ -387,9 +477,9 @@ impl Assistant {
         };
         let today = self.clock.local_date(self.clock.now_ms());
         if at.date_naive() == today {
-            at.format("%H:%M").to_string()
+            at.format("%-I:%M %p").to_string()
         } else {
-            at.format("%d %b %H:%M").to_string()
+            at.format("%a, %-d %b, %-I:%M %p").to_string()
         }
     }
 
@@ -545,19 +635,50 @@ impl Assistant {
                         "What's the task? Say it again.",
                     )
                 })?;
+                let title = capitalise(&title);
                 let due = s("due_date");
-                let summary = match &due {
-                    Some(d) => lang.pick(
-                        format!("Naya kaam “{title}”, {d} tak. Bana doon?"),
-                        format!("Add “{title}”, due {d}?"),
+                // "meeting tomorrow at 6 am": tasks hold only a date, so the time becomes a
+                // reminder for the task.
+                let at = s("due_phrase")
+                    .as_deref()
+                    .and_then(clock_time)
+                    .and_then(|(h, m)| {
+                        let day = due
+                            .as_deref()
+                            .and_then(|d| NaiveDate::parse_from_str(d, "%Y-%m-%d").ok())
+                            .unwrap_or_else(|| self.clock.local_date(self.clock.now_ms()));
+                        self.local_ms(day, h, m)
+                    })
+                    .filter(|at| *at > self.clock.now_ms());
+                let day = due.as_deref().map(friendly_date).unwrap_or_default();
+                let summary = match (&due, at) {
+                    (Some(_), Some(at)) => {
+                        let t = self.time_text(at);
+                        lang.pick(
+                            format!(
+                                "Naya kaam “{title}”, {day}, {t} par reminder ke saath. Bana doon?"
+                            ),
+                            format!("Add “{title}” for {day}, with a reminder at {t}?"),
+                        )
+                    }
+                    (Some(_), None) => lang.pick(
+                        format!("Naya kaam “{title}”, {day} tak. Bana doon?"),
+                        format!("Add “{title}”, due {day}?"),
                     ),
-                    None => lang.pick(
+                    (None, Some(at)) => {
+                        let t = self.time_text(at);
+                        lang.pick(
+                            format!("Naya kaam “{title}”, {t} par reminder ke saath. Bana doon?"),
+                            format!("Add “{title}”, with a reminder at {t}?"),
+                        )
+                    }
+                    (None, None) => lang.pick(
                         format!("Naya kaam “{title}”. Bana doon?"),
                         format!("Add “{title}”?"),
                     ),
                 };
                 Ok((
-                    json!({"title": title, "due_date": due, "due_phrase": s("due_phrase")}),
+                    json!({"title": title, "due_date": due, "due_phrase": s("due_phrase"), "remind_at": at}),
                     summary,
                     vec![],
                 ))
@@ -623,7 +744,28 @@ impl Assistant {
             tools::REMINDER_CREATE => {
                 let title = s("title")
                     .ok_or_else(|| lang.pick("Kis cheez ka reminder?", "Remind you about what?"))?;
-                let Some(at) = args.get("remind_at").and_then(Value::as_i64) else {
+                // The decider sometimes leaves the time in `when_phrase` ("5 pm"): read it here.
+                let parsed = s("when_phrase").as_deref().and_then(|p| {
+                    let (h, m) = clock_time(p)?;
+                    let today = self.clock.local_date(self.clock.now_ms());
+                    let tomorrow = today.succ_opt()?;
+                    let lower = p.to_lowercase();
+                    let named_tomorrow = lower.contains("tomorrow") || lower.contains("kal");
+                    let first = if named_tomorrow { tomorrow } else { today };
+                    let at = self.local_ms(first, h, m)?;
+                    if at > self.clock.now_ms() {
+                        Some(at)
+                    } else {
+                        self.local_ms(tomorrow, h, m)
+                    }
+                });
+                // A title that is only the time ("five PM") isn't a title.
+                let title = if clock_time(&title).is_some() && words(&title).len() <= 2 {
+                    lang.pick("Reminder", "Reminder")
+                } else {
+                    capitalise(&title)
+                };
+                let Some(at) = args.get("remind_at").and_then(Value::as_i64).or(parsed) else {
                     return Err(lang.pick(
                         "Kab yaad dilaoon? Time boliye, jaise “5 baje”.",
                         "When should I remind you? Say a time, like “at 5”.",
@@ -1035,6 +1177,27 @@ impl Assistant {
                     },
                 )
                 .await?;
+                if let Some(at) = args.get("remind_at").and_then(Value::as_i64) {
+                    reminders::create(
+                        &self.db,
+                        &*self.clock,
+                        ReminderInput {
+                            title: task.title.clone(),
+                            remind_at: at,
+                            task_id: Some(task.id.clone()),
+                            ..Default::default()
+                        },
+                    )
+                    .await?;
+                    return done(
+                        lang.pick(
+                            "Ho gaya. Kaam aur reminder dono laga diye.",
+                            "Done. Task added, with its reminder.",
+                        ),
+                        &task.id,
+                        &task.title,
+                    );
+                }
                 done(
                     lang.pick("Ho gaya. Kaam add kar diya.", "Done. Task added."),
                     &task.id,
