@@ -421,6 +421,47 @@ pub fn applied_decisions(conn: &Connection, meeting_id: &str) -> Result<Vec<Appl
     Ok(rows)
 }
 
+/// One action item with what is known about its task, for the commitments list (T-503).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommitmentRow {
+    pub action_item_id: String,
+    pub meeting_id: String,
+    pub meeting_title: String,
+    pub owner: Option<String>,
+    pub body: String,
+    /// The task's due date if there is a task, else the date said in the meeting.
+    pub due_date: Option<String>,
+    pub task_id: Option<String>,
+    pub task_status: Option<String>,
+}
+
+/// Every action item of every meeting, newest meeting first.
+pub fn commitment_rows(conn: &Connection) -> Result<Vec<CommitmentRow>> {
+    let mut stmt = conn.prepare(
+        "SELECT a.id, a.meeting_id, m.title, a.assignee, a.body, COALESCE(t.due_date, mt.due_date), t.id, t.status
+         FROM meeting_action_items a
+         JOIN meetings m ON m.id = a.meeting_id
+         LEFT JOIN tasks t ON t.id = a.task_id
+         LEFT JOIN action_item_meta mt ON mt.action_item_id = a.id
+         ORDER BY m.starts_at DESC, a.position",
+    )?;
+    let rows = stmt
+        .query_map([], |r| {
+            Ok(CommitmentRow {
+                action_item_id: r.get(0)?,
+                meeting_id: r.get(1)?,
+                meeting_title: r.get(2)?,
+                owner: r.get(3)?,
+                body: r.get(4)?,
+                due_date: r.get(5)?,
+                task_id: r.get(6)?,
+                task_status: r.get(7)?,
+            })
+        })?
+        .collect::<rusqlite::Result<_>>()?;
+    Ok(rows)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -703,5 +744,48 @@ mod tests {
                 .len(),
             1
         );
+    }
+
+    #[test]
+    fn commitment_rows_join_the_task_and_prefer_its_due_date() {
+        let c = db();
+        c.execute("INSERT INTO meeting_action_items (id, meeting_id, position, body, assignee) VALUES ('a1','m1',0,'Send report','Ravi'), ('a2','m1',1,'Book room',NULL)", []).unwrap();
+        replace_segments(&c, "m1", &[seg("s1", 0, "x")]).unwrap();
+        link_action_item(
+            &c,
+            &ActionMeta {
+                action_item_id: "a1".into(),
+                source_segment_id: Some("s1".into()),
+                quote: "q".into(),
+                due_phrase: None,
+                due_date: Some("2026-11-05".into()),
+                priority: None,
+                confidence: None,
+            },
+        )
+        .unwrap();
+        c.execute("INSERT INTO tasks (id, title, status, due_date, created_at, updated_at) VALUES ('t1','Send report','PLANNED','2026-11-09',0,0)", []).unwrap();
+        c.execute(
+            "UPDATE meeting_action_items SET task_id = 't1' WHERE id = 'a1'",
+            [],
+        )
+        .unwrap();
+        let rows = commitment_rows(&c).unwrap();
+        assert_eq!(rows.len(), 2);
+        let a1 = rows.iter().find(|r| r.action_item_id == "a1").unwrap();
+        assert_eq!(
+            (
+                a1.due_date.as_deref(),
+                a1.task_status.as_deref(),
+                a1.owner.as_deref()
+            ),
+            (Some("2026-11-09"), Some("PLANNED"), Some("Ravi"))
+        );
+        let a2 = rows.iter().find(|r| r.action_item_id == "a2").unwrap();
+        assert_eq!(
+            (a2.due_date.as_deref(), a2.task_id.as_deref()),
+            (None, None)
+        );
+        assert_eq!(a2.meeting_title, "Sync");
     }
 }

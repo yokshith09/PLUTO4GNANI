@@ -18,6 +18,7 @@ use pluto_core::meetings::{self, Meeting};
 use pluto_core::tasks::{self, TaskFilters, TaskView};
 
 use super::apply::{apply, ApplyOutcome};
+use super::commitments;
 use super::extraction::{extract, ExtractInput, OpenTask};
 use super::recall::{self, Hit};
 use super::recap::{self, RecapAction, RecapInput};
@@ -277,6 +278,16 @@ impl MeetingAi {
                 .and_then(|m| m.due_date.clone());
         }
         Ok(input)
+    }
+
+    /// Commitments across all meetings (who promised what, and whether it is late).
+    pub async fn commitments(
+        &self,
+        owner: Option<&str>,
+        status: Option<pluto_contracts::meeting::CommitmentStatus>,
+    ) -> VoiceResult<Vec<pluto_contracts::meeting::Commitment>> {
+        let rows = self.db.read(store::commitment_rows).await.map_err(core)?;
+        Ok(commitments::list(rows, self.clock.today(), owner, status))
     }
 
     /// What was applied to the meeting, with the quote and segment each came from.

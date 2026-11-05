@@ -227,10 +227,18 @@ export function createVoiceMock({ now, createMeeting, applyItems, delayMs = 250 
         : "Launch is on 20 November, starting with the annual plan. Ravi will finish the pricing page copy by Thursday, and Meena will confirm the vendor contract with legal by Monday.";
     },
     meeting_recap: (a: Args) => (a.export ? "C:\\Users\\you\\Documents\\Pluto\\recap-launch-sync.mp3" : null),
-    commitments_list: (a: Args): Commitment[] =>
-      items().filter((i) => i.kind === "action_item" && (!a.owner || i.owner === a.owner)).map((i) => ({
-        action_item_id: i.id, meeting_id: "m-as1", meeting_title: "Launch sync", owner: i.owner, body: i.body,
-        due_date: i.due_date, task_id: null, status: "no_task" as const, days_overdue: null,
-      })).filter((c) => !a.status || c.status === a.status),
+    commitments_list: (a: Args): Commitment[] => {
+      const today = new Date(now()).toISOString().slice(0, 10);
+      return items()
+        .filter((i) => i.kind === "action_item" && (!a.owner || i.owner === a.owner))
+        .map((i): Commitment => {
+          const late = i.due_date && i.due_date < today ? Math.round((Date.parse(today) - Date.parse(i.due_date)) / 86_400_000) : null;
+          return {
+            action_item_id: i.id, meeting_id: "m-as1", meeting_title: "Launch sync", owner: i.owner, body: i.body,
+            due_date: i.due_date, task_id: null, status: late ? "overdue" : "no_task", days_overdue: late,
+          };
+        })
+        .filter((c) => !a.status || c.status === a.status);
+    },
   };
 }

@@ -140,7 +140,7 @@ Tray, hotkeys, notifications, autostart and tracking on a real Windows desktop (
 |---|---|---|---|---|---|---|---|---|---|
 | T-501 | Live captions | Fan recorder frames to Realtime → `meeting://caption`; captions pane with native/romanised toggle | D2 | P1 | T-207, T-101 | M | Captions appear while recording; offline → recording continues | T-FH-01 | To do |
 | T-502 | Warnings | Quality warnings (no decisions, no owner, unresolved date), banner + spoken | D2 | P1 | T-203 | S | AS-1 variant with no owner shows the warning | Unit | To do |
-| T-503 | Commitments | `commitments_list` + Voice → Commitments tab | D2 | P1 | T-204 | M | Overdue / Done / NoTask computed correctly | Unit; Vitest | To do |
+| T-503 | Commitments | `commitments_list` + Voice → Commitments tab | D2 | P1 | T-204 | M | Overdue / Done / NoTask computed correctly | Unit; Vitest | In review (PR #23; commitments across meetings: status from the task and date, owner filter, command and Meetings panel) |
 | T-504 | Comparison | `compare_transcribe` + diff view; choose and document a baseline | D2 | P1 | T-101 | M | Reproducible diff on a named clip | T-CMP-01 | To do |
 | T-505 | Glossary | Team glossary → Prisma `keyterms`; UI | D2 | P1 | T-106 | S | Terms reach every Prisma request | Unit | To do |
 | T-506 | Privacy log | Privacy-log and usage-counter commands (backend) | D1 | P1 | T-103 | S | Counters move after each call | Unit | To do |
