@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from "react";
-import { CalendarClock, ListChecks, Plus, Upload, Users, X } from "lucide-react";
+import { CalendarClock, ListChecks, Mic, Plus, Upload, Users, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/features/shell/PageHeader";
@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import type { MeetingFilters, MeetingSummary } from "@/ipc";
 import { CommitmentsPanel } from "./CommitmentsPanel";
 import { ImportDialog } from "./ImportDialog";
+import { RecordDialog } from "./RecordDialog";
 import { MeetingEditor } from "./MeetingEditor";
 
 const DAY = 86_400_000;
@@ -62,6 +63,7 @@ export function MeetingsPage({ newTick = 0 }: { newTick?: number }) {
   const [open, setOpen] = useState<{ id: string | null; key: number } | null>(null);
   const [who, setWho] = useState("");
   const [importing, setImporting] = useState(false);
+  const [recording, setRecording] = useState(false);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const list = useId();
@@ -89,11 +91,13 @@ export function MeetingsPage({ newTick = 0 }: { newTick?: number }) {
         title="Meetings" description="Decisions and action items, with action items one click from becoming tasks."
         actions={(
           <>
+            <Button variant="outline" onClick={() => setRecording(true)}><Mic />Record</Button>
             <Button variant="outline" onClick={() => setImporting(true)}><Upload />Import recording</Button>
             <Button onClick={() => setOpen({ id: null, key: Date.now() })} title={`New meeting (${mod}+M)`}><Plus />New meeting</Button>
           </>
         )}
       />
+      <RecordDialog open={recording} onClose={() => setRecording(false)} onRecorded={(id) => { setRecording(false); setOpen({ id, key: Date.now() }); }} />
       <ImportDialog open={importing} onClose={() => setImporting(false)} onImported={(id) => { setImporting(false); setOpen({ id, key: Date.now() }); }} />
       <CommitmentsPanel />
       <div className="mb-3 flex flex-wrap items-end gap-2">

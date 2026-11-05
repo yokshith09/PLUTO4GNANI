@@ -7,6 +7,7 @@ pub mod commitments;
 pub mod extraction;
 pub mod recall;
 pub mod recap;
+pub mod recorder;
 pub mod service;
 
 use std::collections::HashMap;

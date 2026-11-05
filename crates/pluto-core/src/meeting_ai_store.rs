@@ -493,6 +493,80 @@ pub fn latest_job(conn: &Connection, meeting_id: &str) -> Result<Option<JobRow>>
         .optional()?)
 }
 
+// ---- recordings: the audio files of a meeting (T-207) ---------------------------------------
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecordingRow {
+    pub id: String,
+    pub meeting_id: String,
+    /// `mic`, `import` or `loopback`.
+    pub source: String,
+    pub chunk_index: u32,
+    /// Where this chunk starts within the meeting's audio, in ms.
+    pub offset_ms: i64,
+    pub file_path: String,
+    /// `None` while the chunk is still being written (or after a crash, until it is repaired).
+    pub duration_ms: Option<i64>,
+    pub consent_confirmed_at: Option<i64>,
+    pub created_at: i64,
+}
+
+/// Add a chunk. A microphone chunk without a consent time is refused by the schema (T-PR-03).
+pub fn insert_recording(conn: &Connection, r: &RecordingRow) -> Result<()> {
+    conn.execute(
+        "INSERT INTO meeting_recordings (id, meeting_id, source, chunk_index, offset_ms, file_path, duration_ms, consent_confirmed_at, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        params![r.id, r.meeting_id, r.source, r.chunk_index, r.offset_ms, r.file_path, r.duration_ms, r.consent_confirmed_at, r.created_at],
+    )?;
+    Ok(())
+}
+
+pub fn finish_recording(
+    conn: &Connection,
+    meeting_id: &str,
+    chunk_index: u32,
+    duration_ms: i64,
+) -> Result<()> {
+    conn.execute(
+        "UPDATE meeting_recordings SET duration_ms = ?3 WHERE meeting_id = ?1 AND chunk_index = ?2",
+        params![meeting_id, chunk_index, duration_ms],
+    )?;
+    Ok(())
+}
+
+fn recording_from(r: &rusqlite::Row<'_>) -> rusqlite::Result<RecordingRow> {
+    Ok(RecordingRow {
+        id: r.get(0)?,
+        meeting_id: r.get(1)?,
+        source: r.get(2)?,
+        chunk_index: r.get(3)?,
+        offset_ms: r.get(4)?,
+        file_path: r.get(5)?,
+        duration_ms: r.get(6)?,
+        consent_confirmed_at: r.get(7)?,
+        created_at: r.get(8)?,
+    })
+}
+
+const RECORDING_COLS: &str = "id, meeting_id, source, chunk_index, offset_ms, file_path, duration_ms, consent_confirmed_at, created_at";
+
+pub fn list_recordings(conn: &Connection, meeting_id: &str) -> Result<Vec<RecordingRow>> {
+    let mut stmt = conn.prepare(&format!("SELECT {RECORDING_COLS} FROM meeting_recordings WHERE meeting_id = ?1 ORDER BY chunk_index"))?;
+    let rows = stmt
+        .query_map([meeting_id], recording_from)?
+        .collect::<rusqlite::Result<_>>()?;
+    Ok(rows)
+}
+
+/// Chunks that never got a duration: the app stopped while recording (crash, kill, power cut).
+pub fn unfinished_recordings(conn: &Connection) -> Result<Vec<RecordingRow>> {
+    let mut stmt = conn.prepare(&format!("SELECT {RECORDING_COLS} FROM meeting_recordings WHERE duration_ms IS NULL ORDER BY meeting_id, chunk_index"))?;
+    let rows = stmt
+        .query_map([], recording_from)?
+        .collect::<rusqlite::Result<_>>()?;
+    Ok(rows)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -837,5 +911,40 @@ mod tests {
             ),
             ("j2", "completed", Some("g-2"), 3)
         );
+    }
+
+    fn rec(id: &str, chunk: u32, consent: Option<i64>) -> RecordingRow {
+        RecordingRow {
+            id: id.into(),
+            meeting_id: "m1".into(),
+            source: "mic".into(),
+            chunk_index: chunk,
+            offset_ms: i64::from(chunk) * 270_000,
+            file_path: format!("c{chunk}.wav"),
+            duration_ms: None,
+            consent_confirmed_at: consent,
+            created_at: 1,
+        }
+    }
+
+    #[test]
+    fn a_mic_chunk_needs_consent_and_unfinished_chunks_are_found() {
+        let c = db();
+        assert!(
+            insert_recording(&c, &rec("r0", 0, None)).is_err(),
+            "no consent, no microphone recording (T-PR-03)"
+        );
+        insert_recording(&c, &rec("r0", 0, Some(5))).unwrap();
+        insert_recording(&c, &rec("r1", 1, Some(5))).unwrap();
+        assert_eq!(unfinished_recordings(&c).unwrap().len(), 2);
+        finish_recording(&c, "m1", 0, 270_000).unwrap();
+        let open = unfinished_recordings(&c).unwrap();
+        assert_eq!((open.len(), open[0].chunk_index), (1, 1));
+        let all = list_recordings(&c, "m1").unwrap();
+        assert_eq!(
+            (all[0].duration_ms, all[1].offset_ms),
+            (Some(270_000), 270_000)
+        );
+        assert!(list_recordings(&c, "other").unwrap().is_empty());
     }
 }
