@@ -12,7 +12,9 @@ export default defineConfig(({ mode }) => ({
   resolve: { alias: { "@": resolve(import.meta.dirname, "src") } },
   define: { __APP_VERSION__: JSON.stringify(version) },
   clearScreen: false,
-  server: { port: 1420, strictPort: true },
+  // The dev server must not watch the Rust side: while cargo compiles, Windows locks the files in
+  // `target/` and Vite's watcher crashed with EBUSY (seen 5 Nov 2026 on a first `pnpm tauri dev`).
+  server: { port: 1420, strictPort: true, watch: { ignored: ["**/target/**", "**/src-tauri/**", "**/crates/**", "**/docs/**"] } },
   build: {
     target: "es2022",
     rollupOptions: {
