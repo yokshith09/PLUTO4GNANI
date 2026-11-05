@@ -12,3 +12,4 @@ pub mod dates;
 pub mod decide;
 pub mod llm;
 pub mod meeting;
+pub mod testaudio;
