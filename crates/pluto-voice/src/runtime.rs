@@ -663,6 +663,8 @@ impl VoiceRuntime {
         };
 
         let mut words: Vec<RtTranscript> = Vec::new();
+        // An error Gnani reported during the turn: shown instead of "didn't catch that".
+        let mut last_error: Option<VoiceError> = None;
         let mut deadline: Option<Instant> = None;
         let mut input_open = true;
         loop {
@@ -699,6 +701,10 @@ impl VoiceRuntime {
                     }
                     Some(RtEvent::Error(e)) => {
                         tracing::warn!(code = ?e.code, "Realtime error during push-to-talk");
+                        if cfg!(debug_assertions) {
+                            eprintln!("[voice] realtime error {:?}: {}", e.code, e.message);
+                        }
+                        last_error = Some(e.clone());
                         if !e.retryable {
                             let _ = session.input.send(RtInput::Close).await;
                             timer.abort();
@@ -708,8 +714,17 @@ impl VoiceRuntime {
                             return;
                         }
                     }
-                    Some(RtEvent::Closed) | None => break,
-                    Some(_) => {}
+                    Some(RtEvent::Closed) | None => {
+                        if cfg!(debug_assertions) {
+                            eprintln!("[voice] realtime closed");
+                        }
+                        break;
+                    }
+                    Some(other) => {
+                        if cfg!(debug_assertions) {
+                            eprintln!("[voice] realtime {other:?}");
+                        }
+                    }
                 },
                 () = wait => break,
             }
@@ -727,6 +742,11 @@ impl VoiceRuntime {
             .collect::<Vec<_>>()
             .join(" ");
         if text.is_empty() {
+            if let Some(e) = last_error {
+                // Gnani said what went wrong: show that, not "didn't catch that".
+                self.fail(&e);
+                return;
+            }
             let detail = nothing_heard_detail(stats.frames(), stats.peak());
             tracing::info!(
                 frames = stats.frames(),

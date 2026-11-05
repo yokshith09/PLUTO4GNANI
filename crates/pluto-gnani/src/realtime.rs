@@ -252,6 +252,33 @@ struct ServerMessage {
     detected_language_code: Option<String>,
     audio_duration_ms: Option<f64>,
     latency: Option<f64>,
+    /// Gnani's error text: only classified (key / credit / other), never shown or logged.
+    message: Option<String>,
+}
+
+/// Maps Gnani's realtime `error` message to a contract code. The text itself is never passed on.
+fn realtime_error(message: Option<&str>) -> VoiceError {
+    let m = message.unwrap_or_default().to_ascii_lowercase();
+    if m.contains("api key")
+        || m.contains("api_key")
+        || m.contains("unauthor")
+        || m.contains("auth")
+    {
+        VoiceError::new(
+            VoiceErrorCode::InvalidApiKey,
+            "Gnani didn't accept your API key. Check it in Settings → Voice & privacy.",
+        )
+    } else if m.contains("credit") || m.contains("quota") || m.contains("balance") {
+        VoiceError::new(
+            VoiceErrorCode::InsufficientCredit,
+            "Your Gnani credit has run out, so voice is off. Add credit, then turn voice back on.",
+        )
+    } else {
+        VoiceError::new(
+            VoiceErrorCode::GnaniUpstream,
+            "Gnani's speech service reported a problem. Try again.",
+        )
+    }
 }
 
 /// Gnani's `latency` is in milliseconds (undocumented; seen on the live check, T-GN-01:
@@ -418,10 +445,7 @@ impl Driver {
                     latency_ms: msg.latency.map(latency_ms),
                 })
             }
-            "error" => RtEvent::Error(VoiceError::new(
-                VoiceErrorCode::GnaniUpstream,
-                "Gnani's speech service reported a problem. Try again.",
-            )),
+            "error" => RtEvent::Error(realtime_error(msg.message.as_deref())),
             _ => return true,
         };
         self.emit(event).await
