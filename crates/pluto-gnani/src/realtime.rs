@@ -254,11 +254,14 @@ struct ServerMessage {
     latency: Option<f64>,
 }
 
-/// Gnani's `latency` unit is not documented. Values under 30 are taken as seconds, larger ones as
-/// milliseconds (to confirm on the live check, T-GN-01).
+/// Gnani's `latency` is in milliseconds (undocumented; seen on the live check, T-GN-01:
+/// values such as 74, 97 and 164 for short utterances).
 fn latency_ms(v: f64) -> u32 {
-    let ms = if v < 30.0 { v * 1000.0 } else { v };
-    ms.round().clamp(0.0, f64::from(u32::MAX)) as u32
+    if v.is_finite() {
+        v.round().clamp(0.0, f64::from(u32::MAX)) as u32
+    } else {
+        0
+    }
 }
 
 /// How a connection ended.
