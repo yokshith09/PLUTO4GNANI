@@ -357,24 +357,9 @@ pub fn run() {
                     .collect();
                 tracking::win::set_own_windows(&own);
             }
-            // An earlier build kept its data in a folder named after its old identifier; copy it
-            // across once (never moved, never overwritten) so an update doesn't open empty.
-            if own_folder {
-                if let Some(old_dir) = pluto_core::legacy_data::old_dir_beside(&data_dir) {
-                    match pluto_core::legacy_data::carry_over(&old_dir, &data_dir) {
-                        Ok(done) if done.database_files > 0 => tracing::info!(
-                            files = done.database_files,
-                            characters = done.pet_packs,
-                            "carried data over from the earlier folder"
-                        ),
-                        Ok(_) => {}
-                        Err(error) => tracing::warn!(
-                            %error,
-                            "couldn't carry data over from the earlier folder; it is untouched"
-                        ),
-                    }
-                }
-            }
+            // Pluto starts with its own empty database. The Loaf app's data (`app.loaf.desktop`) is
+            // never read or copied: the two apps keep separate data.
+            let _ = own_folder;
             std::fs::create_dir_all(&data_dir)?;
             app.manage(ipc::AppPaths {
                 data_dir: data_dir.clone(),
