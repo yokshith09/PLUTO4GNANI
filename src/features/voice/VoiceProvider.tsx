@@ -12,7 +12,7 @@ export interface AudioDeps {
   createPlayer: (onIdle: () => void) => Pick<PcmPlayer, "enqueue" | "stop">;
 }
 
-const realAudio: AudioDeps = { startCapture, FrameSender, pushFrame, createPlayer: (onIdle) => new PcmPlayer({ onIdle }) };
+export const realAudio: AudioDeps = { startCapture, FrameSender, pushFrame, createPlayer: (onIdle) => new PcmPlayer({ onIdle }) };
 
 export interface VoiceApi {
   status: VoiceStatus | null;

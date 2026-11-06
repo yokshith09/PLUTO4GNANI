@@ -13,7 +13,7 @@ Work top to bottom. **Wait** = a task of the other developer that must be merged
 | 1 | T-001 | Base | S | P0a | 0 | — | In progress (CI green on Windows and macOS; local run pending) |
 | 2 | T-005 | Contracts B | M | P0a | 1 | T-003 | Done (merged, PR #8) |
 | 3 | T-006 | UI plumbing | M | P0a | 1 | T-004 | Done (merged, PR #13) |
-| 4 | T-008 | Test data | M | P0a | 1–2 | — | Done (scripts and ground truth merged, PR #13; audio recordings pending) |
+| 4 | T-008 | Test data | M | P0a | 1–2 | — | Done (scripts and ground truth merged, PR #13; `make_test_audio` example makes the recordings with Timbre voices) |
 | 5 | T-009 | LLM check | S | P0a | 1 | — | Done (Gemini 5/5, Groq 5/5; `docs/results/d2-llm-check.md`; Gemini limits to copy from AI Studio) |
 | 6 | T-104 | LLM | M | P0a | 2 | — | Done (merged, PR #14; models fixed by T-009) |
 | 7 | T-105 | Secrets | S | P0a | 1–2 | T-003 | Done (keychain store merged, PR #13; `voice.*` and `llm.*` settings keys in this PR) |
@@ -23,7 +23,7 @@ Work top to bottom. **Wait** = a task of the other developer that must be merged
 | 11 | T-204 | Review and apply | L | P0a | 3 | — | Done (merged, PRs #14 and #18; needs a transcript from T-201) |
 | 12 | T-205 | Recap | S | P0a | 3 | T-102 | Done (merged, PR #19; reading it aloud waits for T-102) |
 | 13 | T-206 | Integration C2 | S | P0a | 3 | — | To do |
-| 14 | T-207 | Recorder | L | P0b | 3–4 | T-013 | To do |
+| 14 | T-207 | Recorder | L | P0b | 3–4 | T-013 | In review (recorder: chunked WAV, pause/resume, consent, crash recovery, tests; Record dialog; shell wiring after D1's PR #27) |
 | 15 | T-302 | Decisions | M | P0a | 3 | — | Done (merged, PR #14; routing accuracy on the real model (T-ML-04) needs keys) |
 | 16 | T-304 | Voice UI | M | P0a | 3–4 | — | Done (merged, PR #23; live with D1's runtime T-301) |
 | 17 | T-305 | Recall | L | P0a | 4 | — | In progress (recall merged, PR #19; spoken answer and the follow-up proposal wait for T-303) |
