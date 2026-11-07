@@ -663,7 +663,7 @@ export function createMock() {
     pet_double_click: () => null,
     pet_menu: () => null,
     notification_test: () => null,
-    app_paths: () => ({ data_dir: "C:\\Users\\you\\AppData\\Roaming\\app.pluto.desktop", database: "C:\\Users\\you\\AppData\\Roaming\\app.pluto.desktop\\pluto.db", logs: "C:\\Users\\you\\AppData\\Local\\app.pluto.desktop\\logs" }),
+    app_paths: () => ({ data_dir: "C:\\Users\\you\\AppData\\Roaming\\app.plutovoice.desktop", database: "C:\\Users\\you\\AppData\\Roaming\\app.plutovoice.desktop\\pluto.db", logs: "C:\\Users\\you\\AppData\\Local\\app.plutovoice.desktop\\logs" }),
     folder_open: () => null,
     settings_reset: () => {
       const defaults = defaultSettings();
