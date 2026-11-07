@@ -221,8 +221,8 @@ async fn pluto_starts_a_turn_that_gets_the_command_and_ends_after_a_pause() {
         "the pause ended the command"
     );
     let sent = turns.pushed_to("wake-turn");
-    // Half a second before the detection, the 1 s command, then up to the 1.2 s pause.
-    let expected = 16 + 32 + 38;
+    // Half a second before the detection, the 1 s command, then up to the 0.8 s pause.
+    let expected = 16 + 32 + 25;
     assert!(
         (expected - 4..=expected + 4).contains(&sent),
         "{sent} frames went to the turn"
@@ -293,7 +293,7 @@ async fn a_hotkey_turn_gets_the_microphone_and_is_not_ended_by_a_pause() {
 async fn while_pluto_is_busy_nothing_is_detected_or_sent() {
     for busy in [
         VoiceState::Thinking,
-        VoiceState::Speaking,
+        VoiceState::Executing,
         VoiceState::Recording,
         VoiceState::Disabled,
     ] {
@@ -308,5 +308,25 @@ async fn while_pluto_is_busy_nothing_is_detected_or_sent() {
         .await;
         assert_eq!(turns.starts.load(Ordering::SeqCst), 0, "{busy:?}");
         assert!(turns.pushed.lock().unwrap().is_empty(), "{busy:?}");
+    }
+}
+
+#[tokio::test]
+async fn pluto_works_wherever_push_to_talk_does() {
+    // A proposal waiting for "haan", after an error, and over a reply (push-to-talk stops it).
+    for state in [
+        VoiceState::AwaitingApproval,
+        VoiceState::Error,
+        VoiceState::Speaking,
+    ] {
+        let turns = Arc::new(FakeTurns::default());
+        let audio = [tone(0.1, 30_000.), tone(0.8, 3000.), silence(2.0)].concat();
+        play(&audio, turns.clone(), |t| {
+            *t.state.lock().unwrap() = state;
+        })
+        .await;
+        assert_eq!(turns.starts.load(Ordering::SeqCst), 1, "{state:?}");
+        assert_eq!(turns.stops.load(Ordering::SeqCst), 1, "{state:?}");
+        assert!(turns.pushed_to("wake-turn") > 0, "{state:?}");
     }
 }

@@ -12,5 +12,7 @@ pub mod assistant;
 pub mod audio;
 pub mod meeting_jobs;
 pub mod privacy;
+pub mod quick;
+pub mod reply_cache;
 pub mod runtime;
 pub mod wake;

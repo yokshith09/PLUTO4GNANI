@@ -539,10 +539,14 @@ impl VoiceShell {
                 WakePolicy::default(),
             ));
             self.lock().wake = Some((session, task));
+            #[cfg(debug_assertions)]
+            eprintln!("[voice] wake: always-on is listening for Pluto");
         } else if !want && running {
             if let Some((session, task)) = self.lock().wake.take() {
                 self.router.close(&session);
                 task.abort();
+                #[cfg(debug_assertions)]
+                eprintln!("[voice] wake: always-on stopped");
             }
         } else {
             return;
@@ -925,7 +929,11 @@ pub async fn voice_speak(
         speed: None,
     };
     let tts: Arc<dyn TextToSpeech> = if settings.cloud_voice_enabled {
-        shell.tts.clone()
+        // Fixed replies ("Opening Meetings.") play from this computer after the first time.
+        Arc::new(pluto_voice::reply_cache::CachedTts::new(
+            shell.tts.clone(),
+            shell.data_dir.join("tts-cache"),
+        ))
     } else {
         Arc::new(pluto_gnani::mock::MockTts::new())
     };

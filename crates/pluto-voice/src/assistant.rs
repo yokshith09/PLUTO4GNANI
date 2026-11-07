@@ -1499,8 +1499,33 @@ impl Assistant {
             return Ok(Turn::Reply);
         }
 
-        let ctx = self.context().await;
-        let decision = self.decider.decide(&heard.text, &ctx).await?;
+        // Fixed commands ("meetings kholo", "aaj ke kaam batao") are decided here at once;
+        // everything else goes to the decider (rules, then the LLM).
+        let started = std::time::Instant::now();
+        let decision = match crate::quick::decide(&heard.text) {
+            Some((intent, tool, args)) => AssistantDecision {
+                intent,
+                tool: Some(tool.to_string()),
+                args,
+                confidence: Some(1.0),
+                source: DecisionSource::Rules,
+                latency_ms: 0,
+            },
+            None => {
+                let ctx = self.context().await;
+                self.decider.decide(&heard.text, &ctx).await?
+            }
+        };
+        if cfg!(debug_assertions) {
+            eprintln!(
+                "[voice] timing: decided in {:.2} s ({})",
+                started.elapsed().as_secs_f32(),
+                match decision.source {
+                    DecisionSource::Rules => "rules, no LLM",
+                    DecisionSource::Llm => "LLM",
+                }
+            );
+        }
         self.log_update(
             &interaction_id,
             InteractionUpdate {
