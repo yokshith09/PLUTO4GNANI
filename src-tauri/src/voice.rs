@@ -256,6 +256,46 @@ struct Inner {
     teaching: bool,
 }
 
+const SETTINGS_FILE: &str = "voice-settings.json";
+
+/// The saved voice settings, or the built-in defaults when there are none yet or the file is
+/// unreadable (it is then left alone and overwritten by the next change). Key flags are not stored:
+/// they come from the keychain.
+fn load_settings(data_dir: &std::path::Path) -> VoiceResult<VoiceSettings> {
+    let saved = std::fs::read_to_string(data_dir.join(SETTINGS_FILE))
+        .ok()
+        .and_then(|text| serde_json::from_str::<VoiceSettings>(&text).ok());
+    match saved {
+        Some(s) => Ok(VoiceSettings {
+            has_gnani_key: false,
+            has_gemini_key: false,
+            has_groq_key: false,
+            ..s
+        }),
+        None => fixture(fixtures::SETTINGS_DEFAULT),
+    }
+}
+
+/// Writes the settings next to the database (written to a temporary file first, so a crash never
+/// leaves half a file). A failure is logged: the change still applies for this session.
+fn save_settings(data_dir: &std::path::Path, s: &VoiceSettings) {
+    let saved = VoiceSettings {
+        has_gnani_key: false,
+        has_gemini_key: false,
+        has_groq_key: false,
+        ..s.clone()
+    };
+    let write = || -> std::io::Result<()> {
+        std::fs::create_dir_all(data_dir)?;
+        let tmp = data_dir.join(format!("{SETTINGS_FILE}.tmp"));
+        std::fs::write(&tmp, serde_json::to_vec_pretty(&saved)?)?;
+        std::fs::rename(&tmp, data_dir.join(SETTINGS_FILE))
+    };
+    if let Err(error) = write() {
+        tracing::warn!(%error, "could not save the voice settings");
+    }
+}
+
 fn lock_settings(s: &Mutex<VoiceSettings>) -> MutexGuard<'_, VoiceSettings> {
     s.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 }
@@ -327,9 +367,8 @@ impl VoiceShell {
             keys.clone(),
             log.clone(),
         ));
-        let settings = Arc::new(Mutex::new(fixture::<VoiceSettings>(
-            fixtures::SETTINGS_DEFAULT,
-        )?));
+        // Last session's choices (cloud voice, voice, languages, hotkey) come back after a restart.
+        let settings = Arc::new(Mutex::new(load_settings(&data_dir)?));
         let router = Arc::new(AudioRouter::new());
         let stt = Arc::new(
             RealtimeClient::new(realtime::DEFAULT_URL, keys, log.clone()).with_cloud(cloud.clone()),
@@ -736,6 +775,7 @@ pub async fn voice_settings_set(
         s.hotkey != before
     };
     shell.refresh_enabled();
+    save_settings(&shell.data_dir, &lock_settings(&shell.settings));
     if hotkey_changed {
         crate::shortcuts::reapply(&shell.app);
     }
@@ -999,6 +1039,39 @@ mod tests {
         fixture::<Vec<TranscriptSegment>>(fixtures::TRANSCRIPT_AS1).unwrap();
         fixture::<ExtractionResult>(fixtures::EXTRACTION_AS1).unwrap();
         fixture::<RecallAnswer>(fixtures::RECALL_OK).unwrap();
+    }
+
+    #[test]
+    fn voice_settings_survive_a_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        // Nothing saved yet: the defaults, with cloud voice off.
+        let first = load_settings(dir.path()).unwrap();
+        assert!(!first.cloud_voice_enabled);
+
+        let changed = VoiceSettings {
+            cloud_voice_enabled: true,
+            tts_voice: "Avinash".into(),
+            hotkey: "Ctrl+Alt+K".into(),
+            has_gnani_key: true, // never stored
+            ..first
+        };
+        save_settings(dir.path(), &changed);
+        let back = load_settings(dir.path()).unwrap();
+        assert!(back.cloud_voice_enabled);
+        assert_eq!(back.tts_voice, "Avinash");
+        assert_eq!(back.hotkey, "Ctrl+Alt+K");
+        assert!(
+            !back.has_gnani_key,
+            "key flags come from the keychain, not the file"
+        );
+    }
+
+    #[test]
+    fn a_damaged_settings_file_falls_back_to_the_defaults() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join(SETTINGS_FILE), "{ not json").unwrap();
+        let s = load_settings(dir.path()).unwrap();
+        assert!(!s.cloud_voice_enabled);
     }
 
     #[test]
