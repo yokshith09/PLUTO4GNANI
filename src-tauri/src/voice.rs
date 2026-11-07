@@ -322,12 +322,20 @@ impl VoiceShell {
         let gemini = GeminiClient::new(gemini::DEFAULT_MODEL, secrets.clone(), log.clone());
         let groq = GroqClient::new(groq::DEFAULT_MODEL, secrets.clone(), log.clone());
         let llm = Arc::new(Router::new(Arc::new(gemini), Arc::new(groq)));
-        let assistant = Arc::new(Assistant::new(
-            db,
-            clock,
-            Arc::new(DefaultDecider::new(llm)),
-            Arc::new(AppAssistantEvents(app.clone())),
+        let knowledge = Arc::new(pluto_intel::meeting::service::MeetingAi::new(
+            db.clone(),
+            clock.clone(),
+            llm.clone(),
         ));
+        let assistant = Arc::new(
+            Assistant::new(
+                db,
+                clock,
+                Arc::new(DefaultDecider::new(llm)),
+                Arc::new(AppAssistantEvents(app.clone())),
+            )
+            .with_knowledge(knowledge),
+        );
         let handler: Arc<dyn TurnHandler> = Arc::new(assistant.clone());
         let for_config = settings.clone();
         let runtime = Arc::new(

@@ -27,6 +27,7 @@ use async_trait::async_trait;
 use chrono::{NaiveDate, TimeZone};
 use pluto_contracts::decide::{AssistantDecision, DecideContext, Decider, DecisionSource, Intent};
 use pluto_contracts::error::{VoiceError, VoiceErrorCode, VoiceResult};
+use pluto_contracts::meeting::MeetingKnowledge;
 use pluto_contracts::voice::{
     pages, tools, AssistantTurn, Proposal, ProposalRequest, ProposalResponse, ToolExecutor,
     ToolResult,
@@ -348,6 +349,8 @@ pub struct Assistant {
     window: Duration,
     runtime: OnceLock<Weak<VoiceRuntime>>,
     state: Mutex<State>,
+    /// Grounded meeting answers (T-305); without it `meeting_search` reads out matching quotes.
+    knowledge: Option<Arc<dyn MeetingKnowledge>>,
 }
 
 impl Assistant {
@@ -365,7 +368,14 @@ impl Assistant {
             window: PROPOSAL_WINDOW,
             runtime: OnceLock::new(),
             state: Mutex::default(),
+            knowledge: None,
         }
+    }
+
+    /// Lets spoken questions about meetings use the grounded recall (T-305).
+    pub fn with_knowledge(mut self, knowledge: Arc<dyn MeetingKnowledge>) -> Self {
+        self.knowledge = Some(knowledge);
+        self
     }
 
     pub fn with_window(mut self, window: Duration) -> Self {
@@ -518,6 +528,76 @@ impl Assistant {
         }
     }
 
+    /// The recall answer for a spoken question: only when it cites a real segment (T-305).
+    async fn grounded_answer(&self, question: &str, lang: Lang) -> Option<String> {
+        let knowledge = self.knowledge.as_ref()?;
+        let answer = knowledge.recall(question, Some(lang.code())).await.ok()?;
+        (!answer.citations.is_empty() && !answer.answer_text.trim().is_empty())
+            .then(|| answer.answer_text.trim().to_owned())
+    }
+
+    /// Keyword fallback: read out the best matching quotes.
+    async fn quote_search(&self, query: &str, lang: Lang) -> VoiceResult<String> {
+        let terms: Vec<String> = words(query)
+            .into_iter()
+            .filter(|w| w.chars().count() > 2)
+            .collect();
+        let hits = self
+            .db
+            .read(move |c| meeting_ai_store::search_segments_any(c, &terms, 3))
+            .await?;
+        if hits.is_empty() {
+            return Ok(lang.pick(
+                "Meetings mein iske baare mein kuch nahi mila.",
+                "I couldn't find that in your meetings.",
+            ));
+        }
+        let mut parts = Vec::new();
+        for h in &hits {
+            let title = meetings::get(&self.db, &h.meeting_id)
+                .await
+                .map(|m| m.title)
+                .unwrap_or_default();
+            let quote: String = h.text.chars().take(160).collect();
+            parts.push(format!("{title}: “{quote}”"));
+        }
+        Ok(parts.join(" "))
+    }
+
+    /// Open commitments, read out (T-305).
+    async fn commitments_text(&self, lang: Lang) -> VoiceResult<String> {
+        let Some(knowledge) = &self.knowledge else {
+            return Err(not_yet(lang));
+        };
+        let open = knowledge.open_commitments().await?;
+        if open.is_empty() {
+            return Ok(lang.pick(
+                "Koi open commitment nahi hai.",
+                "You have no open commitments.",
+            ));
+        }
+        let lines: Vec<String> = open
+            .iter()
+            .map(|c| match (&c.owner, &c.due_date) {
+                (Some(o), Some(d)) => format!("{o}: {} ({})", c.body, friendly_date(d)),
+                (Some(o), None) => format!("{o}: {}", c.body),
+                (None, _) => c.body.clone(),
+            })
+            .collect();
+        Ok(lang.pick(
+            format!(
+                "{} open commitments: {}.",
+                open.len(),
+                spoken_list(&lines, lang)
+            ),
+            format!(
+                "{} open commitments: {}.",
+                open.len(),
+                spoken_list(&lines, lang)
+            ),
+        ))
+    }
+
     // ---- reads ---------------------------------------------------------------------------------
 
     async fn read(
@@ -598,30 +678,9 @@ impl Assistant {
                     .get("query")
                     .and_then(Value::as_str)
                     .unwrap_or_default();
-                let terms: Vec<String> = words(query)
-                    .into_iter()
-                    .filter(|w| w.chars().count() > 2)
-                    .collect();
-                let hits = self
-                    .db
-                    .read(move |c| meeting_ai_store::search_segments_any(c, &terms, 3))
-                    .await?;
-                if hits.is_empty() {
-                    lang.pick(
-                        "Meetings mein iske baare mein kuch nahi mila.",
-                        "I couldn't find that in your meetings.",
-                    )
-                } else {
-                    let mut parts = Vec::new();
-                    for h in &hits {
-                        let title = meetings::get(&self.db, &h.meeting_id)
-                            .await
-                            .map(|m| m.title)
-                            .unwrap_or_default();
-                        let quote: String = h.text.chars().take(160).collect();
-                        parts.push(format!("{title}: “{quote}”"));
-                    }
-                    parts.join(" ")
+                match self.grounded_answer(query, lang).await {
+                    Some(text) => text,
+                    None => self.quote_search(query, lang).await?,
                 }
             }
             tools::OPEN_PAGE => {
@@ -650,7 +709,8 @@ impl Assistant {
                     format!("Opening {}.", page_title(page)),
                 )
             }
-            tools::COMMITMENTS_LIST | tools::NOTES_SEARCH | tools::PROJECTS_LIST => {
+            tools::COMMITMENTS_LIST => self.commitments_text(lang).await?,
+            tools::NOTES_SEARCH | tools::PROJECTS_LIST => {
                 return Err(not_yet(lang));
             }
             _ => {

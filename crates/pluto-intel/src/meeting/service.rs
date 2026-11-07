@@ -452,3 +452,29 @@ impl MeetingAi {
         Ok(out)
     }
 }
+
+#[async_trait::async_trait]
+impl pluto_contracts::meeting::MeetingKnowledge for MeetingAi {
+    async fn recall(
+        &self,
+        question: &str,
+        language: Option<&str>,
+    ) -> VoiceResult<pluto_contracts::meeting::RecallAnswer> {
+        MeetingAi::recall(self, question, language).await
+    }
+
+    async fn open_commitments(&self) -> VoiceResult<Vec<pluto_contracts::meeting::Commitment>> {
+        let all = MeetingAi::commitments(self, None, None).await?;
+        Ok(all
+            .into_iter()
+            .filter(|c| {
+                matches!(
+                    c.status,
+                    pluto_contracts::meeting::CommitmentStatus::Open
+                        | pluto_contracts::meeting::CommitmentStatus::Overdue
+                        | pluto_contracts::meeting::CommitmentStatus::NoTask
+                )
+            })
+            .collect())
+    }
+}
