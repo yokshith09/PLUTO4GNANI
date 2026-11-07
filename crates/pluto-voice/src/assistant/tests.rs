@@ -533,9 +533,17 @@ async fn a_task_with_a_time_also_gets_a_reminder_at_that_time() {
         )]),
         PROPOSAL_WINDOW,
     );
-    r.a.turn(heard("Have a meeting tomorrow at 6 am. Add it to the task.", "en-IN")).await.unwrap();
+    r.a.turn(heard(
+        "Have a meeting tomorrow at 6 am. Add it to the task.",
+        "en-IN",
+    ))
+    .await
+    .unwrap();
     let p = r.seen.proposals.lock().unwrap()[0].clone();
-    assert_eq!(p.summary_text, "Add “Meeting” for Thu, 6 Nov, with a reminder at Thu, 6 Nov, 6:00 AM?");
+    assert_eq!(
+        p.summary_text,
+        "Add “Meeting” for Thu, 6 Nov, with a reminder at Thu, 6 Nov, 6:00 AM?"
+    );
     r.a.respond(&p.id, ProposalResponse::Approve).await.unwrap();
     let task = open_tasks(&r).await.into_iter().next().unwrap();
     assert_eq!(task.title, "Meeting");
@@ -557,7 +565,12 @@ async fn a_reminder_finds_its_time_in_the_when_phrase() {
         )]),
         PROPOSAL_WINDOW,
     );
-    assert_eq!(r.a.turn(heard("five PM so add a reminder", "en-IN")).await.unwrap(), Turn::Proposal);
+    assert_eq!(
+        r.a.turn(heard("five PM so add a reminder", "en-IN"))
+            .await
+            .unwrap(),
+        Turn::Proposal
+    );
     let p = r.seen.proposals.lock().unwrap()[0].clone();
     // START is 13:30 IST on 5 Nov, so 5 pm is later today (11:30 UTC).
     assert_eq!(p.args["remind_at"], 1_762_342_200_000i64);
