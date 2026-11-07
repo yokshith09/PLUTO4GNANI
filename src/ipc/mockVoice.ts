@@ -5,6 +5,7 @@ import { emitNamed } from "./namedEvents";
 import type {
   ApplyExtraction, AssistantTurn, Commitment, ExtractionResult, PrivacyLogEntry, Proposal, ProposalResponse, RecallAnswer, RecordingSession, SpeakerMapping, ToolResult,
   TranscriptionJob, TranscriptSegment, UsageCounters, VoiceError, VoiceErrorCode, VoiceSettings, VoiceSettingsPatch, VoiceStatus,
+  WakeClip, WakeStatus,
 } from "./generated";
 import type { Meeting } from "./types";
 import settingsDefault from "../../test-data/fixtures/voice/voice_settings.default.json";
@@ -85,21 +86,58 @@ export function createVoiceMock({ now, createMeeting, applyItems, delayMs = 250 
     step("completed", delayMs * 2);
   };
 
+  // Always-on listening (T-705), as the shell decides it.
+  const WAKE_NEEDED = 6;
+  const wake = { enrolled: false, clips: 0, teaching: false, session: null as string | null };
+  const wakeStatus = (): WakeStatus => ({ enrolled: wake.enrolled, clips: wake.clips, needed: WAKE_NEEDED, session_id: wake.session });
+  const refreshWake = () => {
+    const want = settings.always_on_enabled && settings.cloud_voice_enabled && settings.has_gnani_key && wake.enrolled && !wake.teaching;
+    if (want === (wake.session !== null)) return;
+    wake.session = want ? id("wake") : null;
+    emitNamed("voice://wake", wakeStatus());
+  };
+
   return {
     voice_settings_get: () => settings,
     voice_settings_set: (a: Args) => {
       Object.assign(settings, a.patch as VoiceSettingsPatch);
       setStatus({ state: settings.cloud_voice_enabled ? "idle" : "disabled", detail: null });
+      refreshWake();
       return settings;
+    },
+    voice_wake_status: () => wakeStatus(),
+    voice_wake_teach_begin: () => {
+      wake.teaching = true;
+      Object.assign(wake, { enrolled: false, clips: 0 });
+      refreshWake();
+      return wakeStatus();
+    },
+    voice_wake_clip_start: () => id("clip"),
+    voice_wake_clip_stop: (): WakeClip => {
+      wake.clips += 1;
+      return { ok: true, message: "Got it.", clips: wake.clips };
+    },
+    voice_wake_teach_finish: () => {
+      if (wake.clips < WAKE_NEEDED) voiceError("core", "Say “Pluto” a few more times first.");
+      Object.assign(wake, { enrolled: true, teaching: false });
+      refreshWake();
+      return wakeStatus();
+    },
+    voice_wake_forget: () => {
+      Object.assign(wake, { enrolled: false, clips: 0, teaching: false });
+      refreshWake();
+      return wakeStatus();
     },
     voice_key_set: (a: Args) => {
       const flag = KEY_FLAGS[a.account as keyof typeof KEY_FLAGS] ?? voiceError("core", "Unknown key account.");
       if (!String(a.secret).trim()) voiceError("invalid_api_key", "That key is empty.");
       settings[flag] = true;
+      refreshWake();
       return null;
     },
     voice_key_clear: (a: Args) => {
       settings[KEY_FLAGS[a.account as keyof typeof KEY_FLAGS] ?? voiceError("core", "Unknown key account.")] = false;
+      refreshWake();
       return null;
     },
     voice_status: () => status,

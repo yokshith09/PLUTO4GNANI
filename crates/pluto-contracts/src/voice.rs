@@ -359,6 +359,36 @@ pub struct PrivacyLogEntry {
     pub ref_id: Option<String>,
 }
 
+// ---- always-on listening (T-705) ------------------------------------------------------------
+
+/// Always-on listening: whether Pluto knows the user's "Pluto", and whether it is listening for
+/// it. Returned by `voice_wake_status` and emitted as `voice://wake` when it changes.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+pub struct WakeStatus {
+    /// A wake word built from the user's voice is saved on this computer.
+    pub enrolled: bool,
+    /// Good "Pluto" recordings so far, while teaching.
+    pub clips: u32,
+    /// Recordings needed before the wake word can be built.
+    pub needed: u32,
+    /// Listening for "Pluto": the UI keeps the microphone open and sends its frames for this
+    /// session. `None` when always-on is off, not taught, or Cloud voice is off.
+    pub session_id: Option<String>,
+}
+
+/// One "Pluto" recorded while teaching (`voice_wake_enroll_stop`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+pub struct WakeClip {
+    /// Kept: a clear, single word.
+    pub ok: bool,
+    /// What to tell the user, e.g. "Too quiet. Say it again a little louder."
+    pub message: String,
+    /// Good recordings so far.
+    pub clips: u32,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct UsageCounters {

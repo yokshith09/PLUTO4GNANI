@@ -25,7 +25,8 @@ use pluto_contracts::meeting::{SegmentSource, TranscriptSegment, TranscriptionJo
 use pluto_contracts::speech::{FrameSink, RtConfig, RtTranscript, TextToSpeech, TtsRequest};
 use pluto_contracts::voice::{
     AssistantTurn, Destination, PrivacyLogEntry, Proposal, ProposalResponse, ToolResult,
-    UsageCounters, VoiceMode, VoiceSettings, VoiceSettingsPatch, VoiceState, VoiceStatus,
+    UsageCounters, VoiceMode, VoiceSettings, VoiceSettingsPatch, VoiceState, VoiceStatus, WakeClip,
+    WakeStatus,
 };
 use pluto_core::clock::Clock;
 use pluto_core::db::Database;
@@ -46,6 +47,9 @@ use pluto_voice::audio::{AudioRouter, WavSink};
 use pluto_voice::meeting_jobs::{JobEvents, MeetingJobs};
 use pluto_voice::privacy::CloudGated;
 use pluto_voice::runtime::{RuntimeEvents, TurnHandler, VoiceRuntime};
+use pluto_voice::wake::{
+    self, EnrollSink, PlutoDetector, RuntimeTurns, WakePolicy, WakeSink, WakeStore,
+};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use tauri::ipc::{Channel, InvokeBody, InvokeResponseBody, Request};
@@ -68,6 +72,8 @@ pub(crate) mod events {
     pub const MEETING_CAPTION: &str = "meeting://caption";
     pub const MEETING_TICKER: &str = "meeting://ticker";
     pub const MEETING_JOB: &str = "meeting://job";
+    /// Always-on listening changed (`WakeStatus`): open or close the always-on microphone.
+    pub const WAKE: &str = "voice://wake";
 }
 
 /// Emits a `voice://…` / `meeting://…` event to every window. A failure only means no window is
@@ -242,6 +248,12 @@ pub(crate) struct VoiceShell {
 struct Inner {
     /// The mic-check recording (Cloud voice off) and its status.
     check: Option<(String, VoiceStatus)>,
+    /// Always-on listening (T-705): its microphone session and the detection loop.
+    wake: Option<(String, tauri::async_runtime::JoinHandle<()>)>,
+    /// A "Pluto" being recorded while teaching.
+    enroll: Option<(String, Arc<EnrollSink>)>,
+    /// Teaching is open: always-on pauses, so saying "Pluto" doesn't start turns.
+    teaching: bool,
 }
 
 fn lock_settings(s: &Mutex<VoiceSettings>) -> MutexGuard<'_, VoiceSettings> {
@@ -372,7 +384,12 @@ impl VoiceShell {
             settings,
             data_dir,
             app,
-            inner: Mutex::new(Inner { check: None }),
+            inner: Mutex::new(Inner {
+                check: None,
+                wake: None,
+                enroll: None,
+                teaching: false,
+            }),
         })
     }
 
@@ -414,6 +431,76 @@ impl VoiceShell {
         cloud_switch().set(cloud);
         let enabled = cloud && self.has_key(Account::Gnani);
         self.runtime.set_enabled(enabled);
+        self.refresh_wake();
+    }
+
+    // ---- always-on listening (T-705) ---------------------------------------------------------
+
+    fn wake_store(&self) -> WakeStore {
+        WakeStore::new(self.data_dir.join("wake"))
+    }
+
+    pub(crate) fn wake_status(&self) -> WakeStatus {
+        let store = self.wake_store();
+        WakeStatus {
+            enrolled: store.enrolled(),
+            clips: store.clips(),
+            needed: wake::NEEDED,
+            session_id: self.lock().wake.as_ref().map(|(id, _)| id.clone()),
+        }
+    }
+
+    /// Listens for "Pluto" when always-on is on, the wake word is taught and Cloud voice is
+    /// ready; otherwise stops. Tells the UI (`voice://wake`) when that changes.
+    pub(crate) fn refresh_wake(&self) {
+        let want = {
+            let s = lock_settings(&self.settings);
+            s.always_on_enabled && s.cloud_voice_enabled
+        } && self.has_key(Account::Gnani)
+            && !self.lock().teaching;
+        let store = self.wake_store();
+        let running = self.lock().wake.is_some();
+        if want && !running {
+            let Some(reference) = store.reference() else {
+                return;
+            };
+            let detector = match PlutoDetector::new(reference) {
+                Ok(d) => d,
+                Err(e) => {
+                    tracing::warn!(code = ?e.code, "couldn't start always-on listening");
+                    return;
+                }
+            };
+            let session = pluto_core::ids::new_id();
+            // About 4 s of audio queued at most; the detector keeps up with far more.
+            let (tx, rx) = tokio::sync::mpsc::channel(128);
+            if self
+                .router
+                .open(&session, vec![Arc::new(WakeSink(tx))])
+                .is_err()
+            {
+                return;
+            }
+            let turns = Arc::new(RuntimeTurns {
+                runtime: self.runtime.clone(),
+                router: self.router.clone(),
+            });
+            let task = tauri::async_runtime::spawn(wake::run(
+                rx,
+                Box::new(detector),
+                turns,
+                WakePolicy::default(),
+            ));
+            self.lock().wake = Some((session, task));
+        } else if !want && running {
+            if let Some((session, task)) = self.lock().wake.take() {
+                self.router.close(&session);
+                task.abort();
+            }
+        } else {
+            return;
+        }
+        emit(&self.app, events::WAKE, &self.wake_status());
     }
 
     /// Push-to-talk down (hotkey or button). Returns the session the UI captures for.
@@ -488,6 +575,95 @@ fn account(name: &str) -> VoiceResult<Account> {
             "That isn't a service Pluto has a key for.",
         )
     })
+}
+
+// ---- always-on listening (T-705) -------------------------------------------------------------
+
+#[tauri::command]
+pub async fn voice_wake_status(shell: State<'_, VoiceShell>) -> VoiceResult<WakeStatus> {
+    Ok(shell.wake_status())
+}
+
+/// Starts teaching Pluto the user's "Pluto" from scratch: earlier recordings and the old wake
+/// word are removed, and always-on pauses until teaching ends.
+#[tauri::command]
+pub async fn voice_wake_teach_begin(shell: State<'_, VoiceShell>) -> VoiceResult<WakeStatus> {
+    shell.lock().teaching = true;
+    shell.refresh_wake();
+    shell.wake_store().reset()?;
+    Ok(shell.wake_status())
+}
+
+/// Opens one teaching recording. The UI sends the microphone's frames for the returned session.
+#[tauri::command]
+pub async fn voice_wake_clip_start(shell: State<'_, VoiceShell>) -> VoiceResult<String> {
+    let session = pluto_core::ids::new_id();
+    let sink = Arc::new(EnrollSink::default());
+    shell.router.open(&session, vec![sink.clone()])?;
+    if let Some((old, _)) = shell.lock().enroll.replace((session.clone(), sink)) {
+        shell.router.close(&old);
+    }
+    Ok(session)
+}
+
+/// Ends a teaching recording: keeps it if it is one clear "Pluto", or says what to do.
+#[tauri::command]
+pub async fn voice_wake_clip_stop(
+    session_id: String,
+    shell: State<'_, VoiceShell>,
+) -> VoiceResult<WakeClip> {
+    let taken = {
+        let mut inner = shell.lock();
+        match inner.enroll.take() {
+            Some((id, sink)) if id == session_id => Some(sink),
+            other => {
+                inner.enroll = other;
+                None
+            }
+        }
+    };
+    let Some(sink) = taken else {
+        return Err(VoiceError::new(
+            VoiceErrorCode::Core,
+            "That recording already ended.",
+        ));
+    };
+    shell.router.close(&session_id);
+    let store = shell.wake_store();
+    Ok(match wake::take_clip(&sink.take()) {
+        Ok(word) => WakeClip {
+            ok: true,
+            message: "Got it.".into(),
+            clips: store.add_clip(&word)?,
+        },
+        Err(why) => WakeClip {
+            ok: false,
+            message: why.into(),
+            clips: store.clips(),
+        },
+    })
+}
+
+/// Builds the wake word from the recordings and starts listening if always-on is on.
+#[tauri::command]
+pub async fn voice_wake_teach_finish(shell: State<'_, VoiceShell>) -> VoiceResult<WakeStatus> {
+    shell.wake_store().build()?;
+    shell.lock().teaching = false;
+    shell.refresh_wake();
+    Ok(shell.wake_status())
+}
+
+/// Stops teaching without a wake word, or forgets the one saved: recordings and reference are
+/// deleted, and always-on stops.
+#[tauri::command]
+pub async fn voice_wake_forget(shell: State<'_, VoiceShell>) -> VoiceResult<WakeStatus> {
+    if let Some((id, _)) = shell.lock().enroll.take() {
+        shell.router.close(&id);
+    }
+    shell.wake_store().reset()?;
+    shell.lock().teaching = false;
+    shell.refresh_wake();
+    Ok(shell.wake_status())
 }
 
 /// Settings → Cloud voice, shared by every outbound client: Gnani (REST, Batch, Realtime, Timbre)

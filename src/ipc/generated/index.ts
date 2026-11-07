@@ -107,5 +107,7 @@ export type { VoiceSettings } from "./VoiceSettings";
 export type { VoiceSettingsPatch } from "./VoiceSettingsPatch";
 export type { VoiceState } from "./VoiceState";
 export type { VoiceStatus } from "./VoiceStatus";
+export type { WakeClip } from "./WakeClip";
+export type { WakeStatus } from "./WakeStatus";
 export type { WeeklyReport } from "./WeeklyReport";
 export type { WorkUpdate } from "./WorkUpdate";

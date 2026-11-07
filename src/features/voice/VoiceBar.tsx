@@ -25,7 +25,9 @@ export function VoiceBar({ onOpenSettings }: { onOpenSettings: () => void }) {
   const state: VoiceState = v.error ? "error" : v.talking ? "listening" : (v.status?.state ?? "idle");
   const off = v.status?.state === "disabled";
   const recording = v.status?.state === "recording";
-  const label = v.error ?? (v.status?.detail && state !== "listening" ? v.status.detail : STATE_LABEL[state]);
+  // Always-on (T-705): when idle, say that Pluto is waiting for its name.
+  const idleLabel = state === "idle" && v.wake?.session_id ? "Say “Pluto” to start" : STATE_LABEL[state];
+  const label = v.error ?? (v.status?.detail && state !== "listening" ? v.status.detail : idleLabel);
 
   return (
     <div className="relative shrink-0 border-t bg-[var(--sidebar)]">

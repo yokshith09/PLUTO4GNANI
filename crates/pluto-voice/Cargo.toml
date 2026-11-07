@@ -13,6 +13,9 @@ pluto-gnani.workspace = true
 async-trait.workspace = true
 chrono = { version = "0.4.45", default-features = false, features = ["std"] }
 hound.workspace = true
+# Not used directly: pins the version rustpotter's candle builds with.
+half.workspace = true
+rustpotter.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

@@ -13,3 +13,4 @@ pub mod audio;
 pub mod meeting_jobs;
 pub mod privacy;
 pub mod runtime;
+pub mod wake;

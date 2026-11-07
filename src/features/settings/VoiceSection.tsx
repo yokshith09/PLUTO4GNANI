@@ -8,6 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { playbackChannel } from "@/audio";
 import { realAudio } from "@/features/voice/VoiceProvider";
+import { AlwaysOnRow } from "@/features/voice/WakeSetup";
 import { voiceErrorMessage, voiceIpc, type KeyAccount } from "@/ipc/voiceClient";
 import type { Destination, VoiceSettings, VoiceSettingsPatch } from "@/ipc/generated";
 import { notify } from "@/lib/notify";
@@ -195,9 +196,7 @@ export function VoiceSection() {
         <Row label="Expressive replies" hint="Lets spoken replies sound warmer (laughs, pauses).">
           <Switch checked={s.audio_tags} onCheckedChange={(v) => patch.mutate({ audio_tags: v })} aria-label="Expressive replies" />
         </Row>
-        <Row label="Always-on listening" hint="Not available yet. It will stay off unless you turn it on.">
-          <Switch checked={false} disabled aria-label="Always-on listening" />
-        </Row>
+        <AlwaysOnRow s={s} onChange={(on) => patch.mutate({ always_on_enabled: on })} />
       </Section>
 
       <Section title="Sent to the cloud">

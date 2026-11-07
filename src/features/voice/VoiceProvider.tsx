@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { FrameSender, PcmPlayer, playbackChannel, pushFrame, startCapture, type CaptureHandle } from "@/audio";
 import { onNamed } from "@/ipc/namedEvents";
 import { voiceErrorMessage, voiceIpc } from "@/ipc/voiceClient";
-import type { Proposal, ProposalResponse, ToolResult, VoiceStatus } from "@/ipc/generated";
+import type { Proposal, ProposalResponse, ToolResult, VoiceStatus, WakeClip, WakeStatus } from "@/ipc/generated";
 
 /** The audio pieces, injectable so tests don't need a microphone or speakers. */
 export interface AudioDeps {
@@ -29,9 +29,18 @@ export interface VoiceApi {
   /** The proposal ran out of time (its card closes). */
   expireProposal: () => void;
   clearError: () => void;
+  /** Always-on listening (T-705): taught or not, and listening for "Pluto" or not. */
+  wake: WakeStatus | null;
+  /** Records one "Pluto" for teaching, for `ms` milliseconds, and returns the shell's verdict. */
+  recordClip: (ms: number) => Promise<WakeClip>;
 }
 
 const VoiceContext = createContext<VoiceApi | null>(null);
+
+/** The voice API, or null outside a VoiceProvider (a settings test, for example). */
+export function useOptionalVoice(): VoiceApi | null {
+  return useContext(VoiceContext);
+}
 
 export function useVoice(): VoiceApi {
   const v = useContext(VoiceContext);
@@ -57,6 +66,10 @@ export function VoiceProvider({ children, audio = realAudio }: { children: React
   const player = useRef<ReturnType<AudioDeps["createPlayer"]> | null>(null);
   const spoken = useRef(new Set<string>());
   const lastLanguage = useRef<string | null>(null);
+  const [wake, setWake] = useState<WakeStatus | null>(null);
+  // The always-on microphone (T-705). While it is open it is the only one: Rust sends its audio
+  // to whichever turn is listening (wake word, hotkey or button).
+  const wakeMic = useRef<{ handle: CaptureHandle; sender: FrameSender; session: string } | null>(null);
 
   const speak = useCallback(
     (text: string, language: string | null, key: string) => {
@@ -107,6 +120,67 @@ export function VoiceProvider({ children, audio = realAudio }: { children: React
   // Leaving the app releases the microphone.
   useEffect(() => () => void closeMic(), [closeMic]);
 
+  const closeWakeMic = useCallback(async () => {
+    const m = wakeMic.current;
+    wakeMic.current = null;
+    if (!m) return;
+    await m.handle.stop().catch(() => undefined);
+    await m.sender.close().catch(() => undefined);
+  }, []);
+
+  // Always-on listening: the shell says when to listen and for which session (voice://wake).
+  useEffect(() => {
+    let live = true;
+    const apply = (w: WakeStatus) => {
+      if (!live) return;
+      setWake(w);
+      const want = w.session_id;
+      if (wakeMic.current?.session === want) return;
+      void (async () => {
+        await closeWakeMic();
+        if (!want) return;
+        await closeMic(); // one microphone
+        try {
+          const sender = new audio.FrameSender(want, audio.pushFrame);
+          const handle = await audio.startCapture({
+            onFrame: (f) => sender.send(f),
+            onEnded: () => {
+              setError("The microphone stopped, so Pluto can't hear its name. Check it is plugged in.");
+              void closeWakeMic();
+            },
+          });
+          if (!live) {
+            await handle.stop().catch(() => undefined);
+            return;
+          }
+          wakeMic.current = { handle, sender, session: want };
+        } catch {
+          setError("Pluto couldn't use the microphone for always-on listening.");
+        }
+      })();
+    };
+    void voiceIpc.wakeStatus().then(apply).catch(() => undefined);
+    const off = onNamed("voice://wake", apply);
+    return () => {
+      live = false;
+      off();
+      void closeWakeMic();
+    };
+  }, [audio, closeMic, closeWakeMic]);
+
+  const recordClip = useCallback(
+    async (ms: number): Promise<WakeClip> => {
+      const session = await voiceIpc.wakeClipStart();
+      const sender = new audio.FrameSender(session, audio.pushFrame);
+      const handle = await audio.startCapture({ onFrame: (f) => sender.send(f) });
+      await new Promise((r) => setTimeout(r, ms));
+      await handle.stop().catch(() => undefined);
+      await sender.close().catch(() => undefined);
+      return voiceIpc.wakeClipStop(session);
+    },
+    [audio],
+  );
+
   /** Opens the microphone and sends its frames for `session`. False if it couldn't. */
   const openMic = useCallback(
     async (session: string): Promise<boolean> => {
@@ -137,7 +211,7 @@ export function VoiceProvider({ children, audio = realAudio }: { children: React
     setError(null);
     if (mic.current || talking) {
       setTalking(false);
-      await closeMic();
+      await closeMic(); // nothing to close while the always-on microphone serves the turn
       try {
         await voiceIpc.pttStop();
       } catch (e) {
@@ -157,7 +231,8 @@ export function VoiceProvider({ children, audio = realAudio }: { children: React
         setError(voiceErrorMessage(e));
         return;
       }
-      await openMic(session);
+      if (wakeMic.current) setTalking(true); // the always-on microphone already sends to it
+      else await openMic(session);
     } finally {
       opening.current = false;
     }
@@ -168,6 +243,11 @@ export function VoiceProvider({ children, audio = realAudio }: { children: React
   useEffect(
     () =>
       onNamed("voice://status", (s) => {
+        if (wakeMic.current) {
+          // The always-on microphone serves every turn; just show whether one is listening.
+          setTalking(s.state === "listening");
+          return;
+        }
         if (s.state === "listening" && s.session_id) {
           if (opening.current || mic.current?.session === s.session_id) return;
           player.current?.stop(); // barge-in: Rust already stopped sending the reply
@@ -202,8 +282,8 @@ export function VoiceProvider({ children, audio = realAudio }: { children: React
   }, [proposal, speak]);
 
   const api = useMemo<VoiceApi>(
-    () => ({ status, heard, reply, proposal, error, talking, toggleTalk, respond, expireProposal: () => setProposal(null), clearError: () => setError(null) }),
-    [status, heard, reply, proposal, error, talking, toggleTalk, respond],
+    () => ({ status, heard, reply, proposal, error, talking, toggleTalk, respond, expireProposal: () => setProposal(null), clearError: () => setError(null), wake, recordClip }),
+    [status, heard, reply, proposal, error, talking, toggleTalk, respond, wake, recordClip],
   );
   return <VoiceContext.Provider value={api}>{children}</VoiceContext.Provider>;
 }
