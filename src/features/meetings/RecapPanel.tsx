@@ -1,8 +1,10 @@
-import { useState } from "react";
-import { Copy, ScrollText } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Copy, ScrollText, Square, Volume2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { playbackChannel } from "@/audio";
+import { realAudio, type AudioDeps } from "@/features/voice/VoiceProvider";
 import { meetingAi } from "@/ipc/meetingAi";
-import { voiceErrorMessage } from "@/ipc/voiceClient";
+import { voiceErrorMessage, voiceIpc } from "@/ipc/voiceClient";
 import { notify } from "@/lib/notify";
 
 const LANGUAGES = [
@@ -11,13 +13,19 @@ const LANGUAGES = [
 
 /**
  * A short written recap of what was decided and who does what (T-205), from the decisions and
- * action items on the meeting only. Reading it aloud arrives with the voice engine.
+ * action items on the meeting only. "Read aloud" speaks it with Timbre in the recap's language
+ * (a test tone while Cloud voice is off), and can be stopped.
  */
-export function RecapPanel({ meetingId }: { meetingId: string }) {
+export function RecapPanel({ meetingId, audio = realAudio }: { meetingId: string; audio?: AudioDeps }) {
   const [language, setLanguage] = useState("en-IN");
   const [text, setText] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [speaking, setSpeaking] = useState(false);
+  const player = useRef<ReturnType<AudioDeps["createPlayer"]> | null>(null);
+
+  // Leaving the page silences it.
+  useEffect(() => () => { player.current?.stop(); void voiceIpc.stopSpeaking().catch(() => undefined); }, []);
 
   const write = async () => {
     setBusy(true);
@@ -30,6 +38,25 @@ export function RecapPanel({ meetingId }: { meetingId: string }) {
     } finally {
       setBusy(false);
     }
+  };
+  const readAloud = async () => {
+    if (!text) return;
+    setError(null);
+    setSpeaking(true);
+    try {
+      player.current ??= audio.createPlayer(() => undefined);
+      const p = player.current;
+      await voiceIpc.speak(text, language, playbackChannel((pcm) => p.enqueue(pcm)));
+    } catch (e) {
+      setError(voiceErrorMessage(e));
+    } finally {
+      setSpeaking(false);
+    }
+  };
+  const stop = () => {
+    player.current?.stop();
+    void voiceIpc.stopSpeaking().catch(() => undefined);
+    setSpeaking(false);
   };
   const copy = async () => {
     try {
@@ -54,7 +81,12 @@ export function RecapPanel({ meetingId }: { meetingId: string }) {
       {text && (
         <div className="space-y-2">
           <p className="max-w-prose text-[14px] leading-relaxed" aria-live="polite">{text}</p>
-          <Button size="sm" variant="ghost" onClick={() => void copy()}><Copy />Copy</Button>
+          <div className="flex gap-1">
+            {speaking
+              ? <Button size="sm" variant="ghost" onClick={stop}><Square />Stop</Button>
+              : <Button size="sm" variant="ghost" onClick={() => void readAloud()}><Volume2 />Read aloud</Button>}
+            <Button size="sm" variant="ghost" onClick={() => void copy()}><Copy />Copy</Button>
+          </div>
         </div>
       )}
       {error && <p role="alert" className="text-[13px] text-destructive">{error}</p>}
