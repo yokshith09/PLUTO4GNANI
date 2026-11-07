@@ -447,21 +447,16 @@ impl Recorder {
         }
     }
 
-    /// Finish the recording: close the last chunk, save everything, queue the transcription job.
-    /// Returns the session with its final chunk count.
+    /// Finish the recording: close the last chunk and save everything. Returns the session with its
+    /// final chunk count. The caller then queues the transcription job (`MeetingJobs::queue`),
+    /// which also moves the meeting to "transcribing"; this crate never calls Gnani.
     pub async fn stop(&self, rec: &ActiveRecording) -> VoiceResult<RecordingSession> {
         rec.sink.end(&rec.session.id)?;
         Self::settle(rec).await;
-        let (mid, now) = (rec.session.meeting_id.clone(), self.clock.now_ms());
-        let job_id = new_id();
+        let mid = rec.session.meeting_id.clone();
         let chunks = self
             .db
-            .write(move |tx| {
-                let chunks = store::list_recordings(tx, &mid)?.len();
-                store::insert_job(tx, &job_id, &mid, "{\"source\":\"recording\"}", now)?;
-                store::set_status(tx, &mid, "transcribing", None, now)?;
-                Ok((chunks, vec![]))
-            })
+            .read(move |c| Ok(store::list_recordings(c, &mid)?.len()))
             .await
             .map_err(core)?;
         Ok(RecordingSession {

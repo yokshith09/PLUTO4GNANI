@@ -17,7 +17,7 @@ use pluto_contracts::meeting::{
     ApplyExtraction, Commitment, CommitmentStatus, ExtractedItem, ExtractionResult, RecallAnswer,
     RecordingSession, SpeakerMapping, TranscriptSegment, TranscriptionJob,
 };
-use pluto_core::clock::Clock;
+use pluto_contracts::speech::FrameSink;
 use pluto_core::meetings::Meeting;
 use pluto_core::secrets::{KeychainSecrets, SecretStore};
 use pluto_gnani::http::OutboundLog;
@@ -25,24 +25,34 @@ use pluto_intel::llm::gemini::{self, GeminiClient};
 use pluto_intel::llm::groq::{self, GroqClient};
 use pluto_intel::llm::privacy::DbOutboundLog;
 use pluto_intel::llm::router::Router;
+use pluto_intel::meeting::recorder::{ActiveRecording, Recorder};
 use pluto_intel::meeting::service::MeetingAi;
 use pluto_voice::meeting_jobs::MeetingJobs;
 use tauri::ipc::{Channel, InvokeResponseBody, JavaScriptChannelId};
 use tauri::{AppHandle, State, Webview};
 use tauri_plugin_dialog::DialogExt;
 
+use crate::voice::VoiceShell;
 use crate::Core;
 
-/// Open recording sessions (stub: in memory only).
-#[derive(Default)]
+/// Recordings in progress, and the lazily built meeting-AI service.
 pub(crate) struct MeetingShell {
-    sessions: Mutex<HashMap<String, RecordingSession>>,
+    sessions: Mutex<HashMap<String, Arc<ActiveRecording>>>,
+    recorder: Arc<Recorder>,
     /// The real transcript/extraction service, built on first use (keys come from the keychain).
     ai: OnceLock<Arc<MeetingAi>>,
 }
 
 impl MeetingShell {
-    fn lock(&self) -> MutexGuard<'_, HashMap<String, RecordingSession>> {
+    pub(crate) fn new(recorder: Arc<Recorder>) -> Self {
+        Self {
+            sessions: Mutex::new(HashMap::new()),
+            recorder,
+            ai: OnceLock::new(),
+        }
+    }
+
+    fn lock(&self) -> MutexGuard<'_, HashMap<String, Arc<ActiveRecording>>> {
         self.sessions
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -63,7 +73,7 @@ impl MeetingShell {
             .clone()
     }
 
-    fn get(&self, session_id: &str) -> VoiceResult<RecordingSession> {
+    fn get(&self, session_id: &str) -> VoiceResult<Arc<ActiveRecording>> {
         self.lock().get(session_id).cloned().ok_or_else(|| {
             VoiceError::new(VoiceErrorCode::Core, "That recording is no longer running.")
         })
@@ -72,31 +82,29 @@ impl MeetingShell {
 
 // ---- recording -----------------------------------------------------------------------------
 
-/// Stub: no audio is captured yet (T-207). Refuses without consent, as the contract requires.
+/// Starts a recording: needs consent, creates the meeting, and opens the audio session the UI
+/// streams microphone frames into (`audio_push`) so they land in chunked WAV files (T-207).
 #[tauri::command]
 pub async fn meeting_rec_start(
     title: String,
     participants: Vec<String>,
     live_captions: bool,
     consent: bool,
-    core: State<'_, Core>,
+    voice: State<'_, VoiceShell>,
     shell: State<'_, MeetingShell>,
 ) -> VoiceResult<RecordingSession> {
-    let _ = (title, participants);
-    if !consent {
-        return Err(VoiceError::new(
-            VoiceErrorCode::ConsentRequired,
-            "Confirm that everyone agreed to be recorded before you start.",
-        ));
+    let rec = shell
+        .recorder
+        .start(&title, participants, live_captions, consent)
+        .await?;
+    let sink: Arc<dyn FrameSink> = rec.sink.clone();
+    if let Err(e) = voice.router.open(&rec.session.id, vec![sink]) {
+        // Nothing is being captured: don't leave a meeting stuck in "recording".
+        let _ = shell.recorder.stop(&rec).await;
+        return Err(e);
     }
-    let session = RecordingSession {
-        id: pluto_core::ids::new_id(),
-        meeting_id: pluto_core::ids::new_id(),
-        started_at: core.clock.now_ms(),
-        live_captions,
-        chunk_count: 0,
-    };
-    shell.lock().insert(session.id.clone(), session.clone());
+    let session = rec.session.clone();
+    shell.lock().insert(session.id.clone(), Arc::new(rec));
     Ok(session)
 }
 
@@ -105,7 +113,8 @@ pub async fn meeting_rec_pause(
     session_id: String,
     shell: State<'_, MeetingShell>,
 ) -> VoiceResult<RecordingSession> {
-    shell.get(&session_id)
+    let rec = shell.get(&session_id)?;
+    shell.recorder.pause(&rec).await
 }
 
 #[tauri::command]
@@ -113,17 +122,24 @@ pub async fn meeting_rec_resume(
     session_id: String,
     shell: State<'_, MeetingShell>,
 ) -> VoiceResult<RecordingSession> {
-    shell.get(&session_id)
+    let rec = shell.get(&session_id)?;
+    Ok(shell.recorder.resume(&rec))
 }
 
-/// Stub: ends the session. The real one also queues the batch job (T-207 + T-201).
+/// Ends the recording, saves the last chunk and queues the transcription job (T-201).
 #[tauri::command]
 pub async fn meeting_rec_stop(
     session_id: String,
+    voice: State<'_, VoiceShell>,
+    jobs: State<'_, Arc<MeetingJobs>>,
     shell: State<'_, MeetingShell>,
 ) -> VoiceResult<RecordingSession> {
-    let session = shell.get(&session_id)?;
+    let rec = shell.get(&session_id)?;
+    // Closing the audio session ends the sink, which closes the last chunk.
+    voice.router.close(&session_id);
+    let session = shell.recorder.stop(&rec).await?;
     shell.lock().remove(&session_id);
+    jobs.queue(&session.meeting_id).await?;
     Ok(session)
 }
 
