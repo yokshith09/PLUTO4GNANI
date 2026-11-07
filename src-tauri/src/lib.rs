@@ -389,7 +389,21 @@ pub fn run() {
                 data_dir.join("meetings"),
             )?);
             app.manage(voice_shell);
-            app.manage(meeting_ai::MeetingShell::default());
+            let recorder = Arc::new(pluto_intel::meeting::recorder::Recorder::new(
+                db.clone(),
+                clock.clone(),
+                data_dir.join("meetings").join("recordings"),
+            ));
+            // Recordings the app stopped in the middle of are repaired at startup (T-207).
+            let recovering = recorder.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Ok(found) = recovering.recover().await {
+                    if !found.is_empty() {
+                        tracing::info!(count = found.len(), "repaired unfinished recordings");
+                    }
+                }
+            });
+            app.manage(meeting_ai::MeetingShell::new(recorder));
             app.manage(Core {
                 db: db.clone(),
                 bus: bus.clone(),

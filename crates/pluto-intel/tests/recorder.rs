@@ -282,16 +282,8 @@ async fn a_recording_is_saved_chunk_by_chunk_and_queues_the_transcription_on_sto
     assert!(rows.iter().all(|x| x.source == "mic"
         && x.consent_confirmed_at.is_some()
         && Path::new(&x.file_path).exists()));
-    assert_eq!(status(r.db.clone(), mid.clone()).await, "transcribing");
-    let job =
-        r.db.read({
-            let m = mid.clone();
-            move |c| store::latest_job(c, &m)
-        })
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(job.status, "queued", "Gnani Batch (T-201) picks this up");
+    // The shell queues the transcription job next (MeetingJobs::queue); stop leaves that to it.
+    assert_eq!(status(r.db.clone(), mid.clone()).await, "recording");
 }
 
 #[tokio::test]
