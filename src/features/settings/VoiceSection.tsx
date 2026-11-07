@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ConfirmAction } from "@/components/ConfirmAction";
 import { Button } from "@/components/ui/button";
@@ -6,16 +6,57 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { playbackChannel } from "@/audio";
+import { realAudio } from "@/features/voice/VoiceProvider";
 import { voiceErrorMessage, voiceIpc, type KeyAccount } from "@/ipc/voiceClient";
 import type { Destination, VoiceSettings, VoiceSettingsPatch } from "@/ipc/generated";
 import { notify } from "@/lib/notify";
 import { Row, Section } from "./parts";
+import { comboFromEvent, showCombo } from "./shortcuts";
 
 export const LANGUAGES: { code: string; name: string }[] = [
   { code: "hi-IN", name: "Hindi" }, { code: "en-IN", name: "English" }, { code: "ta-IN", name: "Tamil" }, { code: "te-IN", name: "Telugu" },
   { code: "kn-IN", name: "Kannada" }, { code: "ml-IN", name: "Malayalam" }, { code: "mr-IN", name: "Marathi" }, { code: "pa-IN", name: "Punjabi" },
   { code: "bn-IN", name: "Bengali" }, { code: "gu-IN", name: "Gujarati" },
 ];
+/** The Timbre v3.0 voices (crates/pluto-gnani/src/tts.rs `VOICES_V3`). */
+export const VOICES = ["Shivani", "Lakshmi", "Kalpana", "Chetana", "Vasudha", "Riyaa", "Tarika", "Avinash", "Shubham", "Prakash", "Devansh", "Yashraj", "Harshad"];
+export const DEFAULT_HOTKEY = "Ctrl+Shift+Space";
+const PREVIEW_TEXT = "Hello, this is how Pluto will sound.";
+
+/** The push-to-talk key: "Change", press the keys, done. Esc cancels. */
+function HotkeyRow({ value, onChange }: { value: string; onChange: (combo: string) => void }) {
+  const [recording, setRecording] = useState(false);
+  useEffect(() => {
+    if (!recording) return;
+    const onKey = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.key === "Escape") return setRecording(false);
+      const next = comboFromEvent(e);
+      if (!next) return;
+      setRecording(false);
+      // The voice settings store the key spelled the way the shortcut plugin reads it.
+      onChange(next.replace("CmdOrCtrl", "Ctrl"));
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [recording, onChange]);
+  return (
+    <Row label="Push-to-talk key" hint={`Hold to talk, release to send. Default: ${showCombo(DEFAULT_HOTKEY)}.`}>
+      <div className="flex items-center gap-2">
+        {recording ? (
+          <span className="rounded-md border border-primary px-2 py-0.5 text-[12px] text-primary" role="status">Press the new keys… (Esc to cancel)</span>
+        ) : (
+          <span className="rounded-md border bg-muted px-2 py-0.5 font-mono text-[12px]">{value ? showCombo(value) : "Off"}</span>
+        )}
+        <Button size="sm" variant="ghost" onClick={() => setRecording((r) => !r)} aria-label="Change push-to-talk key">{recording ? "Cancel" : "Change"}</Button>
+        {value !== DEFAULT_HOTKEY && !recording && <Button size="sm" variant="ghost" onClick={() => onChange(DEFAULT_HOTKEY)} aria-label="Reset push-to-talk key">Reset</Button>}
+      </div>
+    </Row>
+  );
+}
+
 /** Gnani's live speech service takes at most this many languages at once. */
 export const MAX_LANGUAGES = 4;
 
@@ -69,6 +110,8 @@ export function VoiceSection() {
   const { data: s } = useQuery({ queryKey: ["voice-settings"], queryFn: voiceIpc.settingsGet });
   const { data: log = [] } = useQuery({ queryKey: ["privacy-log"], queryFn: () => voiceIpc.privacyLogList(20) });
   const [confirmOn, setConfirmOn] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
+  const player = useRef<ReturnType<typeof realAudio.createPlayer> | null>(null);
   const refresh = () => void Promise.all([qc.invalidateQueries({ queryKey: ["voice-settings"] }), qc.invalidateQueries({ queryKey: ["privacy-log"] })]);
   const patch = useMutation({
     mutationFn: (p: VoiceSettingsPatch) => voiceIpc.settingsSet(p),
@@ -81,6 +124,19 @@ export function VoiceSection() {
   const toggleLanguage = (code: string, on: boolean) => {
     const next = on ? [...chosen, code] : chosen.filter((c) => c !== code);
     if (next.length <= MAX_LANGUAGES) patch.mutate({ languages: next });
+  };
+  const preview = async () => {
+    if (!s) return;
+    setPreviewing(true);
+    try {
+      player.current ??= realAudio.createPlayer(() => undefined);
+      const p = player.current;
+      await voiceIpc.speak(PREVIEW_TEXT, s.languages[0] ?? "en-IN", playbackChannel((pcm) => p.enqueue(pcm)));
+    } catch (e) {
+      notify.error(voiceErrorMessage(e));
+    } finally {
+      setPreviewing(false);
+    }
   };
   const clearLog = async () => {
     try {
@@ -128,6 +184,14 @@ export function VoiceSection() {
             <ToggleGroupItem value="verbatim">Exact words</ToggleGroupItem>
           </ToggleGroup>
         </Row>
+        <Row label="Voice" hint={s.cloud_voice_enabled ? "The voice Pluto speaks in." : "Cloud voice is off, so Preview plays a short test tone."}>
+          <select aria-label="Voice" className="h-8 rounded-md border bg-background px-2 text-[13px]" value={VOICES.includes(s.tts_voice) ? s.tts_voice : ""} onChange={(e) => patch.mutate({ tts_voice: e.target.value })}>
+            {!VOICES.includes(s.tts_voice) && <option value="">Default</option>}
+            {VOICES.map((v) => <option key={v} value={v}>{v}</option>)}
+          </select>
+          <Button size="sm" variant="outline" disabled={previewing} onClick={() => void preview()}>{previewing ? "Playing…" : "Preview"}</Button>
+        </Row>
+        <HotkeyRow value={s.hotkey} onChange={(hotkey) => patch.mutate({ hotkey })} />
         <Row label="Expressive replies" hint="Lets spoken replies sound warmer (laughs, pauses).">
           <Switch checked={s.audio_tags} onCheckedChange={(v) => patch.mutate({ audio_tags: v })} aria-label="Expressive replies" />
         </Row>

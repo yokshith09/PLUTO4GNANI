@@ -68,3 +68,25 @@ describe("Voice and privacy settings (T-401)", () => {
     expect(await screen.findByText("Nothing has been sent yet.")).toBeTruthy();
   });
 });
+
+describe("Voice and hotkey settings (T-401)", () => {
+  it("the voice can be changed and previewed", async () => {
+    const user = userEvent.setup();
+    wrap();
+    const select = (await screen.findByLabelText("Voice")) as HTMLSelectElement;
+    await user.selectOptions(select, "Avinash");
+    await waitFor(() => expect((screen.getByLabelText("Voice") as HTMLSelectElement).value).toBe("Avinash"));
+    expect(screen.getByRole("button", { name: "Preview" })).toBeTruthy();
+  });
+
+  it("the push-to-talk key is changed by pressing the new keys, and can be reset", async () => {
+    const user = userEvent.setup();
+    wrap();
+    await user.click(await screen.findByRole("button", { name: "Change push-to-talk key" }));
+    expect(screen.getByRole("status").textContent).toMatch(/Press the new keys/);
+    await user.keyboard("{Control>}{Alt>}k{/Alt}{/Control}");
+    await waitFor(() => expect(screen.getByText("Ctrl+Alt+K")).toBeTruthy());
+    await user.click(screen.getByRole("button", { name: "Reset push-to-talk key" }));
+    await waitFor(() => expect(screen.getByText("Ctrl+Shift+Space")).toBeTruthy());
+  });
+});
