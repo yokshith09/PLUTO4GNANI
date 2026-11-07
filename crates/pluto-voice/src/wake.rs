@@ -7,15 +7,15 @@
 //! - **Listening:** while always-on is enabled, the UI keeps the microphone open and sends its
 //!   frames for one session whose only sink is [`WakeSink`]. The sink just queues them; the
 //!   [`run`] loop does the work off the audio router's lock:
-//!   - while the voice runtime is idle, the detector looks for "Pluto". **Nothing leaves the
-//!     device for this;**
+//!   - wherever push-to-talk works (idle, a proposal waiting for its answer, after an error, over
+//!     a reply), the detector looks for "Pluto". **Nothing leaves the device for this;**
 //!   - on "Pluto" it starts a turn exactly as push-to-talk does, sends the last half-second (the
 //!     words right after "Pluto") and then everything that follows, and ends the turn after a
 //!     pause (or at the time limit), so Gnani hears only the command;
 //!   - while any turn is listening (hotkey, button or wake) the frames go to that turn, so one
 //!     microphone serves everything;
-//!   - while Pluto is thinking, speaking, recording a meeting, or Cloud voice is off, frames are
-//!     dropped and the detector rests.
+//!   - while Pluto is thinking, running a change, recording a meeting, or Cloud voice is off,
+//!     frames are dropped and the detector rests.
 //!
 //! Measured on D1's laptop (`docs/results/wake-word.md`): about 2% of one core while listening.
 
@@ -355,7 +355,7 @@ impl Default for WakePolicy {
     fn default() -> Self {
         Self {
             preroll: Duration::from_millis(500),
-            end_silence: Duration::from_millis(1200),
+            end_silence: Duration::from_millis(800),
             no_speech: Duration::from_secs(4),
             max_turn: Duration::from_secs(15),
         }

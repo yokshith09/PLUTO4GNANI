@@ -37,9 +37,9 @@ The reference was built from 6 of D1's 8 recordings; 2 had no clear word, and te
 - **Memory:** a few MB.
 
 ## How it behaves in the app
-- The detector runs only while Pluto is idle. It rests while Pluto is listening, thinking, speaking or recording a meeting, and while Cloud voice is off.
+- The detector works wherever push-to-talk does: while idle, while a proposal waits for its answer ("Pluto, haan"), after an error, and over a reply (which it stops). It rests while Pluto is thinking, running a change or recording a meeting, and while Cloud voice is off.
 - **Before "Pluto", nothing is sent.** After it, the command goes to Gnani exactly like a push-to-talk turn.
-- The command ends at a 1.2 s pause, or at 4 s if nothing follows "Pluto", or at 15 s at most.
+- The command ends at a 0.8 s pause (was 1.2 s; shortened for speed), or at 4 s if nothing follows "Pluto", or at 15 s at most.
 - While always-on is on, its microphone also serves push-to-talk, so only one capture is open.
 - The wake word ("Pluto, …", "Hey Pluto", "प्लूटो") is removed before the command is decided.
 - Tests:

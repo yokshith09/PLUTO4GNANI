@@ -666,6 +666,9 @@ impl VoiceRuntime {
         // An error Gnani reported during the turn: shown instead of "didn't catch that".
         let mut last_error: Option<VoiceError> = None;
         let mut deadline: Option<Instant> = None;
+        // When the turn was sent (key released, or the wake word's pause): the start of the
+        // wait the person feels.
+        let mut committed_at: Option<Instant> = None;
         let mut input_open = true;
         loop {
             let wait = async {
@@ -678,6 +681,7 @@ impl VoiceRuntime {
                 msg = rx.recv(), if input_open => match msg {
                     Some(RtInput::Commit) => {
                         let _ = session.input.send(RtInput::Commit).await;
+                        committed_at = Some(Instant::now());
                         deadline = Some(Instant::now() + self.policy.final_wait);
                         input_open = false;
                     }
@@ -767,7 +771,16 @@ impl VoiceRuntime {
         if self.apply(Input::Heard, None).is_err() {
             return;
         }
+        let heard_at = Instant::now();
         let outcome = self.handler.turn(heard).await;
+        if cfg!(debug_assertions) {
+            let transcript = committed_at.map(|c| heard_at.duration_since(c).as_secs_f32());
+            eprintln!(
+                "[voice] timing: words {} after you stopped | reply ready {:.2} s later",
+                transcript.map_or("?".into(), |t| format!("{t:.2} s")),
+                heard_at.elapsed().as_secs_f32()
+            );
+        }
         if !self.owns_turn(&session_id) {
             return; // cancelled or a new press while thinking
         }

@@ -397,7 +397,7 @@ async fn an_edit_cannot_point_the_write_at_a_task_that_was_not_offered() {
 async fn reads_answer_at_once_with_at_most_five_items() {
     let r = rig(
         Script(vec![(
-            "aaj kya karna hai",
+            "mere saare kaam sunao",
             Intent::Task,
             Some("tasks_list"),
             json!({"view": "all"}),
@@ -408,7 +408,9 @@ async fn reads_answer_at_once_with_at_most_five_items() {
         add_task(&r, &format!("Task {i}")).await;
     }
     assert_eq!(
-        r.a.turn(heard("aaj kya karna hai", "en-IN")).await.unwrap(),
+        r.a.turn(heard("mere saare kaam sunao", "en-IN"))
+            .await
+            .unwrap(),
         Turn::Reply
     );
     let t = r.seen.turns.lock().unwrap()[0].clone();
@@ -938,4 +940,25 @@ async fn a_wake_word_command_is_handled_without_the_wake_word() {
         Turn::Done
     );
     assert_eq!(r.seen.turns.lock().unwrap().len(), 1);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn fixed_commands_are_answered_without_the_decider() {
+    // The scripted decider knows nothing: only the instant rules can answer these.
+    let r = rig(Script(vec![]), PROPOSAL_WINDOW);
+    r.a.turn(heard("Can you open notes tab?", "en-IN"))
+        .await
+        .unwrap();
+    assert_eq!(*r.seen.pages.lock().unwrap(), vec!["notes".to_string()]);
+    let t = r.seen.turns.lock().unwrap().last().cloned().unwrap();
+    assert_eq!(t.decision.source, DecisionSource::Rules);
+    assert!(
+        CONTEXTS.lock().unwrap().is_empty() || t.decision.latency_ms == 0,
+        "the decider was not asked"
+    );
+    // Something else still goes to the decider (here: noise, so no turn is answered).
+    r.a.turn(heard("add a task to call Ravi", "en-IN"))
+        .await
+        .unwrap();
+    assert_eq!(r.seen.pages.lock().unwrap().len(), 1);
 }
