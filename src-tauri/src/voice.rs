@@ -18,7 +18,7 @@
 //! New commands return `VoiceError`, never core's `AppError` (API_CONTRACTS §0).
 
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use pluto_contracts::error::{VoiceError, VoiceErrorCode, VoiceResult};
 use pluto_contracts::meeting::{SegmentSource, TranscriptSegment, TranscriptionJob};
@@ -32,7 +32,9 @@ use pluto_core::db::Database;
 use pluto_core::secrets::{Account, KeychainSecrets, SecretStore};
 use pluto_core::voice_store;
 use pluto_gnani::batch::BatchClient;
-use pluto_gnani::http::{ApiKeySource, GnaniHttp, OutboundLog, OutboundRecord, DEFAULT_BASE_URL};
+use pluto_gnani::http::{
+    ApiKeySource, CloudSwitch, GnaniHttp, OutboundLog, OutboundRecord, DEFAULT_BASE_URL,
+};
 use pluto_gnani::realtime::{self, RealtimeClient};
 use pluto_gnani::tts::{TimbreClient, DEFAULT_WS_URL};
 use pluto_intel::decide::DefaultDecider;
@@ -42,6 +44,7 @@ use pluto_intel::llm::router::Router;
 use pluto_voice::assistant::{Assistant, AssistantEvents};
 use pluto_voice::audio::{AudioRouter, WavSink};
 use pluto_voice::meeting_jobs::{JobEvents, MeetingJobs};
+use pluto_voice::privacy::CloudGated;
 use pluto_voice::runtime::{RuntimeEvents, TurnHandler, VoiceRuntime};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -301,7 +304,11 @@ impl VoiceShell {
             db: db.clone(),
             clock: clock.clone(),
         });
-        let http = Arc::new(GnaniHttp::new(DEFAULT_BASE_URL, keys.clone(), log.clone())?);
+        // Cloud voice off → nothing leaves the device (T-PR-04): every client checks this switch.
+        let cloud = cloud_switch();
+        let http = Arc::new(
+            GnaniHttp::new(DEFAULT_BASE_URL, keys.clone(), log.clone())?.with_cloud(cloud.clone()),
+        );
         let tts = Arc::new(TimbreClient::new(
             DEFAULT_WS_URL,
             http.clone(),
@@ -312,16 +319,18 @@ impl VoiceShell {
             fixtures::SETTINGS_DEFAULT,
         )?));
         let router = Arc::new(AudioRouter::new());
-        let stt = Arc::new(RealtimeClient::new(
-            realtime::DEFAULT_URL,
-            keys,
-            log.clone(),
-        ));
+        let stt = Arc::new(
+            RealtimeClient::new(realtime::DEFAULT_URL, keys, log.clone()).with_cloud(cloud.clone()),
+        );
+        cloud.set(lock_settings(&settings).cloud_voice_enabled);
         let enabled = lock_settings(&settings).cloud_voice_enabled
             && secrets.has(Account::Gnani).unwrap_or(false);
         let gemini = GeminiClient::new(gemini::DEFAULT_MODEL, secrets.clone(), log.clone());
         let groq = GroqClient::new(groq::DEFAULT_MODEL, secrets.clone(), log.clone());
-        let llm = Arc::new(Router::new(Arc::new(gemini), Arc::new(groq)));
+        let llm = Arc::new(CloudGated::new(
+            Arc::new(Router::new(Arc::new(gemini), Arc::new(groq))),
+            cloud,
+        ));
         let assistant = Arc::new(Assistant::new(
             db,
             clock,
@@ -391,8 +400,9 @@ impl VoiceShell {
 
     /// Cloud voice on and a Gnani key saved → the runtime is ready; otherwise Disabled.
     fn refresh_enabled(&self) {
-        let enabled =
-            lock_settings(&self.settings).cloud_voice_enabled && self.has_key(Account::Gnani);
+        let cloud = lock_settings(&self.settings).cloud_voice_enabled;
+        cloud_switch().set(cloud);
+        let enabled = cloud && self.has_key(Account::Gnani);
         self.runtime.set_enabled(enabled);
     }
 
@@ -468,6 +478,13 @@ fn account(name: &str) -> VoiceResult<Account> {
             "That isn't a service Pluto has a key for.",
         )
     })
+}
+
+/// Settings → Cloud voice, shared by every outbound client: Gnani (REST, Batch, Realtime, Timbre)
+/// and the LLMs, for the assistant and for meetings. Off until the settings say otherwise.
+pub(crate) fn cloud_switch() -> Arc<CloudSwitch> {
+    static CLOUD: OnceLock<Arc<CloudSwitch>> = OnceLock::new();
+    CLOUD.get_or_init(|| CloudSwitch::new(false)).clone()
 }
 
 /// Where push-to-talk presses are recorded for the mic check (T-011).

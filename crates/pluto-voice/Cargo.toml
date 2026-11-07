@@ -24,4 +24,6 @@ chrono-tz = "0.10.4"
 pluto-contracts = { workspace = true, features = ["mock"] }
 pluto-gnani = { workspace = true, features = ["mock"] }
 tempfile.workspace = true
-tokio = { workspace = true, features = ["rt-multi-thread", "test-util"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "test-util", "net"] }
+tracing-subscriber = { version = "0.3.23", default-features = false, features = ["fmt", "std"] }
+wiremock.workspace = true

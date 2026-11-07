@@ -85,6 +85,46 @@ impl OutboundLog for NoLog {
     fn record(&self, _record: OutboundRecord) {}
 }
 
+// ---- cloud switch --------------------------------------------------------------------------
+
+/// Settings → **Cloud voice**. Every outbound path checks it right before it sends: Gnani REST,
+/// Batch and its downloads, Realtime, Timbre, and the LLMs (`pluto_voice::cloud::CloudGated`).
+/// Off means zero outbound requests (T-PR-04). One switch is shared by every client.
+#[derive(Debug)]
+pub struct CloudSwitch(AtomicBool);
+
+impl CloudSwitch {
+    pub fn new(on: bool) -> Arc<Self> {
+        Arc::new(Self(AtomicBool::new(on)))
+    }
+
+    pub fn set(&self, on: bool) {
+        self.0.store(on, Ordering::SeqCst);
+    }
+
+    pub fn is_on(&self) -> bool {
+        self.0.load(Ordering::SeqCst)
+    }
+
+    /// `Err(CloudVoiceDisabled)` when off: call it immediately before a request leaves.
+    pub fn check(&self) -> VoiceResult<()> {
+        if self.is_on() {
+            Ok(())
+        } else {
+            Err(cloud_off())
+        }
+    }
+}
+
+/// Nothing was sent because Cloud voice is off.
+pub fn cloud_off() -> VoiceError {
+    VoiceError::new(
+        VoiceErrorCode::CloudVoiceDisabled,
+        "Cloud voice is off. Turn it on in Settings → Voice & privacy.",
+    )
+    .retryable(false)
+}
+
 // ---- calls ---------------------------------------------------------------------------------
 
 /// A Gnani REST family. Each has its own one-at-a-time queue.
@@ -184,6 +224,7 @@ pub struct GnaniHttp {
     policy: RetryPolicy,
     queues: [Semaphore; 4],
     credit_exhausted: AtomicBool,
+    cloud: Arc<CloudSwitch>,
 }
 
 impl GnaniHttp {
@@ -207,7 +248,19 @@ impl GnaniHttp {
             policy: RetryPolicy::default(),
             queues: Family::ALL.map(|_| Semaphore::new(1)),
             credit_exhausted: AtomicBool::new(false),
+            cloud: CloudSwitch::new(true),
         })
+    }
+
+    /// Shares the app's Cloud voice switch (always on otherwise).
+    pub fn with_cloud(mut self, cloud: Arc<CloudSwitch>) -> Self {
+        self.cloud = cloud;
+        self
+    }
+
+    /// The Cloud voice switch this client checks.
+    pub fn cloud(&self) -> &Arc<CloudSwitch> {
+        &self.cloud
     }
 
     /// Replaces the retry schedule.
@@ -238,6 +291,7 @@ impl GnaniHttp {
     where
         F: Fn(&Client) -> RequestBuilder,
     {
+        self.cloud.check()?;
         if self.credit_exhausted() {
             return Err(insufficient_credit());
         }
@@ -260,7 +314,9 @@ impl GnaniHttp {
 
         let mut attempt = 0usize;
         loop {
-            // Re-check: another call may have hit 402 while this one waited its turn.
+            // Re-check: Cloud voice may have been turned off, or another call hit 402, while
+            // this one waited its turn or backed off.
+            self.cloud.check()?;
             if self.credit_exhausted() {
                 return Err(insufficient_credit());
             }
