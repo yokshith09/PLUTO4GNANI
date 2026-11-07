@@ -793,3 +793,124 @@ fn write_tools(later: i64) -> Vec<(&'static str, Intent, &'static str, Value)> {
         ("", Intent::Focus, "focus_stop", json!({})),
     ]
 }
+
+// ---- T-305: spoken answers from the meeting knowledge ---------------------------------------
+
+use pluto_contracts::meeting::{Citation, Commitment, CommitmentStatus, RecallAnswer};
+
+struct Knows {
+    cited: bool,
+}
+
+#[async_trait]
+impl MeetingKnowledge for Knows {
+    async fn recall(&self, _q: &str, language: Option<&str>) -> VoiceResult<RecallAnswer> {
+        Ok(RecallAnswer {
+            answer_text: "Ravi will send the proposal by Friday.".into(),
+            language: language.unwrap_or("en-IN").into(),
+            citations: if self.cited {
+                vec![Citation {
+                    meeting_id: "m".into(),
+                    meeting_title: "Kickoff".into(),
+                    segment_id: "s1".into(),
+                    speaker: Some("Ravi".into()),
+                    quote: "I will send the proposal by Friday".into(),
+                    starts_at: 0,
+                }]
+            } else {
+                vec![]
+            },
+            proposal: None,
+        })
+    }
+
+    async fn open_commitments(&self) -> VoiceResult<Vec<Commitment>> {
+        Ok(vec![Commitment {
+            action_item_id: "a".into(),
+            meeting_id: "m".into(),
+            meeting_title: "Kickoff".into(),
+            owner: Some("Ravi".into()),
+            body: "send the proposal".into(),
+            due_date: Some("2025-11-07".into()),
+            task_id: None,
+            status: CommitmentStatus::Open,
+            days_overdue: None,
+        }])
+    }
+}
+
+fn rig_with(cited: bool) -> Rig {
+    let script = Script(vec![
+        (
+            "what did Ravi promise",
+            Intent::MeetingQuery,
+            Some("meeting_search"),
+            json!({"query": "Ravi promise"}),
+        ),
+        (
+            "what is open",
+            Intent::MeetingQuery,
+            Some("commitments_list"),
+            json!({}),
+        ),
+    ]);
+    let dir = tempfile::tempdir().unwrap();
+    let db = Arc::new(Database::open(&dir.path().join("pluto.db"), EventBus::default()).unwrap());
+    let clock = Arc::new(FakeClock::new(START, Tz::Asia__Kolkata));
+    let seen = Arc::new(Seen::default());
+    let a = Arc::new(
+        Assistant::new(db.clone(), clock.clone(), Arc::new(script), seen.clone())
+            .with_knowledge(Arc::new(Knows { cited })),
+    );
+    Rig {
+        _dir: dir,
+        db,
+        clock,
+        a,
+        seen,
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_cited_recall_answer_is_what_gets_spoken() {
+    let r = rig_with(true);
+    r.a.turn(heard("what did Ravi promise", "en-IN"))
+        .await
+        .unwrap();
+    let t = r.seen.turns.lock().unwrap().last().cloned().unwrap();
+    assert_eq!(
+        t.reply_text.as_deref(),
+        Some("Ravi will send the proposal by Friday.")
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_answer_without_a_citation_is_never_spoken() {
+    let r = rig_with(false);
+    r.a.turn(heard("what did Ravi promise", "en-IN"))
+        .await
+        .unwrap();
+    let t = r.seen.turns.lock().unwrap().last().cloned().unwrap();
+    assert_eq!(
+        t.reply_text.as_deref(),
+        Some("I couldn't find that in your meetings.")
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn open_commitments_are_read_out() {
+    let r = rig_with(true);
+    r.a.turn(heard("what is open", "en-IN")).await.unwrap();
+    let said = r
+        .seen
+        .turns
+        .lock()
+        .unwrap()
+        .last()
+        .and_then(|t| t.reply_text.clone())
+        .unwrap();
+    assert!(
+        said.starts_with("1 open commitments: Ravi: send the proposal"),
+        "{said}"
+    );
+}

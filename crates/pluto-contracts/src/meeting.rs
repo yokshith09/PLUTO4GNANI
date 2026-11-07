@@ -4,6 +4,9 @@
 
 use pluto_core::tasks::Priority;
 
+use async_trait::async_trait;
+
+use crate::error::VoiceResult;
 use crate::voice::Proposal;
 use serde::{Deserialize, Serialize};
 
@@ -206,6 +209,15 @@ pub enum CommitmentStatus {
     Done,
     Overdue,
     NoTask,
+}
+
+/// What the voice assistant may ask of the meeting knowledge: a grounded answer from the user's
+/// own transcripts and the list of commitments. Implemented by `pluto-intel`; used by
+/// `pluto-voice`, which never depends on `pluto-intel` (WORKING_AGREEMENT §3). Read-only.
+#[async_trait]
+pub trait MeetingKnowledge: Send + Sync {
+    async fn recall(&self, question: &str, language: Option<&str>) -> VoiceResult<RecallAnswer>;
+    async fn open_commitments(&self) -> VoiceResult<Vec<Commitment>>;
 }
 
 #[cfg(test)]
