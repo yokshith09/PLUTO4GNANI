@@ -3,7 +3,7 @@
 // browser preview, the mock and the tests can send them too.
 import { isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import type { AssistantTurn, ExtractedItem, Proposal, TranscriptionJob, TranscriptSegment, VoiceError, VoiceStatus } from "./generated";
+import type { AssistantTurn, ExtractedItem, Proposal, TranscriptionJob, TranscriptSegment, VoiceError, VoiceStatus, WakeStatus } from "./generated";
 
 export interface NamedEvents {
   "voice://status": VoiceStatus;
@@ -11,6 +11,8 @@ export interface NamedEvents {
   "voice://turn": AssistantTurn;
   "voice://proposal": Proposal;
   "voice://error": VoiceError;
+  /** Always-on listening changed: open the always-on microphone for `session_id`, or close it. */
+  "voice://wake": WakeStatus;
   "meeting://caption": TranscriptSegment;
   "meeting://ticker": ExtractedItem;
   "meeting://job": TranscriptionJob;

@@ -1420,7 +1420,12 @@ impl Assistant {
 
     // ---- one turn ------------------------------------------------------------------------------
 
-    async fn handle(self: &Arc<Self>, heard: Heard) -> VoiceResult<Turn> {
+    async fn handle(self: &Arc<Self>, mut heard: Heard) -> VoiceResult<Turn> {
+        // "Pluto, add a task": the wake word (T-705) isn't part of the command.
+        heard.text = crate::wake::strip_wake_word(&heard.text);
+        if heard.text.trim().is_empty() {
+            return Ok(Turn::Done);
+        }
         let lang = Lang::of(heard.language.as_deref());
         let interaction_id = new_id();
         let row = InteractionRow {

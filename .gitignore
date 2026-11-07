@@ -12,6 +12,8 @@ ui/dist/
 # Recordings and app data must never be committed
 *.wav
 !test-data/audio/**/*.wav
+# Synthetic Timbre "Pluto" clips for the wake-word tests (T-705); no real voices.
+!test-data/wake/*.wav
 recordings/
 app-data/
 

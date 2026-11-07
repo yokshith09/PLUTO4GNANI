@@ -26,6 +26,7 @@ Work top to bottom. **Wait** = a task of the other developer that must be merged
 | 14 | T-301 | Voice runtime | L | P0a | 3–4 | — | Done (merged, PR #29) |
 | 15 | T-303 | Assistant | L | P0a | 4 | T-302 | Done (merged, PR #29) |
 | 15a | T-307 | Voice navigation | S | P1 | 4 | — | In review (`open_page`: "meetings kholo" switches the page; every reply is spoken) |
+| 15b | T-705 | Always-on wake word | L | P2 | 5 | — | In review (say “Pluto”, then the command; taught per user in Settings: `docs/results/wake-word.md`) |
 | 16 | T-306 | Integration C3 | S | P0a | 4 | — | To do |
 | 17 | T-403 | Safety | S | P0a | 4–5 | — | In review (all five pass: `docs/results/safety.md`; Cloud voice off now also stops meetings and LLM calls) |
 | 18 | T-404 | Build | S | P0a | 5 | — | To do |

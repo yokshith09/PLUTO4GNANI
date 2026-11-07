@@ -914,3 +914,28 @@ async fn open_commitments_are_read_out() {
         "{said}"
     );
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_wake_word_command_is_handled_without_the_wake_word() {
+    let r = rig(
+        Script(vec![(
+            "meetings kholo",
+            Intent::Navigate,
+            Some("open_page"),
+            json!({"page": "meetings"}),
+        )]),
+        PROPOSAL_WINDOW,
+    );
+    r.a.turn(heard("Pluto, meetings kholo", "hi-IN"))
+        .await
+        .unwrap();
+    assert_eq!(*r.seen.pages.lock().unwrap(), vec!["meetings".to_string()]);
+    let t = r.seen.turns.lock().unwrap().last().cloned().unwrap();
+    assert_eq!(t.transcript, "meetings kholo");
+    // Just "Pluto" and nothing after it: no turn at all.
+    assert_eq!(
+        r.a.turn(heard("Pluto.", "en-IN")).await.unwrap(),
+        Turn::Done
+    );
+    assert_eq!(r.seen.turns.lock().unwrap().len(), 1);
+}

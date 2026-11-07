@@ -5,6 +5,7 @@ import { call } from "./transport";
 import type { PlaybackMessage } from "@/audio/ipc";
 import type {
   AssistantTurn, PrivacyLogEntry, ProposalResponse, ToolResult, UsageCounters, VoiceError, VoiceSettings, VoiceSettingsPatch, VoiceStatus,
+  WakeClip, WakeStatus,
 } from "./generated";
 
 export type KeyAccount = "gnani" | "gemini" | "groq";
@@ -31,6 +32,14 @@ export const voiceIpc = {
   history: (limit = 50) => call<AssistantTurn[]>("voice_history", { limit }),
   privacyLogList: (limit = 100) => call<PrivacyLogEntry[]>("privacy_log_list", { limit }),
   privacyLogClear: () => call<null>("privacy_log_clear"),
+  // Always-on listening (T-705). Teaching: begin → (clipStart, frames, clipStop) × n → finish.
+  wakeStatus: () => call<WakeStatus>("voice_wake_status"),
+  wakeTeachBegin: () => call<WakeStatus>("voice_wake_teach_begin"),
+  /** Returns the session; the microphone's frames go to `audio_push` with it. */
+  wakeClipStart: () => call<string>("voice_wake_clip_start"),
+  wakeClipStop: (sessionId: string) => call<WakeClip>("voice_wake_clip_stop", { sessionId }),
+  wakeTeachFinish: () => call<WakeStatus>("voice_wake_teach_finish"),
+  wakeForget: () => call<WakeStatus>("voice_wake_forget"),
 } as const;
 
 export function isVoiceError(e: unknown): e is VoiceError {
