@@ -11,6 +11,7 @@ pluto-core.workspace = true
 pluto-contracts.workspace = true
 pluto-gnani.workspace = true
 async-trait.workspace = true
+chrono = { version = "0.4.45", default-features = false, features = ["std"] }
 hound.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -21,5 +22,6 @@ tracing.workspace = true
 [dev-dependencies]
 chrono-tz = "0.10.4"
 pluto-contracts = { workspace = true, features = ["mock"] }
+pluto-gnani = { workspace = true, features = ["mock"] }
 tempfile.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "test-util"] }

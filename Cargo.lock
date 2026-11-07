@@ -3311,6 +3311,7 @@ name = "pluto-voice"
 version = "0.5.7"
 dependencies = [
  "async-trait",
+ "chrono",
  "chrono-tz",
  "hound",
  "pluto-contracts",

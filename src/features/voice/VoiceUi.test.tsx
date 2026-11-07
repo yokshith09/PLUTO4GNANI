@@ -86,6 +86,24 @@ describe("Voice bar and approval (T-304), against the in-memory shell", () => {
     expect(within(history).getByText("task_create")).toBeTruthy();
   });
 
+  it("the push-to-talk hotkey opens the microphone for its session and closes it after (T-301)", async () => {
+    const { emitNamed } = await import("@/ipc/namedEvents");
+    const audio = fakeAudio();
+    await mount(audio);
+    await bar().findByRole("button", { name: "Push to talk" });
+    // Rust reports Listening for a session the page didn't open: the hotkey was pressed.
+    act(() => emitNamed("voice://status", { state: "listening", mode: "assistant", detail: null, session_id: "hk-1" }));
+    await waitFor(() => expect(audio.pushed).toEqual(["hk-1"]));
+    expect(bar().getByRole("button", { name: "Stop and send" })).toBeTruthy();
+    // A repeat of the same status changes nothing.
+    act(() => emitNamed("voice://status", { state: "listening", mode: "assistant", detail: null, session_id: "hk-1" }));
+    // Released: Rust moves on to Thinking, and the page lets go of the microphone.
+    act(() => emitNamed("voice://status", { state: "thinking", mode: "assistant", detail: null, session_id: null }));
+    await waitFor(() => expect(audio.stopped.n).toBe(1));
+    expect(audio.pushed).toEqual(["hk-1"]);
+    await waitFor(() => expect(bar().getByRole("button", { name: "Push to talk" }).getAttribute("aria-pressed")).toBe("false"));
+  });
+
   it("reject changes nothing and the history says so", async () => {
     const user = userEvent.setup();
     await enableCloud();

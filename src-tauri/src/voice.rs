@@ -3,13 +3,17 @@
 //! **What is real and what is a stub (T-007):**
 //! - Real: `audio_push` (frames → `pluto_voice::audio::AudioRouter`), the key commands (OS keychain
 //!   through `pluto_core::secrets`), `privacy_log_list` / `privacy_log_clear` (`voice_store`).
-//! - Push-to-talk is a stub that **records each press to a WAV file** (`<data>/voice-check/
-//!   last-ptt.wav`) so the mic path can be checked end to end (T-011); it goes Listening → Idle.
+//! - Push-to-talk runs on the voice runtime (`pluto_voice::runtime`, T-301): the global hotkey
+//!   (press **and** release) and the talk button both go Listening → Prisma Realtime → Thinking.
+//!   With Cloud voice off nothing is sent anywhere: a press instead **records to a WAV file**
+//!   (`<data>/voice-check/last-ptt.wav`) so the mic path can still be checked (T-011).
 //! - `voice_speak` speaks with **Timbre** (T-102) when Cloud voice is on — nothing leaves the device
 //!   otherwise (NF-02) — and plays a local 1 s test tone when it is off (kept for the mic check,
 //!   T-011). `voice_stop_speaking` stops either (barge-in).
-//! - Everything else returns the shared fixtures in `test-data/fixtures/voice/`, so the UI can be
-//!   built against the real shell before the runtime (T-301) and assistant (T-303) land.
+//! - The assistant (`pluto_voice::assistant`, T-303) answers each turn: reads at once, writes as a
+//!   proposal that runs only after `voice_proposal_respond` (or a spoken "haan"). Decisions come
+//!   from D2's decider (rules, then Gemini with Groq as fallback).
+//! - `voice_usage` still returns the sample in `test-data/fixtures/voice/` (T-506).
 //!
 //! New commands return `VoiceError`, never core's `AppError` (API_CONTRACTS §0).
 
@@ -17,11 +21,11 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use pluto_contracts::error::{VoiceError, VoiceErrorCode, VoiceResult};
-use pluto_contracts::meeting::TranscriptionJob;
-use pluto_contracts::speech::{FrameSink, TextToSpeech, TtsRequest};
+use pluto_contracts::meeting::{SegmentSource, TranscriptSegment, TranscriptionJob};
+use pluto_contracts::speech::{FrameSink, RtConfig, RtTranscript, TextToSpeech, TtsRequest};
 use pluto_contracts::voice::{
-    AssistantTurn, Destination, PrivacyLogEntry, ProposalResponse, ToolResult, UsageCounters,
-    VoiceMode, VoiceSettings, VoiceSettingsPatch, VoiceState, VoiceStatus,
+    AssistantTurn, Destination, PrivacyLogEntry, Proposal, ProposalResponse, ToolResult,
+    UsageCounters, VoiceMode, VoiceSettings, VoiceSettingsPatch, VoiceState, VoiceStatus,
 };
 use pluto_core::clock::Clock;
 use pluto_core::db::Database;
@@ -29,15 +33,21 @@ use pluto_core::secrets::{Account, KeychainSecrets, SecretStore};
 use pluto_core::voice_store;
 use pluto_gnani::batch::BatchClient;
 use pluto_gnani::http::{ApiKeySource, GnaniHttp, OutboundLog, OutboundRecord, DEFAULT_BASE_URL};
+use pluto_gnani::realtime::{self, RealtimeClient};
 use pluto_gnani::tts::{TimbreClient, DEFAULT_WS_URL};
+use pluto_intel::decide::DefaultDecider;
+use pluto_intel::llm::gemini::{self, GeminiClient};
+use pluto_intel::llm::groq::{self, GroqClient};
+use pluto_intel::llm::router::Router;
+use pluto_voice::assistant::{Assistant, AssistantEvents};
 use pluto_voice::audio::{AudioRouter, WavSink};
 use pluto_voice::meeting_jobs::{JobEvents, MeetingJobs};
+use pluto_voice::runtime::{RuntimeEvents, TurnHandler, VoiceRuntime};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use tauri::ipc::{Channel, InvokeBody, InvokeResponseBody, Request};
 use tauri::{AppHandle, Emitter, State};
 
-use crate::ipc::AppPaths;
 use crate::Core;
 
 // ---- events --------------------------------------------------------------------------------
@@ -79,6 +89,7 @@ pub(crate) fn fixture<T: DeserializeOwned>(json: &'static str) -> VoiceResult<T>
 pub(crate) mod fixtures {
     pub const SETTINGS_DEFAULT: &str =
         include_str!("../../test-data/fixtures/voice/voice_settings.default.json");
+    #[cfg(test)]
     pub const TOOL_RESULT_OK: &str =
         include_str!("../../test-data/fixtures/voice/tool_result.ok.json");
     pub const USAGE_SAMPLE: &str =
@@ -154,6 +165,50 @@ impl JobEvents for AppJobEvents {
     }
 }
 
+/// Sends the runtime's reports to the windows (`voice://status`, `voice://transcript`,
+/// `voice://error`).
+struct AppRuntimeEvents(AppHandle);
+
+impl RuntimeEvents for AppRuntimeEvents {
+    fn status(&self, status: &VoiceStatus) {
+        emit(&self.0, events::STATUS, status);
+    }
+
+    fn transcript(&self, _session_id: &str, t: &RtTranscript) {
+        let segment = TranscriptSegment {
+            id: pluto_core::ids::new_id(),
+            meeting_id: None,
+            source: SegmentSource::Realtime,
+            index: t.segment_index,
+            start_ms: None,
+            end_ms: None,
+            speaker_label: None,
+            participant: None,
+            text: t.text.clone(),
+            language: t.language.clone(),
+            relevance: None,
+        };
+        emit(&self.0, events::TRANSCRIPT, &segment);
+    }
+
+    fn error(&self, error: &VoiceError) {
+        emit(&self.0, events::ERROR, error);
+    }
+}
+
+/// Sends assistant turns and proposals to the windows (`voice://turn`, `voice://proposal`).
+struct AppAssistantEvents(AppHandle);
+
+impl AssistantEvents for AppAssistantEvents {
+    fn turn(&self, turn: &AssistantTurn) {
+        emit(&self.0, events::TURN, turn);
+    }
+
+    fn proposal(&self, proposal: &Proposal) {
+        emit(&self.0, events::PROPOSAL, proposal);
+    }
+}
+
 /// What the voice shell keeps between calls. Managed by Tauri (`app.manage`).
 pub(crate) struct VoiceShell {
     pub(crate) router: Arc<AudioRouter>,
@@ -163,43 +218,136 @@ pub(crate) struct VoiceShell {
     /// meeting transcription (T-201).
     http: Arc<GnaniHttp>,
     log: Arc<dyn OutboundLog>,
+    /// The state machine: push-to-talk, Realtime, barge-in (T-301).
+    pub(crate) runtime: Arc<VoiceRuntime>,
+    /// Tools, proposals and the approval gate (T-303).
+    assistant: Arc<Assistant>,
+    /// Stub settings until the settings service keys land (T-105 / T-401). Shared with the
+    /// runtime, which reads the language and format for each press.
+    settings: Arc<Mutex<VoiceSettings>>,
+    data_dir: PathBuf,
+    app: AppHandle,
     inner: Mutex<Inner>,
 }
 
 struct Inner {
-    status: VoiceStatus,
-    /// Stub settings until the settings service keys land (T-105 / T-401).
-    settings: VoiceSettings,
-    /// The open push-to-talk session.
-    ptt: Option<String>,
-    /// The running `voice_speak`, so `voice_stop_speaking` can cut it off.
-    speaking: Option<tokio::task::AbortHandle>,
+    /// The mic-check recording (Cloud voice off) and its status.
+    check: Option<(String, VoiceStatus)>,
+}
+
+fn lock_settings(s: &Mutex<VoiceSettings>) -> MutexGuard<'_, VoiceSettings> {
+    s.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// Prisma Realtime settings for a press, from the voice settings: the one chosen language, or
+/// `indic-auto` when none or several are chosen (the live service refuses a comma-separated list,
+/// seen live on 2026-11-06; Batch accepts one), and the output format.
+fn rt_config(settings: &VoiceSettings) -> RtConfig {
+    let langs: Vec<&str> = settings
+        .languages
+        .iter()
+        .map(|l| l.trim())
+        .filter(|l| !l.is_empty())
+        .collect();
+    RtConfig {
+        language_code: match langs.as_slice() {
+            [one] => (*one).to_string(),
+            _ => "indic-auto".into(),
+        },
+        format: settings.stt_format,
+        ..RtConfig::default()
+    }
+}
+
+/// Development builds also save every press to `<data>/voice-check/last-ptt.wav`, so what Pluto
+/// actually received can be played back when a turn hears nothing. Release builds save nothing.
+fn check_sinks(data_dir: PathBuf) -> impl Fn(&str) -> Vec<Arc<dyn FrameSink>> + Send + Sync {
+    if cfg!(debug_assertions) {
+        eprintln!(
+            "[voice] dev build: each press is saved to {}",
+            data_dir.join("voice-check").join("last-ptt.wav").display()
+        );
+    }
+    move |_session| {
+        if !cfg!(debug_assertions) {
+            return Vec::new();
+        }
+        match ptt_wav(&data_dir).and_then(WavSink::create) {
+            Ok(wav) => vec![Arc::new(wav) as Arc<dyn FrameSink>],
+            Err(e) => {
+                tracing::debug!(code = ?e.code, "couldn't open the voice-check WAV");
+                Vec::new()
+            }
+        }
+    }
 }
 
 impl VoiceShell {
-    pub(crate) fn new(db: Arc<Database>, clock: Arc<dyn Clock>) -> VoiceResult<Self> {
+    pub(crate) fn new(
+        app: AppHandle,
+        db: Arc<Database>,
+        clock: Arc<dyn Clock>,
+        data_dir: PathBuf,
+    ) -> VoiceResult<Self> {
         let secrets: Arc<dyn SecretStore> = Arc::new(KeychainSecrets);
         let keys: Arc<dyn ApiKeySource> = Arc::new(KeychainKey(secrets.clone()));
-        let log: Arc<dyn OutboundLog> = Arc::new(DbLog { db, clock });
+        let log: Arc<dyn OutboundLog> = Arc::new(DbLog {
+            db: db.clone(),
+            clock: clock.clone(),
+        });
         let http = Arc::new(GnaniHttp::new(DEFAULT_BASE_URL, keys.clone(), log.clone())?);
         let tts = Arc::new(TimbreClient::new(
             DEFAULT_WS_URL,
             http.clone(),
+            keys.clone(),
+            log.clone(),
+        ));
+        let settings = Arc::new(Mutex::new(fixture::<VoiceSettings>(
+            fixtures::SETTINGS_DEFAULT,
+        )?));
+        let router = Arc::new(AudioRouter::new());
+        let stt = Arc::new(RealtimeClient::new(
+            realtime::DEFAULT_URL,
             keys,
             log.clone(),
         ));
+        let enabled = lock_settings(&settings).cloud_voice_enabled
+            && secrets.has(Account::Gnani).unwrap_or(false);
+        let gemini = GeminiClient::new(gemini::DEFAULT_MODEL, secrets.clone(), log.clone());
+        let groq = GroqClient::new(groq::DEFAULT_MODEL, secrets.clone(), log.clone());
+        let llm = Arc::new(Router::new(Arc::new(gemini), Arc::new(groq)));
+        let assistant = Arc::new(Assistant::new(
+            db,
+            clock,
+            Arc::new(DefaultDecider::new(llm)),
+            Arc::new(AppAssistantEvents(app.clone())),
+        ));
+        let handler: Arc<dyn TurnHandler> = Arc::new(assistant.clone());
+        let for_config = settings.clone();
+        let runtime = Arc::new(
+            VoiceRuntime::new(
+                stt,
+                router.clone(),
+                Arc::new(AppRuntimeEvents(app.clone())),
+                handler,
+                enabled,
+            )
+            .with_config(move || rt_config(&lock_settings(&for_config)))
+            .with_extra_sinks(check_sinks(data_dir.clone())),
+        );
+        assistant.attach(&runtime);
         Ok(Self {
-            router: Arc::new(AudioRouter::new()),
+            router,
             secrets,
             tts,
             http,
             log,
-            inner: Mutex::new(Inner {
-                status: VoiceStatus::new(VoiceState::Idle),
-                settings: fixture(fixtures::SETTINGS_DEFAULT)?,
-                ptt: None,
-                speaking: None,
-            }),
+            runtime,
+            assistant,
+            settings,
+            data_dir,
+            app,
+            inner: Mutex::new(Inner { check: None }),
         })
     }
 
@@ -227,9 +375,71 @@ impl VoiceShell {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    fn set_status(&self, app: &AppHandle, status: VoiceStatus) {
-        self.lock().status = status.clone();
-        emit(app, events::STATUS, &status);
+    /// The status the UI should show: the mic check's while it runs, else the runtime's.
+    fn status(&self) -> VoiceStatus {
+        match &self.lock().check {
+            Some((_, status)) => status.clone(),
+            None => self.runtime.status(),
+        }
+    }
+
+    /// Cloud voice on and a Gnani key saved → the runtime is ready; otherwise Disabled.
+    fn refresh_enabled(&self) {
+        let enabled =
+            lock_settings(&self.settings).cloud_voice_enabled && self.has_key(Account::Gnani);
+        self.runtime.set_enabled(enabled);
+    }
+
+    /// Push-to-talk down (hotkey or button). Returns the session the UI captures for.
+    pub(crate) fn ptt_down(&self) -> VoiceResult<String> {
+        if self.runtime.state() != VoiceState::Disabled {
+            return self.runtime.ptt_down();
+        }
+        // Cloud voice off: record the press locally for the mic check (T-011).
+        if let Some((open, _)) = &self.lock().check {
+            return Ok(open.clone());
+        }
+        let id = pluto_core::ids::new_id();
+        let wav: Arc<dyn FrameSink> = Arc::new(WavSink::create(ptt_wav(&self.data_dir)?)?);
+        self.router.open(&id, vec![wav])?;
+        let status = VoiceStatus {
+            mode: Some(VoiceMode::Assistant),
+            session_id: Some(id.clone()),
+            ..VoiceStatus::new(VoiceState::Listening)
+        };
+        self.lock().check = Some((id.clone(), status.clone()));
+        emit(&self.app, events::STATUS, &status);
+        Ok(id)
+    }
+
+    /// Push-to-talk up.
+    pub(crate) fn ptt_up(&self) {
+        let check = self.lock().check.take();
+        let Some((id, _)) = check else {
+            self.runtime.ptt_up();
+            return;
+        };
+        if let Some((summary, errors)) = self.router.close(&id) {
+            tracing::info!(
+                frames = summary.frames,
+                ms = summary.duration_ms,
+                "push-to-talk recorded for the mic check"
+            );
+            for (_, e) in errors {
+                emit(&self.app, events::ERROR, &e);
+            }
+        }
+        emit(&self.app, events::STATUS, &self.runtime.status());
+    }
+
+    fn cancel(&self) {
+        let check = self.lock().check.take();
+        if let Some((id, _)) = check {
+            self.router.close(&id);
+        }
+        self.runtime.stop_speaking();
+        self.runtime.cancel();
+        emit(&self.app, events::STATUS, &self.runtime.status());
     }
 
     fn has_key(&self, account: Account) -> bool {
@@ -237,7 +447,7 @@ impl VoiceShell {
     }
 
     fn settings(&self) -> VoiceSettings {
-        let mut s = self.lock().settings.clone();
+        let mut s = lock_settings(&self.settings).clone();
         s.has_gnani_key = self.has_key(Account::Gnani);
         s.has_gemini_key = self.has_key(Account::Gemini);
         s.has_groq_key = self.has_key(Account::Groq);
@@ -255,8 +465,8 @@ fn account(name: &str) -> VoiceResult<Account> {
 }
 
 /// Where push-to-talk presses are recorded for the mic check (T-011).
-fn ptt_wav(paths: &AppPaths) -> VoiceResult<PathBuf> {
-    let dir = paths.data_dir.join("voice-check");
+fn ptt_wav(data_dir: &std::path::Path) -> VoiceResult<PathBuf> {
+    let dir = data_dir.join("voice-check");
     std::fs::create_dir_all(&dir).map_err(|_| {
         VoiceError::new(
             VoiceErrorCode::Core,
@@ -279,9 +489,9 @@ pub async fn voice_settings_set(
     patch: VoiceSettingsPatch,
     shell: State<'_, VoiceShell>,
 ) -> VoiceResult<VoiceSettings> {
-    {
-        let mut inner = shell.lock();
-        let s = &mut inner.settings;
+    let hotkey_changed = {
+        let mut s = lock_settings(&shell.settings);
+        let before = s.hotkey.clone();
         if let Some(v) = patch.cloud_voice_enabled {
             s.cloud_voice_enabled = v;
         }
@@ -306,6 +516,11 @@ pub async fn voice_settings_set(
         if let Some(v) = patch.always_on_enabled {
             s.always_on_enabled = v;
         }
+        s.hotkey != before
+    };
+    shell.refresh_enabled();
+    if hotkey_changed {
+        crate::shortcuts::reapply(&shell.app);
     }
     Ok(shell.settings())
 }
@@ -320,12 +535,14 @@ pub async fn voice_key_set(
     let acct = self::account(&account)?;
     let secret = pluto_core::secrets::validate(&secret)?;
     shell.secrets.set(acct, &secret)?;
+    shell.refresh_enabled();
     Ok(())
 }
 
 #[tauri::command]
 pub async fn voice_key_clear(account: String, shell: State<'_, VoiceShell>) -> VoiceResult<()> {
     shell.secrets.clear(self::account(&account)?)?;
+    shell.refresh_enabled();
     Ok(())
 }
 
@@ -333,70 +550,56 @@ pub async fn voice_key_clear(account: String, shell: State<'_, VoiceShell>) -> V
 
 #[tauri::command]
 pub async fn voice_status(shell: State<'_, VoiceShell>) -> VoiceResult<VoiceStatus> {
-    Ok(shell.lock().status.clone())
+    Ok(shell.status())
 }
 
-/// Stub: opens a capture session that records to `<data>/voice-check/last-ptt.wav` (overwritten
-/// each press) and reports Listening. Returns the session id for `audio_push`.
+/// Push-to-talk down (the talk button; the global hotkey does the same, see [`hotkey`]). Shows
+/// Listening at once and returns the session id for `audio_push`. While Pluto speaks, this stops
+/// it (barge-in); while a meeting records, it answers `Busy`. With Cloud voice off the press is
+/// only recorded to `<data>/voice-check/last-ptt.wav` (mic check, T-011).
 #[tauri::command]
-pub async fn voice_ptt_start(
-    app: AppHandle,
-    shell: State<'_, VoiceShell>,
-    paths: State<'_, AppPaths>,
-) -> VoiceResult<String> {
-    if let Some(old) = shell.lock().ptt.take() {
-        shell.router.close(&old);
-    }
-    let id = pluto_core::ids::new_id();
-    let wav: Arc<dyn FrameSink> = Arc::new(WavSink::create(ptt_wav(&paths)?)?);
-    shell.router.open(&id, vec![wav])?;
-    shell.lock().ptt = Some(id.clone());
-    shell.set_status(
-        &app,
-        VoiceStatus {
-            mode: Some(VoiceMode::Assistant),
-            session_id: Some(id.clone()),
-            ..VoiceStatus::new(VoiceState::Listening)
-        },
-    );
-    Ok(id)
+pub async fn voice_ptt_start(shell: State<'_, VoiceShell>) -> VoiceResult<String> {
+    shell.ptt_down()
 }
 
-/// Stub: closes the session (the WAV is finalised) and goes back to Idle. T-301 sends the
-/// Realtime `commit` here and moves to Thinking.
+/// Push-to-talk up: Realtime gets `commit`, and the final words go to the assistant (Thinking).
 #[tauri::command]
-pub async fn voice_ptt_stop(app: AppHandle, shell: State<'_, VoiceShell>) -> VoiceResult<()> {
-    let session = shell.lock().ptt.take();
-    if let Some(id) = session {
-        if let Some((summary, errors)) = shell.router.close(&id) {
-            tracing::info!(
-                frames = summary.frames,
-                ms = summary.duration_ms,
-                "push-to-talk recorded"
-            );
-            for (_, e) in errors {
-                emit(&app, events::ERROR, &e);
+pub async fn voice_ptt_stop(shell: State<'_, VoiceShell>) -> VoiceResult<()> {
+    shell.ptt_up();
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn voice_cancel(shell: State<'_, VoiceShell>) -> VoiceResult<()> {
+    shell.cancel();
+    Ok(())
+}
+
+/// The global push-to-talk hotkey (`shortcuts.rs`): press opens, release commits. An error goes
+/// to `voice://error`, as nobody awaits a hotkey.
+pub(crate) fn hotkey(app: &AppHandle, pressed: bool) {
+    use tauri::Manager;
+    let Some(shell) = app.try_state::<VoiceShell>() else {
+        return;
+    };
+    if pressed {
+        if let Err(e) = shell.ptt_down() {
+            if e.code != VoiceErrorCode::Busy {
+                // Busy was already reported by the runtime.
+                emit(app, events::ERROR, &e);
             }
         }
+    } else {
+        shell.ptt_up();
     }
-    shell.set_status(&app, VoiceStatus::new(VoiceState::Idle));
-    Ok(())
 }
 
-#[tauri::command]
-pub async fn voice_cancel(app: AppHandle, shell: State<'_, VoiceShell>) -> VoiceResult<()> {
-    let (session, speaking) = {
-        let mut inner = shell.lock();
-        (inner.ptt.take(), inner.speaking.take())
-    };
-    if let Some(id) = session {
-        shell.router.close(&id);
-    }
-    if let Some(task) = speaking {
-        task.abort();
-    }
-    shell.set_status(&app, VoiceStatus::new(VoiceState::Idle));
-    Ok(())
+/// The push-to-talk hotkey from the voice settings.
+pub(crate) fn hotkey_combo(app: &AppHandle) -> Option<String> {
+    use tauri::Manager;
+    let shell = app.try_state::<VoiceShell>()?;
+    let combo = lock_settings(&shell.settings).hotkey.trim().to_string();
+    (!combo.is_empty()).then_some(combo)
 }
 
 /// Real: one 1,024-byte PCM16 16 kHz frame as the raw body, the session in `x-session-id`
@@ -430,14 +633,15 @@ pub async fn audio_push(
     Ok(())
 }
 
-/// Stub: always the sample "ok" result. T-303 runs the proposal gate here.
+/// The answer to a proposal (the card's Approve / Reject / Edit). The **only** path from a
+/// proposal to a write: the store's gate lets it run once, and only inside its 30 s window.
 #[tauri::command]
 pub async fn voice_proposal_respond(
     proposal_id: String,
     response: ProposalResponse,
+    shell: State<'_, VoiceShell>,
 ) -> VoiceResult<ToolResult> {
-    let _ = (proposal_id, response);
-    fixture(fixtures::TOOL_RESULT_OK)
+    shell.assistant.respond(&proposal_id, response).await
 }
 
 /// Speaks `text` to `playback` (PCM16 24 kHz chunks), reporting Speaking then Idle. With Cloud
@@ -452,15 +656,13 @@ pub async fn voice_speak(
     app: AppHandle,
     shell: State<'_, VoiceShell>,
 ) -> VoiceResult<()> {
-    if let Some(old) = shell.lock().speaking.take() {
-        old.abort();
-    }
-    shell.set_status(&app, VoiceStatus::new(VoiceState::Speaking));
     let settings = shell.settings();
     let request = TtsRequest {
         text,
         language: language.unwrap_or_else(|| "auto".into()),
-        voice: Some(settings.tts_voice.clone()).filter(|v| !v.trim().is_empty()),
+        // Only a Timbre v3.0 voice works; an unknown name (the old "Arya" default) falls back.
+        voice: Some(settings.tts_voice.trim().to_string())
+            .filter(|v| pluto_gnani::tts::VOICES_V3.contains(&v.as_str())),
         // The client's documented default until the voice settings are real (T-105 / T-401).
         model: None,
         speed: None,
@@ -483,21 +685,12 @@ pub async fn voice_speak(
         let (spoken, ()) = tokio::join!(produce, forward);
         spoken
     });
-    let id = task.id();
-    shell.lock().speaking = Some(task.abort_handle());
-    // A cancellation (voice_stop_speaking / voice_cancel) is not an error for the caller.
+    // Speaking → Idle through the runtime; a press stops it (barge-in), and a newer reply
+    // replaces this one.
+    let id = shell.runtime.speaking(task.abort_handle());
+    // A cancellation (voice_stop_speaking / voice_cancel / barge-in) is not an error for the caller.
     let spoken = task.await.unwrap_or(Ok(()));
-    let was_current = {
-        let mut inner = shell.lock();
-        let current = inner.speaking.as_ref().is_some_and(|t| t.id() == id);
-        if current {
-            inner.speaking = None;
-        }
-        current
-    };
-    if was_current {
-        shell.set_status(&app, VoiceStatus::new(VoiceState::Idle));
-    }
+    shell.runtime.speaking_done(id);
     if let Err(e) = &spoken {
         emit(&app, events::ERROR, e);
     }
@@ -505,12 +698,8 @@ pub async fn voice_speak(
 }
 
 #[tauri::command]
-pub async fn voice_stop_speaking(app: AppHandle, shell: State<'_, VoiceShell>) -> VoiceResult<()> {
-    let speaking = shell.lock().speaking.take();
-    if let Some(task) = speaking {
-        task.abort();
-        shell.set_status(&app, VoiceStatus::new(VoiceState::Idle));
-    }
+pub async fn voice_stop_speaking(shell: State<'_, VoiceShell>) -> VoiceResult<()> {
+    shell.runtime.stop_speaking();
     Ok(())
 }
 
@@ -522,11 +711,13 @@ pub async fn voice_usage() -> VoiceResult<UsageCounters> {
     fixture(fixtures::USAGE_SAMPLE)
 }
 
-/// Stub: empty until the assistant records turns (T-303).
+/// The assistant's turns this session, newest first (each is also in `voice_interactions`).
 #[tauri::command]
-pub async fn voice_history(limit: u32) -> VoiceResult<Vec<AssistantTurn>> {
-    let _ = limit;
-    Ok(Vec::new())
+pub async fn voice_history(
+    limit: u32,
+    shell: State<'_, VoiceShell>,
+) -> VoiceResult<Vec<AssistantTurn>> {
+    Ok(shell.assistant.history(limit.clamp(1, 200) as usize))
 }
 
 /// Real: newest first from `privacy_log`.
@@ -566,6 +757,17 @@ pub async fn privacy_log_clear(core: State<'_, Core>) -> VoiceResult<()> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn realtime_gets_one_language_or_automatic_detection() {
+        let mut s: VoiceSettings = fixture(fixtures::SETTINGS_DEFAULT).unwrap();
+        assert_eq!(rt_config(&s).language_code, "indic-auto");
+        s.languages = vec!["hi-IN".into()];
+        assert_eq!(rt_config(&s).language_code, "hi-IN");
+        // Gnani's live service refuses a list, so several languages mean automatic detection.
+        s.languages = vec!["hi-IN".into(), "en-IN".into()];
+        assert_eq!(rt_config(&s).language_code, "indic-auto");
+    }
+
     use super::*;
     use pluto_contracts::meeting::{
         ExtractionResult, RecallAnswer, TranscriptSegment, TranscriptionJob,

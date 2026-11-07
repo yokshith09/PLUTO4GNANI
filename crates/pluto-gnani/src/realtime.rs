@@ -141,6 +141,7 @@ impl SpeechToText for RealtimeClient {
             pending_commit: false,
             next_segment: 0,
             bytes_this_connection: 0,
+            connected: false,
         };
         tokio::spawn(driver.run(ws));
         Ok(RtSession {
@@ -252,6 +253,33 @@ struct ServerMessage {
     detected_language_code: Option<String>,
     audio_duration_ms: Option<f64>,
     latency: Option<f64>,
+    /// Gnani's error text: only classified (key / credit / other), never shown or logged.
+    message: Option<String>,
+}
+
+/// Maps Gnani's realtime `error` message to a contract code. The text itself is never passed on.
+fn realtime_error(message: Option<&str>) -> VoiceError {
+    let m = message.unwrap_or_default().to_ascii_lowercase();
+    if m.contains("api key")
+        || m.contains("api_key")
+        || m.contains("unauthor")
+        || m.contains("auth")
+    {
+        VoiceError::new(
+            VoiceErrorCode::InvalidApiKey,
+            "Gnani didn't accept your API key. Check it in Settings → Voice & privacy.",
+        )
+    } else if m.contains("credit") || m.contains("quota") || m.contains("balance") {
+        VoiceError::new(
+            VoiceErrorCode::InsufficientCredit,
+            "Your Gnani credit has run out, so voice is off. Add credit, then turn voice back on.",
+        )
+    } else {
+        VoiceError::new(
+            VoiceErrorCode::GnaniUpstream,
+            "Gnani's speech service reported a problem. Try again.",
+        )
+    }
 }
 
 /// Gnani's `latency` is in milliseconds (undocumented; seen on the live check, T-GN-01:
@@ -262,6 +290,15 @@ fn latency_ms(v: f64) -> u32 {
     } else {
         0
     }
+}
+
+/// What one server message meant for the connection.
+enum Handled {
+    Continue,
+    /// The caller dropped the events receiver.
+    Gone,
+    /// Gnani refused the session before `connected`.
+    Refused,
 }
 
 /// How a connection ended.
@@ -288,6 +325,8 @@ struct Driver {
     pending_commit: bool,
     next_segment: u32,
     bytes_this_connection: u64,
+    /// Gnani said `connected` on the current connection.
+    connected: bool,
 }
 
 impl Driver {
@@ -336,6 +375,7 @@ impl Driver {
 
     /// Runs one connection until it ends.
     async fn serve(&mut self, ws: &mut Ws) -> Ended {
+        self.connected = false;
         let rotate_at = Instant::now() + self.policy.rotate_after;
         // Audio buffered while disconnected goes first, then a commit asked for meanwhile.
         while let Some(frame) = self.buffer.pop_front() {
@@ -371,8 +411,10 @@ impl Driver {
                 },
                 message = ws.next() => match message {
                     Some(Ok(Message::Text(text))) => {
-                        if !self.handle(text.as_str()).await {
-                            return Ended::ByCaller; // nobody is listening any more
+                        match self.handle(text.as_str()).await {
+                            Handled::Continue => {}
+                            Handled::Gone => return Ended::ByCaller, // nobody is listening any more
+                            Handled::Refused => return Ended::ByServer,
                         }
                     }
                     Some(Ok(Message::Close(frame))) => {
@@ -394,11 +436,29 @@ impl Driver {
     }
 
     /// One server message. Returns false when the event receiver is gone.
-    async fn handle(&mut self, text: &str) -> bool {
+    async fn handle(&mut self, text: &str) -> Handled {
         let Ok(msg) = serde_json::from_str::<ServerMessage>(text) else {
             tracing::debug!("ignored an unreadable realtime message");
-            return true;
+            return Handled::Continue;
         };
+        // An error before `connected` means Gnani refused the session's settings: reconnecting
+        // with the same ones would only be refused again, forever.
+        if msg.kind == "error" && !self.connected {
+            let mut e = realtime_error(msg.message.as_deref());
+            if e.code == VoiceErrorCode::GnaniUpstream {
+                e = VoiceError::new(
+                    VoiceErrorCode::GnaniBadRequest,
+                    "Gnani refused the speech settings. In Settings → Voice & privacy, choose one language or none (automatic).",
+                );
+            }
+            let e = e.retryable(false);
+            tracing::warn!(code = ?e.code, "Gnani refused the realtime session");
+            let _ = self.emit(RtEvent::Error(e)).await;
+            return Handled::Refused;
+        }
+        if msg.kind == "connected" {
+            self.connected = true;
+        }
         let event = match msg.kind.as_str() {
             "connected" => RtEvent::Connected {
                 request_id: msg.request_id,
@@ -418,13 +478,14 @@ impl Driver {
                     latency_ms: msg.latency.map(latency_ms),
                 })
             }
-            "error" => RtEvent::Error(VoiceError::new(
-                VoiceErrorCode::GnaniUpstream,
-                "Gnani's speech service reported a problem. Try again.",
-            )),
-            _ => return true,
+            "error" => RtEvent::Error(realtime_error(msg.message.as_deref())),
+            _ => return Handled::Continue,
         };
-        self.emit(event).await
+        if self.emit(event).await {
+            Handled::Continue
+        } else {
+            Handled::Gone
+        }
     }
 
     /// Tries to connect again, buffering input meanwhile. `None` when the session should end.

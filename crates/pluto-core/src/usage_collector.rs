@@ -834,6 +834,9 @@ mod tests {
         assert_eq!(total(&f).await, 40 * 60);
         f.settings.set("tracking.apps", json!(false)).await.unwrap();
         running(&c, false).await;
+        // The stopped collector saves its open span just after it reports stopping: wait for it
+        // (reading at once failed on a slow CI runner on 7 Nov 2026).
+        eventually(|| async { !f.spans("Zoom").await.is_empty() }).await;
         assert_eq!(
             f.spans("Zoom").await,
             vec![TimeRange {

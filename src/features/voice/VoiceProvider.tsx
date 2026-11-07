@@ -50,7 +50,10 @@ export function VoiceProvider({ children, audio = realAudio }: { children: React
   const [proposal, setProposal] = useState<Proposal | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [talking, setTalking] = useState(false);
-  const mic = useRef<{ handle: CaptureHandle; sender: FrameSender } | null>(null);
+  const mic = useRef<{ handle: CaptureHandle; sender: FrameSender; session: string } | null>(null);
+  // Set while a session is being opened here, so its own Listening status isn't taken for a
+  // hotkey press.
+  const opening = useRef(false);
   const player = useRef<ReturnType<AudioDeps["createPlayer"]> | null>(null);
   const spoken = useRef(new Set<string>());
 
@@ -99,6 +102,32 @@ export function VoiceProvider({ children, audio = realAudio }: { children: React
   // Leaving the app releases the microphone.
   useEffect(() => () => void closeMic(), [closeMic]);
 
+  /** Opens the microphone and sends its frames for `session`. False if it couldn't. */
+  const openMic = useCallback(
+    async (session: string): Promise<boolean> => {
+      try {
+        const sender = new audio.FrameSender(session, audio.pushFrame, { onError: () => setError("Some audio couldn't be sent. Try again.") });
+        const handle = await audio.startCapture({
+          onFrame: (f) => sender.send(f),
+          onEnded: () => {
+            setTalking(false);
+            setError("The microphone stopped. Check it is plugged in.");
+            void closeMic();
+            void voiceIpc.cancel().catch(() => undefined);
+          },
+        });
+        mic.current = { handle, sender, session };
+        setTalking(true);
+        return true;
+      } catch (e) {
+        setError(e instanceof Error && e.name === "CaptureError" ? e.message : "Pluto couldn't use the microphone.");
+        void voiceIpc.cancel().catch(() => undefined);
+        return false;
+      }
+    },
+    [audio, closeMic],
+  );
+
   const toggleTalk = useCallback(async () => {
     setError(null);
     if (mic.current || talking) {
@@ -114,31 +143,43 @@ export function VoiceProvider({ children, audio = realAudio }: { children: React
     // Barge-in: talking over a reply stops it.
     player.current?.stop();
     void voiceIpc.stopSpeaking().catch(() => undefined);
-    let session: string;
+    opening.current = true;
     try {
-      session = await voiceIpc.pttStart();
-    } catch (e) {
-      setError(voiceErrorMessage(e));
-      return;
+      let session: string;
+      try {
+        session = await voiceIpc.pttStart();
+      } catch (e) {
+        setError(voiceErrorMessage(e));
+        return;
+      }
+      await openMic(session);
+    } finally {
+      opening.current = false;
     }
-    try {
-      const sender = new audio.FrameSender(session, audio.pushFrame, { onError: () => setError("Some audio couldn't be sent. Try again.") });
-      const handle = await audio.startCapture({
-        onFrame: (f) => sender.send(f),
-        onEnded: () => {
+  }, [closeMic, openMic, talking]);
+
+  // The global push-to-talk hotkey (T-301) opens Listening in Rust: open the microphone for that
+  // session, and close it when Listening ends (key released, the 60 s auto-commit, an error).
+  useEffect(
+    () =>
+      onNamed("voice://status", (s) => {
+        if (s.state === "listening" && s.session_id) {
+          if (opening.current || mic.current?.session === s.session_id) return;
+          player.current?.stop(); // barge-in: Rust already stopped sending the reply
+          opening.current = true;
+          void (async () => {
+            await closeMic();
+            await openMic(s.session_id as string);
+          })().finally(() => {
+            opening.current = false;
+          });
+        } else if (s.state !== "listening" && mic.current && !opening.current) {
           setTalking(false);
-          setError("The microphone stopped. Check it is plugged in.");
           void closeMic();
-          void voiceIpc.cancel().catch(() => undefined);
-        },
-      });
-      mic.current = { handle, sender };
-      setTalking(true);
-    } catch (e) {
-      setError(e instanceof Error && e.name === "CaptureError" ? e.message : "Pluto couldn't use the microphone.");
-      void voiceIpc.cancel().catch(() => undefined);
-    }
-  }, [audio, closeMic, talking]);
+        }
+      }),
+    [closeMic, openMic],
+  );
 
   const respond = useCallback(async (response: ProposalResponse) => {
     const p = proposal;
