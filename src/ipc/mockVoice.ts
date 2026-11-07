@@ -90,6 +90,11 @@ export function createVoiceMock({ now, createMeeting, applyItems, delayMs = 250 
   const WAKE_NEEDED = 6;
   const wake = { enrolled: false, clips: 0, teaching: false, session: null as string | null };
   const wakeStatus = (): WakeStatus => ({ enrolled: wake.enrolled, clips: wake.clips, needed: WAKE_NEEDED, session_id: wake.session });
+  const announceWake = () => {
+    const w = wakeStatus();
+    emitNamed("voice://wake", w);
+    return w;
+  };
   const refreshWake = () => {
     const want = settings.always_on_enabled && settings.cloud_voice_enabled && settings.has_gnani_key && wake.enrolled && !wake.teaching;
     if (want === (wake.session !== null)) return;
@@ -110,7 +115,7 @@ export function createVoiceMock({ now, createMeeting, applyItems, delayMs = 250 
       wake.teaching = true;
       Object.assign(wake, { enrolled: false, clips: 0 });
       refreshWake();
-      return wakeStatus();
+      return announceWake();
     },
     voice_wake_clip_start: () => id("clip"),
     voice_wake_clip_stop: (): WakeClip => {
@@ -121,12 +126,12 @@ export function createVoiceMock({ now, createMeeting, applyItems, delayMs = 250 
       if (wake.clips < WAKE_NEEDED) voiceError("core", "Say “Pluto” a few more times first.");
       Object.assign(wake, { enrolled: true, teaching: false });
       refreshWake();
-      return wakeStatus();
+      return announceWake();
     },
     voice_wake_forget: () => {
       Object.assign(wake, { enrolled: false, clips: 0, teaching: false });
       refreshWake();
-      return wakeStatus();
+      return announceWake();
     },
     voice_key_set: (a: Args) => {
       const flag = KEY_FLAGS[a.account as keyof typeof KEY_FLAGS] ?? voiceError("core", "Unknown key account.");

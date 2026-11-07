@@ -61,6 +61,16 @@ describe("Always-on listening (T-705)", () => {
     expect(screen.getByRole("button", { name: "Teach Pluto your voice" })).toBeTruthy();
   });
 
+  it("becomes available as soon as teaching finishes, with Settings already open", async () => {
+    await ready();
+    await mount(fakeAudio());
+    const toggle = await screen.findByRole("switch", { name: "Always-on listening" });
+    expect(toggle.hasAttribute("disabled")).toBe(true);
+    await teach(); // what the teaching dialog does, while this screen is open
+    await waitFor(() => expect(toggle.hasAttribute("disabled")).toBe(false));
+    expect(screen.getByRole("button", { name: "Teach again" })).toBeTruthy();
+  });
+
   it("asks before turning on, then listens with one microphone and says so", async () => {
     const user = userEvent.setup();
     await ready();

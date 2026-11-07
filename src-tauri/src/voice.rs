@@ -440,6 +440,14 @@ impl VoiceShell {
         WakeStore::new(self.data_dir.join("wake"))
     }
 
+    /// Tells the UI the current wake status (`voice://wake`) and returns it. Teaching changes
+    /// whether always-on can be turned on even when listening itself doesn't start or stop.
+    pub(crate) fn announce_wake(&self) -> WakeStatus {
+        let status = self.wake_status();
+        emit(&self.app, events::WAKE, &status);
+        status
+    }
+
     pub(crate) fn wake_status(&self) -> WakeStatus {
         let store = self.wake_store();
         WakeStatus {
@@ -591,7 +599,7 @@ pub async fn voice_wake_teach_begin(shell: State<'_, VoiceShell>) -> VoiceResult
     shell.lock().teaching = true;
     shell.refresh_wake();
     shell.wake_store().reset()?;
-    Ok(shell.wake_status())
+    Ok(shell.announce_wake())
 }
 
 /// Opens one teaching recording. The UI sends the microphone's frames for the returned session.
@@ -650,7 +658,7 @@ pub async fn voice_wake_teach_finish(shell: State<'_, VoiceShell>) -> VoiceResul
     shell.wake_store().build()?;
     shell.lock().teaching = false;
     shell.refresh_wake();
-    Ok(shell.wake_status())
+    Ok(shell.announce_wake())
 }
 
 /// Stops teaching without a wake word, or forgets the one saved: recordings and reference are
@@ -663,7 +671,7 @@ pub async fn voice_wake_forget(shell: State<'_, VoiceShell>) -> VoiceResult<Wake
     shell.wake_store().reset()?;
     shell.lock().teaching = false;
     shell.refresh_wake();
-    Ok(shell.wake_status())
+    Ok(shell.announce_wake())
 }
 
 /// Settings → Cloud voice, shared by every outbound client: Gnani (REST, Batch, Realtime, Timbre)
