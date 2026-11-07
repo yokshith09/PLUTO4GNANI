@@ -15,7 +15,7 @@ Work top to bottom. **Wait** = a task of the other developer that must be merged
 | 3 | T-004 | Contracts A | M | P0a | 1 | — | Done (merged, PR #7) |
 | 4 | T-007 | Shell stubs | S | P0a | 1 | T-005 | Done (merged, PR #16) |
 | 5 | T-010 | Gnani check | S | P0a | 1 | — | Done (live checks passed) |
-| 6 | T-011 | Mic check | S | P0a | 2 | — | To do |
+| 6 | T-011 | Mic check | S | P0a | 2 | — | Done (capture, Realtime and playback pass: `docs/results/mic-check.md`) |
 | 7 | T-012 | UI audio | L | P0a | 1–2 | — | Done (merged, PR #9) |
 | 8 | T-013 | Rust audio IPC | M | P0a | 1 | — | Done (merged, PR #10; shell wiring with T-007) |
 | 9 | T-101 | Prisma Realtime | L | P0a | 2 | — | Done (PR #17; live check passed) |
@@ -23,8 +23,9 @@ Work top to bottom. **Wait** = a task of the other developer that must be merged
 | 11 | T-103 | Gnani base | M | P0a | 2 | — | Done (merged, PR #12) |
 | 12 | T-107 | Migration 013 | S | P0a | 2 | — | Done (merged, PR #11) |
 | 13 | T-201 | Batch | L | P0a | 3 | T-106 | Done (PR #27; live job passed) |
-| 14 | T-301 | Voice runtime | L | P0a | 3–4 | — | In review (PR #29) |
-| 15 | T-303 | Assistant | L | P0a | 4 | T-302 | In review (PR #29) |
+| 14 | T-301 | Voice runtime | L | P0a | 3–4 | — | Done (merged, PR #29) |
+| 15 | T-303 | Assistant | L | P0a | 4 | T-302 | Done (merged, PR #29) |
+| 15a | T-307 | Voice navigation | S | P1 | 4 | — | In review (`open_page`: "meetings kholo" switches the page; every reply is spoken) |
 | 16 | T-306 | Integration C3 | S | P0a | 4 | — | To do |
 | 17 | T-403 | Safety | S | P0a | 4–5 | — | To do |
 | 18 | T-404 | Build | S | P0a | 5 | — | To do |

@@ -17,6 +17,8 @@ pub enum Intent {
     Note,
     Focus,
     Project,
+    /// "Meetings kholo", "go to settings": switch the dashboard page (`open_page`).
+    Navigate,
     Approval,
     Reject,
     Cancel,

@@ -104,6 +104,32 @@ describe("Voice bar and approval (T-304), against the in-memory shell", () => {
     await waitFor(() => expect(bar().getByRole("button", { name: "Push to talk" }).getAttribute("aria-pressed")).toBe("false"));
   });
 
+  it("speaks answers that ran at once and the result of a click approval, but not a proposal twice", async () => {
+    const user = userEvent.setup();
+    const { emitNamed } = await import("@/ipc/namedEvents");
+    const speak = vi.spyOn(ipcMod.voiceIpc, "speak");
+    // Outside Tauri a playback Channel can't be built; a stand-in lets `speak` be called.
+    vi.doMock("@/audio", async (original) => ({ ...(await original<typeof import("@/audio")>()), playbackChannel: () => ({}) }));
+    await enableCloud();
+    await mount(fakeAudio());
+    await bar().findByRole("button", { name: "Push to talk" });
+    // A read ("meetings kholo") arrives with its result already set: it is still spoken.
+    const decision = { intent: "navigate", tool: "open_page", args: {}, confidence: 1, source: "llm", latency_ms: 1 };
+    const result = { tool: "open_page", ok: true, message: "Opening Meetings.", record_id: null };
+    act(() => emitNamed("voice://turn", { interaction_id: "nav-1", transcript: "open meetings", language: "en-IN", decision, reply_text: "Opening Meetings.", proposal: null, result } as never));
+    await waitFor(() => expect(speak.mock.calls.map((c) => c[0])).toContain("Opening Meetings."));
+
+    // A proposal is spoken once; after the click its result is spoken, not the summary again.
+    await user.click(bar().getByRole("button", { name: "Push to talk" }));
+    await user.click(bar().getByRole("button", { name: "Stop and send" }));
+    const card = await screen.findByRole("alertdialog", {}, { timeout: 3000 });
+    await waitFor(() => expect(speak.mock.calls.some((c) => /Send the revised budget/.test(c[0]))).toBe(true));
+    const summaries = () => speak.mock.calls.filter((c) => /Send the revised budget/.test(c[0]) && !/^Added/.test(c[0])).length;
+    await user.click(within(card).getByRole("button", { name: "Approve" }));
+    await waitFor(() => expect(speak.mock.calls.some((c) => /^Added/.test(c[0]))).toBe(true));
+    expect(summaries()).toBe(1);
+  });
+
   it("reject changes nothing and the history says so", async () => {
     const user = userEvent.setup();
     await enableCloud();

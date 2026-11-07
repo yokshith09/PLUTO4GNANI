@@ -164,6 +164,8 @@ pub mod tools {
     pub const FOCUS_START: &str = "focus_start";
     pub const FOCUS_STOP: &str = "focus_stop";
     pub const PROJECTS_LIST: &str = "projects_list";
+    /// Switches the dashboard page. Changes no data, so it runs directly.
+    pub const OPEN_PAGE: &str = "open_page";
 
     /// Tools that change data. They run only after `voice_proposal_respond(Approve)`.
     pub const WRITE: &[&str] = &[
@@ -185,7 +187,59 @@ pub mod tools {
         COMMITMENTS_LIST,
         NOTES_SEARCH,
         PROJECTS_LIST,
+        OPEN_PAGE,
     ];
+}
+
+/// Dashboard pages voice can open (`open_page {page}`), as the UI names them (`Page` in
+/// `src/features/shell/Sidebar.tsx`).
+pub mod pages {
+    pub const ALL: &[&str] = &[
+        "today",
+        "tasks",
+        "time",
+        "notes",
+        "projects",
+        "study",
+        "meetings",
+        "voice",
+        "archive",
+        "bin",
+        "character",
+        "mcp",
+        "settings",
+    ];
+    /// Hidden by the demo view (`advanced.demo_pages_only`; `DEMO_HIDDEN` in `pages.ts`).
+    pub const DEMO_HIDDEN: &[&str] = &["time", "study", "character", "mcp", "archive"];
+
+    /// The page a spoken word means: "home" → `today`, "reminders" → `tasks` (they live there),
+    /// "trash" → `bin`, "history" → `voice`. `None` when it names no page.
+    pub fn named(word: &str) -> Option<&'static str> {
+        let w = word.trim().to_lowercase();
+        let w = w
+            .trim_start_matches("the ")
+            .trim_end_matches(" page")
+            .trim_end_matches(" tab")
+            .trim();
+        let page = match w {
+            "home" | "dashboard" | "overview" | "today" | "aaj" => "today",
+            "task" | "tasks" | "todo" | "todos" | "to-do" | "to do" | "kaam" | "reminder"
+            | "reminders" => "tasks",
+            "note" | "notes" | "notebook" => "notes",
+            "project" | "projects" => "projects",
+            "meeting" | "meetings" | "recordings" | "transcripts" => "meetings",
+            "voice" | "assistant" | "history" | "voice history" => "voice",
+            "bin" | "trash" | "recycle bin" | "deleted" => "bin",
+            "setting" | "settings" | "preferences" | "options" => "settings",
+            "time" | "screen time" | "usage" => "time",
+            "study" | "student" => "study",
+            "archive" | "archived" => "archive",
+            "character" | "pet" => "character",
+            "mcp" => "mcp",
+            _ => return None,
+        };
+        Some(page)
+    }
 }
 
 /// A pending write, waiting for the user's answer. Emitted as `voice://proposal`.
@@ -401,7 +455,7 @@ mod tests {
         for t in tools::WRITE {
             assert!(!tools::READ.contains(t), "{t} is listed as both");
         }
-        assert_eq!(tools::WRITE.len() + tools::READ.len(), 14);
+        assert_eq!(tools::WRITE.len() + tools::READ.len(), 15);
     }
 
     #[test]

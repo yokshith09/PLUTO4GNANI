@@ -7,7 +7,8 @@
 //!    the intent LLM) with the last 6 turns as context, so "usse Friday kar do" refers to the
 //!    task of the previous turn.
 //! 2. **Reads** (`tasks_list`, `reminders_list`, `meeting_search`) run at once and the answer is
-//!    spoken (lists: at most 5 items, then "and N more").
+//!    spoken (lists: at most 5 items, then "and N more"). `open_page` ("meetings kholo") also
+//!    runs at once: it switches the dashboard page and changes no data.
 //! 3. **Writes** (`task_create`, `task_complete`, `task_update`, `reminder_create`,
 //!    `reminder_done`) become a [`Proposal`]: stored, shown and spoken, waiting 30 s. Nothing
 //!    runs until [`Assistant::respond`] gets an approval, by click (`voice_proposal_respond`) or
@@ -27,7 +28,8 @@ use chrono::{NaiveDate, TimeZone};
 use pluto_contracts::decide::{AssistantDecision, DecideContext, Decider, DecisionSource, Intent};
 use pluto_contracts::error::{VoiceError, VoiceErrorCode, VoiceResult};
 use pluto_contracts::voice::{
-    tools, AssistantTurn, Proposal, ProposalRequest, ProposalResponse, ToolExecutor, ToolResult,
+    pages, tools, AssistantTurn, Proposal, ProposalRequest, ProposalResponse, ToolExecutor,
+    ToolResult,
 };
 use pluto_core::clock::Clock;
 use pluto_core::db::Database;
@@ -35,6 +37,7 @@ use pluto_core::ids::new_id;
 use pluto_core::meeting_ai_store;
 use pluto_core::meetings;
 use pluto_core::reminders::{self, Reminder, ReminderInput};
+use pluto_core::settings_service::SettingsService;
 use pluto_core::tasks::{self, TaskFilters, TaskInput, TaskPatch, TaskStatus, TaskView};
 use pluto_core::voice_store::{
     self, Answer, Decided, InteractionRow, InteractionUpdate, ProposalRow,
@@ -57,6 +60,8 @@ const HISTORY: usize = 50;
 pub trait AssistantEvents: Send + Sync {
     fn turn(&self, turn: &AssistantTurn);
     fn proposal(&self, proposal: &Proposal);
+    /// Switch the dashboard to `page` (one of `pages::ALL`), bringing the window up.
+    fn navigate(&self, _page: &str) {}
 }
 
 // ---- language --------------------------------------------------------------------------------
@@ -99,6 +104,26 @@ fn spoken_list(items: &[String], lang: Lang) -> String {
         out.push_str(&lang.pick(format!(", aur {more} aur"), format!(", and {more} more")));
     }
     out
+}
+
+/// The page's name as the sidebar shows it.
+fn page_title(page: &str) -> &'static str {
+    match page {
+        "today" => "Today",
+        "tasks" => "Tasks",
+        "time" => "Time",
+        "notes" => "Notes",
+        "projects" => "Projects",
+        "study" => "Study",
+        "meetings" => "Meetings",
+        "voice" => "Voice",
+        "archive" => "Archive",
+        "bin" => "Bin",
+        "character" => "Character",
+        "mcp" => "MCP",
+        "settings" => "Settings",
+        _ => "That",
+    }
 }
 
 /// "Sat, 7 Nov" for `2026-11-07` (as it is read out), or the text itself if it isn't a date.
@@ -470,6 +495,16 @@ impl Assistant {
             .map(|d| d.timestamp_millis())
     }
 
+    /// The demo view (T-402) hides some pages; voice doesn't open them either.
+    async fn demo_pages_only(&self) -> bool {
+        SettingsService::new(self.db.clone(), self.clock.clone())
+            .get_all()
+            .await
+            .ok()
+            .and_then(|all| all.get("advanced.demo_pages_only").and_then(Value::as_bool))
+            .unwrap_or(false)
+    }
+
     fn time_text(&self, ms: i64) -> String {
         let tz = self.clock.tz();
         let Some(at) = tz.timestamp_millis_opt(ms).single() else {
@@ -588,6 +623,32 @@ impl Assistant {
                     }
                     parts.join(" ")
                 }
+            }
+            tools::OPEN_PAGE => {
+                let page = args
+                    .get("page")
+                    .and_then(Value::as_str)
+                    .and_then(pages::named)
+                    .ok_or_else(|| {
+                        VoiceError::new(
+                            VoiceErrorCode::ToolFailed,
+                            lang.pick("Kaunsa page? Phir se boliye.", "Which page? Say it again."),
+                        )
+                    })?;
+                if pages::DEMO_HIDDEN.contains(&page) && self.demo_pages_only().await {
+                    return Err(VoiceError::new(
+                        VoiceErrorCode::ToolFailed,
+                        lang.pick(
+                            format!("{} page abhi chhupa hua hai.", page_title(page)),
+                            format!("The {} page is hidden in this view.", page_title(page)),
+                        ),
+                    ));
+                }
+                self.events.navigate(page);
+                lang.pick(
+                    format!("{} khol raha hoon.", page_title(page)),
+                    format!("Opening {}.", page_title(page)),
+                )
             }
             tools::COMMITMENTS_LIST | tools::NOTES_SEARCH | tools::PROJECTS_LIST => {
                 return Err(not_yet(lang));

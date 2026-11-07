@@ -16,11 +16,13 @@ use pluto_contracts::error::{VoiceError, VoiceErrorCode, VoiceResult};
 use pluto_contracts::llm::{Llm, LlmMessage, LlmRequest, LlmRole, LlmTask};
 use serde_json::{json, Map, Value};
 
+use pluto_contracts::voice::pages;
+
 use crate::dates::resolve_date;
 use crate::llm::router::default_timeout_ms;
 
 /// The tools the assistant may propose or run (API_CONTRACTS §3.5) and the intent each belongs to.
-const TOOLS: [(&str, Intent); 14] = [
+const TOOLS: [(&str, Intent); 15] = [
     ("tasks_list", Intent::Task),
     ("task_create", Intent::Task),
     ("task_complete", Intent::Task),
@@ -35,6 +37,7 @@ const TOOLS: [(&str, Intent); 14] = [
     ("focus_start", Intent::Focus),
     ("focus_stop", Intent::Focus),
     ("projects_list", Intent::Project),
+    ("open_page", Intent::Navigate),
 ];
 
 fn intent_name(i: Intent) -> &'static str {
@@ -45,6 +48,7 @@ fn intent_name(i: Intent) -> &'static str {
         Intent::Note => "note",
         Intent::Focus => "focus",
         Intent::Project => "project",
+        Intent::Navigate => "navigate",
         Intent::Approval => "approval",
         Intent::Reject => "reject",
         Intent::Cancel => "cancel",
@@ -60,6 +64,7 @@ fn parse_intent(s: &str) -> Option<Intent> {
         Intent::Note,
         Intent::Focus,
         Intent::Project,
+        Intent::Navigate,
         Intent::Approval,
         Intent::Reject,
         Intent::Cancel,
@@ -74,7 +79,7 @@ fn schema() -> Value {
         "type": "object",
         "required": ["intent", "args"],
         "properties": {
-            "intent": {"type": "string", "enum": ["meeting_query","task","reminder","note","focus","project","approval","reject","cancel","noise"]},
+            "intent": {"type": "string", "enum": ["meeting_query","task","reminder","note","focus","project","navigate","approval","reject","cancel","noise"]},
             "tool": {"type": "string", "nullable": true},
             "args": {"type": "object"},
             "confidence": {"type": "number", "nullable": true}
@@ -96,7 +101,9 @@ Reply with JSON {intent, tool, args, confidence}. Use only these tools and argum
 - notes_search {query}; note_create {body}\n\
 - focus_start {minutes}; focus_stop {}\n\
 - projects_list {}\n\
-Intents: meeting_query, task, reminder, note, focus, project, or noise for anything that is not a command (set tool null). \
+- open_page {page: \"today\"|\"tasks\"|\"notes\"|\"projects\"|\"meetings\"|\"voice\"|\"bin\"|\"settings\"|\"time\"|\"study\"|\"archive\"|\"character\"|\"mcp\"}  \
+(\"meetings kholo\", \"go to settings\", \"show my notes\": open that page; home = today, reminders = tasks, trash = bin)\n\
+Intents: meeting_query, task, reminder, note, focus, project, navigate (for open_page), or noise for anything that is not a command (set tool null). \
 Titles and queries are short English. Copy time words exactly into due_phrase / when_phrase (for example \"kal tak\", \"Friday\"); \
 never compute dates. For \"remind me in two hours\" set in_minutes. \"time\" is the clock time if one was spoken (\"5 pm\" -> \"17:00\").";
 
@@ -228,6 +235,7 @@ fn resolve_args(tool: &str, raw: &Map<String, Value>, clock: &Clock) -> Option<V
             Value::Object(out)
         }
         "note_create" => json!({"body": text(raw, "body")?}),
+        "open_page" => json!({"page": pages::named(&text(raw, "page")?)?}),
         "focus_start" => {
             let m = raw
                 .get("minutes")
