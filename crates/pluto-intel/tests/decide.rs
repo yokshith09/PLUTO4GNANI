@@ -36,6 +36,7 @@ fn intent_of(name: &str) -> Intent {
         "note" => Intent::Note,
         "focus" => Intent::Focus,
         "project" => Intent::Project,
+        "navigate" => Intent::Navigate,
         "approval" => Intent::Approval,
         "reject" => Intent::Reject,
         "cancel" => Intent::Cancel,
@@ -167,6 +168,32 @@ async fn a_made_up_tool_or_incomplete_arguments_do_nothing() {
     )
     .await;
     assert_eq!(d.intent, Intent::Noise);
+}
+
+#[tokio::test]
+async fn open_page_names_a_real_page_or_does_nothing() {
+    for (said, page) in [
+        ("Meetings", "meetings"),
+        ("settings page", "settings"),
+        ("home", "today"),
+        ("reminders", "tasks"),
+        ("trash", "bin"),
+    ] {
+        let d = decide_with(
+            json!({"intent":"navigate","tool":"open_page","args":{"page":said}}),
+            "open it",
+        )
+        .await;
+        assert_eq!(d.intent, Intent::Navigate, "{said}");
+        assert_eq!(d.tool.as_deref(), Some("open_page"), "{said}");
+        assert_eq!(d.args, json!({"page": page}), "{said}");
+    }
+    let d = decide_with(
+        json!({"intent":"navigate","tool":"open_page","args":{"page":"kitchen"}}),
+        "open the kitchen",
+    )
+    .await;
+    assert_eq!((d.intent, d.tool), (Intent::Noise, None), "not a page");
 }
 
 #[tokio::test]

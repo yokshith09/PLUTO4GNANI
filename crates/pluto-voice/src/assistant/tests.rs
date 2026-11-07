@@ -68,6 +68,7 @@ fn decision(
 struct Seen {
     turns: StdMutex<Vec<AssistantTurn>>,
     proposals: StdMutex<Vec<Proposal>>,
+    pages: StdMutex<Vec<String>>,
 }
 
 impl AssistantEvents for Seen {
@@ -76,6 +77,9 @@ impl AssistantEvents for Seen {
     }
     fn proposal(&self, p: &Proposal) {
         self.proposals.lock().unwrap().push(p.clone());
+    }
+    fn navigate(&self, page: &str) {
+        self.pages.lock().unwrap().push(page.to_string());
     }
 }
 
@@ -576,4 +580,52 @@ async fn a_reminder_finds_its_time_in_the_when_phrase() {
     assert_eq!(p.args["remind_at"], 1_762_342_200_000i64);
     assert_eq!(p.args["title"], "Reminder");
     assert_eq!(p.summary_text, "Remind you to “Reminder” at 5:00 PM?");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn open_page_switches_the_page_at_once_and_changes_nothing() {
+    let r = rig(
+        Script(vec![
+            (
+                "meetings kholo",
+                Intent::Navigate,
+                Some("open_page"),
+                json!({"page": "meetings"}),
+            ),
+            (
+                "open screen time",
+                Intent::Navigate,
+                Some("open_page"),
+                json!({"page": "time"}),
+            ),
+        ]),
+        PROPOSAL_WINDOW,
+    );
+    assert_eq!(
+        r.a.turn(heard("meetings kholo", "hi-IN")).await.unwrap(),
+        Turn::Reply
+    );
+    assert_eq!(*r.seen.pages.lock().unwrap(), vec!["meetings".to_string()]);
+    let t = r.seen.turns.lock().unwrap().last().cloned().unwrap();
+    assert_eq!(t.reply_text.as_deref(), Some("Meetings khol raha hoon."));
+    assert!(t.proposal.is_none(), "no approval for a page switch");
+    assert!(r.a.pending().is_none());
+    assert!(open_tasks(&r).await.is_empty());
+
+    // The demo view hides Time: voice says so instead of opening it.
+    SettingsService::new(r.db.clone(), r.clock.clone())
+        .set("advanced.demo_pages_only", json!(true))
+        .await
+        .unwrap();
+    r.a.turn(heard("open screen time", "en-IN")).await.unwrap();
+    assert_eq!(
+        r.seen.pages.lock().unwrap().len(),
+        1,
+        "a hidden page isn't opened"
+    );
+    let t = r.seen.turns.lock().unwrap().last().cloned().unwrap();
+    assert_eq!(
+        t.reply_text.as_deref(),
+        Some("The Time page is hidden in this view.")
+    );
 }

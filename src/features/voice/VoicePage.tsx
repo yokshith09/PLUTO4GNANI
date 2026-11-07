@@ -8,7 +8,7 @@ import { voiceIpc } from "@/ipc/voiceClient";
 import type { AssistantTurn } from "@/ipc/generated";
 
 export const INTENT_LABEL: Record<AssistantTurn["decision"]["intent"], string> = {
-  meeting_query: "Meetings", task: "Tasks", reminder: "Reminders", note: "Notes", focus: "Focus", project: "Projects",
+  meeting_query: "Meetings", task: "Tasks", reminder: "Reminders", note: "Notes", focus: "Focus", project: "Projects", navigate: "Navigation",
   approval: "Yes", reject: "No", cancel: "Cancel", noise: "Not a command",
 };
 

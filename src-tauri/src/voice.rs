@@ -207,6 +207,12 @@ impl AssistantEvents for AppAssistantEvents {
     fn proposal(&self, proposal: &Proposal) {
         emit(&self.0, events::PROPOSAL, proposal);
     }
+
+    /// "Meetings kholo": the dashboard's existing `page:<name>` command (also used by the pet's
+    /// menu) brings the window up and switches the page.
+    fn navigate(&self, page: &str) {
+        crate::pet::command(&self.0, &format!("page:{page}"));
+    }
 }
 
 /// What the voice shell keeps between calls. Managed by Tauri (`app.manage`).
