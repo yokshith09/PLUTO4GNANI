@@ -318,6 +318,45 @@ async fn frames_then_commit_give_one_final_transcript_with_the_detected_language
     assert_eq!(records[0].ref_id.as_deref(), Some(s.id.as_str()));
 }
 
+// T-PR-04: Cloud voice turned off while talking → no more audio leaves; the session ends.
+#[tokio::test]
+async fn turning_cloud_voice_off_mid_session_stops_the_audio_and_ends_the_session() {
+    let server = serve(Script::default()).await;
+    let (c, _log) = client(&server.url, Some("k"));
+    let cloud = crate::http::CloudSwitch::new(true);
+    let c = c.with_cloud(cloud.clone());
+    let mut s = c.open(RtConfig::default()).await.unwrap();
+    until(&mut s, |e| matches!(e, RtEvent::Connected { .. })).await;
+    s.input.send(frame()).await.unwrap();
+    s.input.send(frame()).await.unwrap();
+    // Wait until both frames have reached the server, then switch off.
+    for _ in 0..100 {
+        if server.conns()[0].bytes == 2 * FRAME_BYTES {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    cloud.set(false);
+    for _ in 0..5 {
+        let _ = s.input.send(frame()).await;
+    }
+    let events = drain(&mut s).await;
+    assert!(
+        events.iter().any(|e| matches!(
+            e,
+            RtEvent::Error(err) if err.code == VoiceErrorCode::CloudVoiceDisabled
+        )),
+        "{events:?}"
+    );
+    assert_eq!(events.last(), Some(&RtEvent::Closed));
+    assert_eq!(
+        server.conns()[0].bytes,
+        2 * FRAME_BYTES,
+        "nothing after the switch"
+    );
+    assert_eq!(server.conns().len(), 1, "no reconnect either");
+}
+
 // T-FH-04: close code 1001 → the client reconnects; audio sent meanwhile is not lost.
 #[tokio::test]
 async fn close_code_1001_reconnects_and_buffered_audio_reaches_the_new_connection() {

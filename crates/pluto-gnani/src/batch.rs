@@ -362,6 +362,7 @@ impl BatchApi for BatchClient {
         if !(url.starts_with("https://") || url.starts_with("http://")) {
             return Err(unreadable());
         }
+        self.http.cloud().check()?;
         self.log.record(OutboundRecord {
             destination: Family::Batch.destination(),
             purpose: "transcript download".into(),

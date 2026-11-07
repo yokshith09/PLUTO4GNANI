@@ -38,7 +38,9 @@ use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
 use tokio_tungstenite::tungstenite::{Error as WsError, Message};
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 
-use crate::http::{map_status, ApiKeySource, Family, OutboundLog, OutboundRecord};
+use crate::http::{
+    cloud_off, map_status, ApiKeySource, CloudSwitch, Family, OutboundLog, OutboundRecord,
+};
 
 /// Prisma Realtime endpoint.
 pub const DEFAULT_URL: &str = "wss://api.vachana.ai/stt/v3/stream";
@@ -82,6 +84,7 @@ pub struct RealtimeClient {
     keys: Arc<dyn ApiKeySource>,
     log: Arc<dyn OutboundLog>,
     policy: RealtimePolicy,
+    cloud: Arc<CloudSwitch>,
 }
 
 impl RealtimeClient {
@@ -96,7 +99,14 @@ impl RealtimeClient {
             keys,
             log,
             policy: RealtimePolicy::default(),
+            cloud: CloudSwitch::new(true),
         }
+    }
+
+    /// Shares the app's Cloud voice switch (always on otherwise).
+    pub fn with_cloud(mut self, cloud: Arc<CloudSwitch>) -> Self {
+        self.cloud = cloud;
+        self
     }
 
     pub fn with_policy(mut self, policy: RealtimePolicy) -> Self {
@@ -120,6 +130,7 @@ impl RealtimeClient {
 #[async_trait::async_trait]
 impl SpeechToText for RealtimeClient {
     async fn open(&self, config: RtConfig) -> VoiceResult<RtSession> {
+        self.cloud.check()?;
         let key = self.key()?;
         let request = handshake(&self.url, &key, &config)?;
         // The first connection is not retried: the person just pressed the key and should hear
@@ -135,6 +146,7 @@ impl SpeechToText for RealtimeClient {
             config,
             policy: self.policy.clone(),
             log: self.log.clone(),
+            cloud: self.cloud.clone(),
             input: input_rx,
             events: event_tx,
             buffer: VecDeque::new(),
@@ -319,6 +331,8 @@ struct Driver {
     config: RtConfig,
     policy: RealtimePolicy,
     log: Arc<dyn OutboundLog>,
+    /// Turned off mid-session: no more audio is sent, and the session ends.
+    cloud: Arc<CloudSwitch>,
     input: mpsc::Receiver<RtInput>,
     events: mpsc::Sender<RtEvent>,
     buffer: VecDeque<Vec<u8>>,
@@ -376,6 +390,10 @@ impl Driver {
     /// Runs one connection until it ends.
     async fn serve(&mut self, ws: &mut Ws) -> Ended {
         self.connected = false;
+        if !self.cloud.is_on() {
+            let _ = self.emit(RtEvent::Error(cloud_off())).await;
+            return Ended::ByServer;
+        }
         let rotate_at = Instant::now() + self.policy.rotate_after;
         // Audio buffered while disconnected goes first, then a commit asked for meanwhile.
         while let Some(frame) = self.buffer.pop_front() {
@@ -393,6 +411,10 @@ impl Driver {
             tokio::select! {
                 input = self.input.recv() => match input {
                     Some(RtInput::Frame(frame)) => {
+                        if !self.cloud.is_on() {
+                            let _ = self.emit(RtEvent::Error(cloud_off())).await;
+                            return Ended::ByServer;
+                        }
                         let n = frame.len() as u64;
                         if let Err(e) = ws.send(Message::Binary(frame.clone().into())).await {
                             tracing::debug!(error = %e, "realtime send failed; reconnecting");
@@ -512,6 +534,10 @@ impl Driver {
                         Some(RtInput::Close) | None => return None,
                     },
                 }
+            }
+            if !self.cloud.is_on() {
+                last = cloud_off();
+                break;
             }
             let attempt_result = match handshake(&self.url, &self.key, &self.config) {
                 Ok(request) => connect(request, self.policy.connect_timeout).await,

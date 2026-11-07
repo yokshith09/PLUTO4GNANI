@@ -31,5 +31,7 @@ export function onNamed<K extends NamedEvent>(name: K, cb: (payload: NamedEvents
 
 /** Used by the mock and tests only: the real shell emits these from Rust. */
 export function emitNamed<K extends NamedEvent>(name: K, payload: NamedEvents[K]): void {
+  // A mock timer (a meeting job step) can fire after a test has finished and its window is gone.
+  if (typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent(DOM_PREFIX + name, { detail: payload }));
 }

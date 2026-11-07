@@ -630,6 +630,170 @@ async fn open_page_switches_the_page_at_once_and_changes_nothing() {
     );
 }
 
+/// Everything the user owns, from the data export: every table except the assistant's own log
+/// (`voice_*`) and the privacy log, which a turn is allowed to write.
+async fn user_data(r: &Rig) -> Value {
+    let mut all = pluto_core::data::export(&r.db, &*r.clock, "test")
+        .await
+        .unwrap();
+    let tables = all["tables"].as_object_mut().unwrap();
+    tables.retain(|name, _| !name.starts_with("voice_") && name != "privacy_log");
+    assert!(tables.contains_key("tasks") && tables.contains_key("reminders"));
+    Value::Object(tables.clone())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn t_as_05_no_write_tool_changes_anything_without_an_approved_proposal() {
+    let later = START + 3_600_000;
+    let script = Script(vec![
+        (
+            "w task_create",
+            Intent::Task,
+            Some("task_create"),
+            json!({"title": "Pay rent"}),
+        ),
+        (
+            "w task_complete",
+            Intent::Task,
+            Some("task_complete"),
+            json!({"match": "budget report"}),
+        ),
+        (
+            "w task_update",
+            Intent::Task,
+            Some("task_update"),
+            json!({"match": "budget report", "due_date": "2025-11-07", "due_phrase": "Friday"}),
+        ),
+        (
+            "w reminder_create",
+            Intent::Reminder,
+            Some("reminder_create"),
+            json!({"title": "Call mom", "remind_at": later, "when_phrase": "in an hour"}),
+        ),
+        (
+            "w reminder_done",
+            Intent::Reminder,
+            Some("reminder_done"),
+            json!({"match": "call ravi"}),
+        ),
+        (
+            "w note_create",
+            Intent::Note,
+            Some("note_create"),
+            json!({"body": "Buy milk"}),
+        ),
+        (
+            "w focus_start",
+            Intent::Focus,
+            Some("focus_start"),
+            json!({"minutes": 25}),
+        ),
+        ("w focus_stop", Intent::Focus, Some("focus_stop"), json!({})),
+    ]);
+    let scripted: Vec<&str> = script.0.iter().filter_map(|(_, _, t, _)| *t).collect();
+    let mut every_write: Vec<&str> = tools::WRITE.to_vec();
+    every_write.sort_unstable();
+    let mut covered = scripted.clone();
+    covered.sort_unstable();
+    assert_eq!(covered, every_write, "the test covers every write tool");
+
+    let r = rig(script, PROPOSAL_WINDOW);
+    add_task(&r, "Budget report").await;
+    reminders::create(
+        &r.db,
+        &*r.clock,
+        ReminderInput {
+            title: "Call Ravi".into(),
+            remind_at: later,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let before = user_data(&r).await;
+
+    // 1. Spoken: each write becomes a proposal (or a refusal) and nothing changes; then "nahi".
+    for tool in &scripted {
+        r.a.turn(heard(&format!("w {tool}"), "en-IN"))
+            .await
+            .unwrap();
+        assert_eq!(
+            user_data(&r).await,
+            before,
+            "{tool}: changed data before approval"
+        );
+        if r.a.pending().is_some() {
+            r.a.turn(heard("nahi", "en-IN")).await.unwrap();
+        }
+        assert_eq!(
+            user_data(&r).await,
+            before,
+            "{tool}: changed data after a rejection"
+        );
+        assert!(r.a.pending().is_none());
+    }
+
+    // 2. The tool interface: a write can't be run as a read, and proposing never executes.
+    let api = AssistantTools(r.a.clone());
+    for (_, _, tool, args) in &write_tools(later) {
+        let err = api.run_read(tool, args).await.unwrap_err();
+        assert_eq!(err.code, VoiceErrorCode::ToolFailed, "{tool}");
+    }
+    assert_eq!(user_data(&r).await, before, "run_read on a write tool");
+
+    // 3. An answer to a proposal that isn't pending does nothing.
+    let err =
+        r.a.respond("no-such-proposal", ProposalResponse::Approve)
+            .await
+            .unwrap_err();
+    assert_eq!(err.code, VoiceErrorCode::ProposalExpired);
+    assert_eq!(user_data(&r).await, before);
+
+    // Control: an approved proposal does write, so the snapshot can see a change.
+    r.a.turn(heard("w task_create", "en-IN")).await.unwrap();
+    r.a.turn(heard("haan", "en-IN")).await.unwrap();
+    assert_ne!(user_data(&r).await, before, "approval writes");
+}
+
+/// Every write tool with plausible arguments, for the tool-interface check.
+fn write_tools(later: i64) -> Vec<(&'static str, Intent, &'static str, Value)> {
+    vec![
+        (
+            "",
+            Intent::Task,
+            "task_create",
+            json!({"title": "Pay rent"}),
+        ),
+        (
+            "",
+            Intent::Task,
+            "task_complete",
+            json!({"match": "budget report"}),
+        ),
+        (
+            "",
+            Intent::Task,
+            "task_update",
+            json!({"match": "budget report", "due_date": "2025-11-07"}),
+        ),
+        (
+            "",
+            Intent::Reminder,
+            "reminder_create",
+            json!({"title": "Call mom", "remind_at": later}),
+        ),
+        (
+            "",
+            Intent::Reminder,
+            "reminder_done",
+            json!({"match": "call ravi"}),
+        ),
+        ("", Intent::Note, "note_create", json!({"body": "Buy milk"})),
+        ("", Intent::Focus, "focus_start", json!({"minutes": 25})),
+        ("", Intent::Focus, "focus_stop", json!({})),
+    ]
+}
+
 // ---- T-305: spoken answers from the meeting knowledge ---------------------------------------
 
 use pluto_contracts::meeting::{Citation, Commitment, CommitmentStatus, RecallAnswer};

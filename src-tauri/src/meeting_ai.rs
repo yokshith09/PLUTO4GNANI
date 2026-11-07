@@ -28,6 +28,7 @@ use pluto_intel::llm::router::Router;
 use pluto_intel::meeting::recorder::{ActiveRecording, Recorder};
 use pluto_intel::meeting::service::MeetingAi;
 use pluto_voice::meeting_jobs::MeetingJobs;
+use pluto_voice::privacy::CloudGated;
 use tauri::ipc::{Channel, InvokeResponseBody, JavaScriptChannelId};
 use tauri::{AppHandle, State, Webview};
 use tauri_plugin_dialog::DialogExt;
@@ -67,7 +68,11 @@ impl MeetingShell {
                     Arc::new(DbOutboundLog::new(core.db.clone(), core.clock.clone()));
                 let gemini = GeminiClient::new(gemini::DEFAULT_MODEL, secrets.clone(), log.clone());
                 let groq = GroqClient::new(groq::DEFAULT_MODEL, secrets, log);
-                let llm = Arc::new(Router::new(Arc::new(gemini), Arc::new(groq)));
+                // Nothing is sent while Cloud voice is off (T-PR-04).
+                let llm = Arc::new(CloudGated::new(
+                    Arc::new(Router::new(Arc::new(gemini), Arc::new(groq))),
+                    crate::voice::cloud_switch(),
+                ));
                 Arc::new(MeetingAi::new(core.db.clone(), core.clock.clone(), llm))
             })
             .clone()

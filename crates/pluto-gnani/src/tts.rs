@@ -262,6 +262,7 @@ impl TimbreClient {
                 )
             })?,
         );
+        self.http.cloud().check()?;
         let mut ws = match timeout(
             self.connect_timeout,
             tokio_tungstenite::connect_async(request),
