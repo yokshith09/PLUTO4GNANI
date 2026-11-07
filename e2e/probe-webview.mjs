@@ -34,7 +34,7 @@ for (const l of lines) console.log("  " + (l.length > 400 ? l.slice(0, 400) + "â
 console.log(lines.some((l) => l.includes("msedgewebview2")) ? "WebView2 browser process: STARTED" : "WebView2 browser process: NOT FOUND");
 console.log(lines.some((l) => l.includes("remote-debugging-port")) ? "debug flag reached WebView2: YES" : "debug flag reached WebView2: NO");
 
-const ebw = join(process.env.LOCALAPPDATA ?? "", "app.pluto.desktop", "EBWebView");
+const ebw = join(process.env.LOCALAPPDATA ?? "", "app.plutovoice.desktop", "EBWebView");
 console.log(`${ebw}: ${existsSync(ebw) ? readdirSync(ebw).join(", ") : "(missing)"}`);
 
 spawnSync("taskkill", ["/pid", String(app.pid), "/T", "/F"], { stdio: "ignore" });
