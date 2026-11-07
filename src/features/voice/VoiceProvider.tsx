@@ -56,6 +56,7 @@ export function VoiceProvider({ children, audio = realAudio }: { children: React
   const opening = useRef(false);
   const player = useRef<ReturnType<AudioDeps["createPlayer"]> | null>(null);
   const spoken = useRef(new Set<string>());
+  const lastLanguage = useRef<string | null>(null);
 
   const speak = useCallback(
     (text: string, language: string | null, key: string) => {
@@ -80,7 +81,11 @@ export function VoiceProvider({ children, audio = realAudio }: { children: React
       onNamed("voice://transcript", (seg) => setHeard(seg.text)),
       onNamed("voice://turn", (turn) => {
         setReply(turn.reply_text);
-        if (turn.reply_text && !turn.result) speak(turn.reply_text, turn.language, turn.interaction_id);
+        lastLanguage.current = turn.language;
+        // Speak every reply: proposals, answers that ran at once (lists, "Opening Meetings") and
+        // "Done" after a spoken "haan". Skip only the proposal's own turn coming back with its
+        // result after approval: the approval says "Done" itself (by voice, or in `respond`).
+        if (turn.reply_text && !(turn.proposal && turn.result)) speak(turn.reply_text, turn.language, turn.interaction_id);
       }),
       onNamed("voice://proposal", (p) => setProposal(p)),
       onNamed("voice://error", (e) => setError(e.message)),
@@ -186,12 +191,15 @@ export function VoiceProvider({ children, audio = realAudio }: { children: React
     if (!p) return null;
     setProposal(null);
     try {
-      return await voiceIpc.proposalRespond(p.id, response);
+      const result = await voiceIpc.proposalRespond(p.id, response);
+      // A click approval has no spoken turn of its own: say what happened.
+      if (result?.message) speak(result.message, lastLanguage.current, `${p.id}:result`);
+      return result;
     } catch (e) {
       setError(voiceErrorMessage(e));
       return null;
     }
-  }, [proposal]);
+  }, [proposal, speak]);
 
   const api = useMemo<VoiceApi>(
     () => ({ status, heard, reply, proposal, error, talking, toggleTalk, respond, expireProposal: () => setProposal(null), clearError: () => setError(null) }),
