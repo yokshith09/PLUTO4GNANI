@@ -168,7 +168,7 @@ Tray, hotkeys, notifications, autostart and tracking on a real Windows desktop (
 | T-702 | Own-voice recap with voice cloning (consent required) | D1 | M | T-102 |
 | T-703 | Folder watch for new recordings | D1 | M | T-201 |
 | T-704 | WASAPI loopback capture (Windows) | D1 | L | T-207 |
-| T-705 | Always-on mode with an on-device wake word | D1 | L | T-301 |
+| T-705 | Always-on mode with an on-device wake word. **In review:** Rustpotter taught with the user's own voice, 4/4 commands caught, 0 false triggers, ~2% of one core (`docs/results/wake-word.md`) | D1 | L | T-301 |
 | T-706 | Pre-meeting briefing | D2 | M | T-503 |
 | T-707 | Follow-up message drafts per owner | D2 | S | T-204 |
 | T-708 | Meeting analytics (talk time) | D2 | S | T-202 |
