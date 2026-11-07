@@ -244,7 +244,9 @@ export function VoiceProvider({ children, audio = realAudio }: { children: React
     () =>
       onNamed("voice://status", (s) => {
         if (wakeMic.current) {
-          // The always-on microphone serves every turn; just show whether one is listening.
+          // The always-on microphone serves every turn; just show whether one is listening,
+          // and stop a reply that "Pluto" talked over (Rust already stopped sending it).
+          if (s.state === "listening") player.current?.stop();
           setTalking(s.state === "listening");
           return;
         }

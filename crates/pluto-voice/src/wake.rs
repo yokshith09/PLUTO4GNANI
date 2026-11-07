@@ -444,11 +444,27 @@ pub async fn run(
                     || (!f.speech_seen && f.frames >= frames(policy.no_speech))
                     || f.frames >= frames(policy.max_turn);
                 if done {
+                    let why = if !f.speech_seen {
+                        "nothing said"
+                    } else if f.quiet >= frames(policy.end_silence) {
+                        "pause"
+                    } else {
+                        "time limit"
+                    };
+                    dev_log(&format!(
+                        "command ended after {:.1} s ({why})",
+                        f.frames as f32 * 0.032
+                    ));
                     following = None;
                     turns.stop();
                 }
             }
-            VoiceState::Idle => {
+            // Wherever push-to-talk works, "Pluto" works: idle, a proposal waiting for its
+            // answer ("Pluto, haan"), after an error, and over a reply (which it stops).
+            VoiceState::Idle
+            | VoiceState::AwaitingApproval
+            | VoiceState::Error
+            | VoiceState::Speaking => {
                 following = None;
                 if resting {
                     detector.reset();
@@ -456,25 +472,40 @@ pub async fn run(
                 }
                 if detector.feed(&pcm16) {
                     detector.reset();
-                    if let Some(session) = turns.start() {
-                        for f in recent.drain(..) {
-                            turns.push(&session, f);
+                    let state = turns.state();
+                    match turns.start() {
+                        Some(session) => {
+                            dev_log(&format!(
+                                "heard Pluto ({state:?}); listening for the command"
+                            ));
+                            for f in recent.drain(..) {
+                                turns.push(&session, f);
+                            }
+                            following = Some(Following {
+                                session,
+                                frames: 0,
+                                speech_seen: false,
+                                quiet: 0,
+                            });
                         }
-                        following = Some(Following {
-                            session,
-                            frames: 0,
-                            speech_seen: false,
-                            quiet: 0,
-                        });
+                        None => dev_log(&format!("heard Pluto but no turn started ({state:?})")),
                     }
                 }
             }
-            // Thinking, speaking, recording, disabled, error: nothing to listen for.
+            // Thinking, running a change, recording a meeting, Cloud voice off: nothing to do.
             _ => {
                 following = None;
                 resting = true;
             }
         }
+    }
+}
+
+/// Development builds only: what always-on did, on the console, so a miss can be explained.
+/// Never what was said.
+fn dev_log(what: &str) {
+    if cfg!(debug_assertions) {
+        eprintln!("[voice] wake: {what}");
     }
 }
 

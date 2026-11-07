@@ -500,10 +500,14 @@ impl VoiceShell {
                 WakePolicy::default(),
             ));
             self.lock().wake = Some((session, task));
+            #[cfg(debug_assertions)]
+            eprintln!("[voice] wake: always-on is listening for Pluto");
         } else if !want && running {
             if let Some((session, task)) = self.lock().wake.take() {
                 self.router.close(&session);
                 task.abort();
+                #[cfg(debug_assertions)]
+                eprintln!("[voice] wake: always-on stopped");
             }
         } else {
             return;
