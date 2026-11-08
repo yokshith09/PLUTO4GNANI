@@ -98,8 +98,34 @@ jobs:
         run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
       - run: pnpm install --frozen-lockfile
+      # Tauri downloads WiX (for the MSI) from GitHub release assets, which answered 504 for
+      # hours on 2026-11-08. The same WiX 3.14 comes from NuGet and goes where Tauri looks
+      # first (%LOCALAPPDATA%/tauri/WixTools314), so the MSI no longer needs that download.
+      - name: WiX 3.14 for the MSI (from NuGet)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:LOCALAPPDATA "tauri\WixTools314"
+          if (-not (Test-Path (Join-Path $dir "light.exe"))) {
+            $pkg = Join-Path $env:RUNNER_TEMP "wix-3.14.1.zip"
+            Invoke-WebRequest "https://www.nuget.org/api/v2/package/wix/3.14.1" -OutFile $pkg -MaximumRetryCount 5 -RetryIntervalSec 10
+            $out = Join-Path $env:RUNNER_TEMP "wix"
+            Expand-Archive $pkg $out -Force
+            New-Item -ItemType Directory -Force $dir | Out-Null
+            Copy-Item (Join-Path $out "tools\*") $dir -Recurse -Force
+          }
+          foreach ($f in "candle.exe","light.exe","wix.dll","WixUIExtension.dll","WixUtilExtension.dll") {
+            if (-not (Test-Path (Join-Path $dir $f))) { throw "WiX is missing $f" }
+          }
       - name: Build the app and its installers
-        run: pnpm tauri build
+        # Windows: the MSI here; the NSIS setup.exe below, as an extra.
+        run: pnpm tauri build ${{ runner.os == 'Windows' && '--bundles msi' || '' }}
+      # NSIS and its Tauri plugin still come from GitHub release assets. When those downloads
+      # work this adds setup.exe; when they don't, the release still has the MSI.
+      - name: NSIS setup.exe (optional)
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        run: pnpm tauri build --bundles nsis
         # env:
         #   Windows: TAURI_SIGNING_PRIVATE_KEY / certificate settings (see Tauri's Windows signing guide)
         #   macOS:   APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY,
