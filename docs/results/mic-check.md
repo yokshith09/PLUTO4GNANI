@@ -4,7 +4,7 @@
 
 | Check | How | Result |
 |---|---|---|
-| Capture → Rust → WAV | Push-to-talk in `pnpm tauri dev`. Development builds save each press to `%APPDATA%\app.pluto.desktop\voice-check\last-ptt.wav` | 16 kHz, 16-bit, mono, 5.38 s; peak 16100 and RMS 1402 (clear speech, no clipping) |
+| Capture → Rust → WAV | Push-to-talk in `pnpm tauri dev`. Development builds save each press to `%APPDATA%\app.plutovoice.desktop\voice-check\last-ptt.wav` | 16 kHz, 16-bit, mono, 5.38 s; peak 16100 and RMS 1402 (clear speech, no clipping) |
 | Capture → Gnani | The same presses streamed to Prisma Realtime | Words transcribed; the assistant made proposals from them |
 | Playback | The assistant's Timbre reply played through the UI audio path | Heard by D1 ("adding this task", then the approve/reject proposal) |
 
