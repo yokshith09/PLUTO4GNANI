@@ -204,7 +204,7 @@ export function TasksPage({ focus = null, onClearFocus = () => {} }: { focus?: T
       <p className="px-1 text-xs text-muted-foreground">{shown.length} {shown.length === 1 ? "task" : "tasks"}</p>
 
       {/* Owner 2026-10-25: the week, large, on its own tile under the list. */}
-      <div className="overflow-x-auto rounded-xl"><WeekCalendar large onOpenTask={setOpen} className="min-w-[56rem]" /></div>
+      <WeekCalendar large onOpenTask={setOpen} />
 
       <TaskDetail taskId={open} onClose={() => setOpen(null)} />
     </div>

@@ -12,4 +12,3 @@ export const GUIDE: GuideEntry[] = [
   { id: "data", title: "Your data", body: "Everything is in one file on this computer. Settings → Data exports it, imports it, or erases it." },
 ];
 
-export const CREDIT = "Built by QUORBIT TECHNOLOGIES";

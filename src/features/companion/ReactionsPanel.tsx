@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { RotateCcw } from "lucide-react";
+import { ChevronRight, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -25,8 +25,10 @@ export function ReactionsPanel() {
     void save(Object.fromEntries(Object.entries(data).filter(([k]) => k !== key)) as ReactionSettings);
   };
   return (
-    <section aria-label="Reactions" className="mt-6">
-      <h2 className="text-[15px] font-semibold">Reactions</h2>
+    <details aria-label="Reactions" className="group mt-6">
+      <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[15px] font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+        <ChevronRight className="size-4 transition-transform group-open:rotate-90" />Reactions
+      </summary>
       <p className="mt-0.5 text-xs text-muted-foreground">What it does when something happens. Turn one off, pick another pose, or write your own words with {"{title}"} or {"{left}"}.</p>
       <Panel className="mt-3 divide-y">
         {REACTION_KEYS.map((key) => {
@@ -59,6 +61,6 @@ export function ReactionsPanel() {
           );
         })}
       </Panel>
-    </section>
+    </details>
   );
 }

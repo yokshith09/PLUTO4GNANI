@@ -289,6 +289,15 @@ pub(crate) fn job_update(app: &AppHandle, job: &TranscriptionJob) {
         return;
     }
     if !shell.lock().to_process.remove(&job.meeting_id) {
+        // Not an auto-mode meeting: nothing is written without the person's approval. Say it is
+        // ready; the review step in Meetings asks before any decision, item or task is saved.
+        if done {
+            say(
+                app,
+                "A transcript is ready. Open Meetings to review the action items. Nothing is saved until you approve.",
+                8000,
+            );
+        }
         return;
     }
     let app = app.clone();

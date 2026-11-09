@@ -5,7 +5,7 @@ import { ipc } from "@/ipc";
 import { Tour } from "./Tour";
 import { STEPS, TOUR_STEPS } from "./tourSteps";
 import { GuideSection } from "./GuideSection";
-import { CREDIT, GUIDE } from "./content";
+import { GUIDE } from "./content";
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
@@ -83,7 +83,6 @@ describe("Settings → Guide", () => {
   it("has a short answer per feature and covers tracking and privacy", async () => {
     expect(new Set(GUIDE.map((g) => g.id)).size).toBe(GUIDE.length);
     expect(GUIDE.map((g) => g.id)).toEqual(expect.arrayContaining(["tracking", "privacy", "data"]));
-    expect(CREDIT).toBe("Built by QUORBIT TECHNOLOGIES");
     vi.spyOn(ipc, "prefsGet").mockImplementation(async (k: string) => (k === "ui.role" ? "general" : null) as never);
     render(wrap(<GuideSection />));
     expect(await screen.findByText("Add a task")).toBeTruthy();
