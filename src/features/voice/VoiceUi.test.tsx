@@ -81,6 +81,7 @@ describe("Voice bar and approval (T-304), against the in-memory shell", () => {
 
     await user.click(within(card).getByRole("button", { name: "Approve" }));
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    await user.click(await screen.findByRole("button", { name: /Show history/ }));
     const history = await screen.findByRole("list", { name: "Assistant history" });
     expect(await within(history).findByText(/Added “Send the revised budget”/)).toBeTruthy();
     expect(within(history).getByText("task_create")).toBeTruthy();
@@ -180,6 +181,7 @@ describe("Voice bar and approval (T-304), against the in-memory shell", () => {
     await user.click(bar().getByRole("button", { name: "Stop and send" }));
     const card = await screen.findByRole("alertdialog", {}, { timeout: 3000 });
     await user.click(within(card).getByRole("button", { name: "Reject" }));
+    await user.click(await screen.findByRole("button", { name: /Show history/ }));
     const history = await screen.findByRole("list", { name: "Assistant history" });
     expect(await within(history).findByText("Okay, I didn't change anything.")).toBeTruthy();
   });

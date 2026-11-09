@@ -3,7 +3,7 @@
 
 use std::sync::Mutex as StdMutex;
 
-use pluto_contracts::speech::FRAME_BYTES;
+use pluto_contracts::speech::{RtSession, FRAME_BYTES};
 use pluto_gnani::mock::MockStt;
 
 use super::*;
@@ -622,4 +622,83 @@ async fn dictation_without_a_typer_says_so() {
     let err = r.rt.dictation_toggle().unwrap_err();
     assert!(err.message.contains("Dictation isn't available"));
     assert_eq!(r.rt.state(), S::Idle);
+}
+
+// ---- no needless wait after the last phrase -------------------------------------------------
+
+/// Gnani's real behaviour: each phrase's words arrive while you speak, and a commit adds nothing.
+struct PhrasesWhileSpeaking;
+
+#[async_trait]
+impl SpeechToText for PhrasesWhileSpeaking {
+    async fn open(&self, _config: RtConfig) -> VoiceResult<RtSession> {
+        let (input, mut rx) = mpsc::channel::<RtInput>(64);
+        let (tx, events) = mpsc::channel::<RtEvent>(16);
+        tokio::spawn(async move {
+            let mut frames = 0;
+            while let Some(msg) = rx.recv().await {
+                match msg {
+                    RtInput::Frame(_) => {
+                        frames += 1;
+                        if frames == 1 {
+                            let _ = tx.send(RtEvent::SpeechStart).await;
+                        }
+                        if frames == 20 {
+                            let _ = tx
+                                .send(RtEvent::Transcript(RtTranscript {
+                                    text: "delete the reminder at 8:55 pm".into(),
+                                    segment_index: 0,
+                                    language: None,
+                                    audio_duration_ms: None,
+                                    latency_ms: None,
+                                }))
+                                .await;
+                        }
+                    }
+                    RtInput::Commit => {}
+                    RtInput::Close => break,
+                }
+            }
+        });
+        Ok(RtSession {
+            id: "early".into(),
+            input,
+            events,
+        })
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn after_release_it_does_not_wait_three_seconds_for_words_that_already_came() {
+    let router = Arc::new(AudioRouter::new());
+    let seen = Arc::new(Seen::default());
+    let assistant = Arc::new(Assistant {
+        reply: Turn::Reply,
+        heard: StdMutex::default(),
+    });
+    let rt = Arc::new(VoiceRuntime::new(
+        Arc::new(PhrasesWhileSpeaking),
+        router.clone(),
+        seen,
+        assistant.clone(),
+        true,
+    ));
+    let session = rt.ptt_down().unwrap();
+    for _ in 0..30 {
+        router.push(&session, vec![0u8; FRAME_BYTES]).unwrap();
+        tokio::time::sleep(Duration::from_millis(32)).await;
+    }
+    let released = Instant::now();
+    rt.ptt_up();
+    while !matches!(rt.state(), S::Idle) {
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert!(
+        released.elapsed() < Duration::from_millis(1500),
+        "took {:?} after release",
+        released.elapsed()
+    );
+    let heard = assistant.heard.lock().unwrap().clone();
+    assert_eq!(heard.len(), 1);
+    assert_eq!(heard[0].text, "delete the reminder at 8:55 pm");
 }

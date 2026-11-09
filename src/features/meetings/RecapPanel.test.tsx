@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ipc } from "@/ipc";
 import { meetingAi } from "@/ipc/meetingAi";
 import { voiceIpc } from "@/ipc/voiceClient";
 import type { AudioDeps } from "@/features/voice/VoiceProvider";
@@ -48,6 +49,23 @@ describe("Spoken recap (MA-09)", () => {
     await user.click(await screen.findByRole("button", { name: /Save as mp3/ }));
     await waitFor(() => expect(recap).toHaveBeenCalledWith("as1", "ta-IN", false, true));
     recap.mockRestore();
+  });
+
+  it("Save to Notes makes one note with the recap, and a second press opens it instead of adding another", async () => {
+    const user = userEvent.setup();
+    const create = vi.spyOn(ipc, "noteCreate").mockResolvedValue({ id: "n1" } as never);
+    const open = vi.spyOn(ipc, "noteWindowOpen").mockResolvedValue(null);
+    render(<QueryClientProvider client={new QueryClient()}><RecapPanel meetingId="as1" title="Launch sync" audio={fakeAudio().audio} /></QueryClientProvider>);
+    await user.click(screen.getByRole("button", { name: "Write recap" }));
+    const written = (await screen.findByText(/\S+/, { selector: "p[aria-live]" })).textContent;
+    await user.click(await screen.findByRole("button", { name: "Save to Notes" }));
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    expect(create).toHaveBeenCalledWith({ title: "Recap: Launch sync (English)", body: written });
+    await user.click(await screen.findByRole("button", { name: /Saved to Notes/ }));
+    expect(open).toHaveBeenCalledWith("n1");
+    expect(create).toHaveBeenCalledTimes(1);
+    create.mockRestore();
+    open.mockRestore();
   });
 
   it("a speaking failure shows its message and leaves the recap on screen", async () => {

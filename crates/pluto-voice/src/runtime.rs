@@ -43,6 +43,9 @@ pub struct RuntimePolicy {
     pub max_press: Duration,
     /// After release, how long to wait for the final transcript.
     pub final_wait: Duration,
+    /// After release, when every phrase already has its words (Gnani finished them while you
+    /// spoke), the wait is only this long, not `final_wait`: nothing more is coming.
+    pub final_grace: Duration,
     /// Frames held while Realtime connects (10 s of audio).
     pub buffer_frames: usize,
 }
@@ -53,6 +56,7 @@ impl Default for RuntimePolicy {
             min_press: Duration::from_millis(300),
             max_press: Duration::from_secs(60),
             final_wait: Duration::from_secs(3),
+            final_grace: Duration::from_millis(400),
             buffer_frames: 320,
         }
     }
@@ -835,6 +839,8 @@ impl VoiceRuntime {
         // wait the person feels.
         let mut committed_at: Option<Instant> = None;
         let mut input_open = true;
+        // A phrase has started and its transcript has not arrived yet.
+        let mut phrase_open = false;
         loop {
             let wait = async {
                 match deadline {
@@ -847,7 +853,14 @@ impl VoiceRuntime {
                     Some(RtInput::Commit) => {
                         let _ = session.input.send(RtInput::Commit).await;
                         committed_at = Some(Instant::now());
-                        deadline = Some(Instant::now() + self.policy.final_wait);
+                        // Words already in and no phrase still being worked on: don't wait the
+                        // full time for a transcript that is not coming.
+                        let wait_for = if !words.is_empty() && !phrase_open {
+                            self.policy.final_grace
+                        } else {
+                            self.policy.final_wait
+                        };
+                        deadline = Some(Instant::now() + wait_for);
                         input_open = false;
                     }
                     Some(RtInput::Close) | None => {
@@ -862,6 +875,7 @@ impl VoiceRuntime {
                 },
                 event = session.events.recv() => match event {
                     Some(RtEvent::Transcript(t)) => {
+                        phrase_open = false;
                         self.events.transcript(&session_id, &t);
                         if dictating {
                             self.type_phrase(&t.text, words.is_empty()).await;
@@ -893,6 +907,10 @@ impl VoiceRuntime {
                         break;
                     }
                     Some(other) => {
+                        // Speech began (or is being worked on) and its words have not come yet.
+                        if matches!(other, RtEvent::SpeechStart | RtEvent::Processing) {
+                            phrase_open = true;
+                        }
                         if cfg!(debug_assertions) {
                             eprintln!("[voice] realtime {other:?}");
                         }

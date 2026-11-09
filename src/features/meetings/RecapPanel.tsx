@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Copy, Download, ScrollText, Square, Volume2 } from "lucide-react";
+import { Copy, Download, FileText, ScrollText, Square, Volume2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { realAudio, type AudioDeps } from "@/features/voice/VoiceProvider";
 import { useSpeakText } from "@/features/voice/useSpeakText";
+import { ipc } from "@/ipc";
 import { meetingAi } from "@/ipc/meetingAi";
 import { voiceErrorMessage } from "@/ipc/voiceClient";
 import { notify } from "@/lib/notify";
@@ -16,11 +17,13 @@ const LANGUAGES = [
  * action items on the meeting only. "Read aloud" speaks it with Timbre in the recap's language
  * (a test tone while Cloud voice is off), and can be stopped.
  */
-export function RecapPanel({ meetingId, audio = realAudio }: { meetingId: string; audio?: AudioDeps }) {
+export function RecapPanel({ meetingId, title = "", audio = realAudio }: { meetingId: string; title?: string; audio?: AudioDeps }) {
   const [language, setLanguage] = useState("en-IN");
   const [text, setText] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [saving, setSaving] = useState(false);
+  /** The note this recap was saved to, so a second press opens it instead of making another. */
+  const [noteId, setNoteId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const voice = useSpeakText(audio);
 
@@ -29,6 +32,7 @@ export function RecapPanel({ meetingId, audio = realAudio }: { meetingId: string
     setError(null);
     try {
       setText(await meetingAi.recapText(meetingId, language));
+      setNoteId(null);
     } catch (e) {
       setText(null);
       setError(voiceErrorMessage(e));
@@ -46,6 +50,21 @@ export function RecapPanel({ meetingId, audio = realAudio }: { meetingId: string
       setError(voiceErrorMessage(e));
     } finally {
       setSaving(false);
+    }
+  };
+  const saveToNotes = async () => {
+    if (!text) return;
+    if (noteId) {
+      void ipc.noteWindowOpen(noteId).catch(() => undefined);
+      return;
+    }
+    try {
+      const label = LANGUAGES.find((l) => l.code === language)?.label ?? language;
+      const note = await ipc.noteCreate({ title: `Recap: ${title.trim() || "Meeting"} (${label})`, body: text });
+      setNoteId(note.id);
+      notify.info("Saved to Notes");
+    } catch (e) {
+      setError(voiceErrorMessage(e));
     }
   };
   const copy = async () => {
@@ -76,6 +95,7 @@ export function RecapPanel({ meetingId, audio = realAudio }: { meetingId: string
               ? <Button size="sm" variant="ghost" onClick={voice.stop}><Square />Stop</Button>
               : <Button size="sm" variant="ghost" onClick={() => void voice.speak(text, language)}><Volume2 />Read aloud</Button>}
             <Button size="sm" variant="ghost" onClick={() => void copy()}><Copy />Copy</Button>
+            <Button size="sm" variant="ghost" onClick={() => void saveToNotes()}><FileText />{noteId ? "Saved to Notes · Open" : "Save to Notes"}</Button>
             <Button size="sm" variant="ghost" disabled={saving} onClick={() => void saveMp3()}><Download />{saving ? "Saving…" : "Save as mp3"}</Button>
           </div>
         </div>

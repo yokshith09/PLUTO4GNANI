@@ -1233,3 +1233,32 @@ async fn adding_the_same_reminder_again_says_it_already_exists() {
     let said = r.a.pending().unwrap().summary_text;
     assert!(said.contains("You already have it at"), "{said}");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_reminder_can_be_named_by_its_time_alone() {
+    let now = START;
+    let r = rig(
+        Script(vec![(
+            "delete the one at that time",
+            Intent::Reminder,
+            Some("reminder_delete"),
+            json!({"match": "", "at": "19:30"}),
+        )]),
+        PROPOSAL_WINDOW,
+    );
+    // START is 13:30 IST: +6 h is 19:30, +7 h is 20:30.
+    let early = add_reminder(&r, "Call the dentist", now + hours(6)).await;
+    add_reminder(&r, "Call the dentist", now + hours(7)).await;
+    r.a.turn(heard("delete the one at that time", "en-IN"))
+        .await
+        .unwrap();
+    let said = r.a.pending().unwrap().summary_text;
+    assert!(
+        said.starts_with("Delete the reminder “Call the dentist” ("),
+        "{said}"
+    );
+    r.a.turn(heard("haan", "en-IN")).await.unwrap();
+    let open = r.a.open_reminders().await.unwrap();
+    assert_eq!(open.len(), 1);
+    assert_ne!(open[0].id, early.id, "the 19:30 one is gone");
+}

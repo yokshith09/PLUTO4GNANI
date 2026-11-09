@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { MessageSquare, Send, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, MessageSquare, Send, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -60,6 +60,7 @@ export function VoicePage() {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [confirm, setConfirm] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
 
   const run = async (command: string) => {
     const t = command.trim();
@@ -119,9 +120,11 @@ export function VoicePage() {
       </section>
 
       <section aria-label="History" className="overflow-hidden rounded-xl border bg-card">
-        <div className="flex items-center gap-2 border-b px-4 py-2.5">
-          <h2 className="flex items-center gap-2 text-sm font-semibold"><MessageSquare className="size-4 text-muted-foreground" />History</h2>
-          {turns.length > 0 && (
+        <div className="flex items-center gap-2 px-4 py-2.5">
+          <Button size="sm" variant="ghost" aria-expanded={showHistory} onClick={() => setShowHistory((v) => !v)} className="-ml-2 gap-1.5 text-sm font-semibold">
+            {showHistory ? <ChevronDown /> : <ChevronRight />}<MessageSquare className="text-muted-foreground" />{showHistory ? "Hide history" : "Show history"}{turns.length > 0 && <span className="font-normal text-muted-foreground">({turns.length})</span>}
+          </Button>
+          {showHistory && turns.length > 0 && (
             <div className="ml-auto flex items-center gap-2">
               {confirm ? (
                 <>
@@ -135,10 +138,12 @@ export function VoicePage() {
             </div>
           )}
         </div>
-        {turns.length === 0 ? (
-          <p className="px-4 py-10 text-center text-[13px] text-muted-foreground">Nothing yet. Try one of the examples above.</p>
-        ) : (
-          <ol aria-label="Assistant history" className="divide-y">{turns.map((t) => <Turn key={t.interaction_id} t={t} />)}</ol>
+        {showHistory && (
+          turns.length === 0 ? (
+            <p className="border-t px-4 py-10 text-center text-[13px] text-muted-foreground">Nothing yet. Try one of the examples above.</p>
+          ) : (
+            <ol aria-label="Assistant history" className="divide-y border-t">{turns.map((t) => <Turn key={t.interaction_id} t={t} />)}</ol>
+          )
         )}
       </section>
     </div>

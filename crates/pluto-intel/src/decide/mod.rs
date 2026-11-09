@@ -98,9 +98,9 @@ Reply with JSON {intent, tool, args, confidence}. Use only these tools and argum
 - task_update {match, due_phrase}\n\
 - reminders_list {}\n\
 - reminder_create {title, when_phrase, time?: \"HH:MM\" 24-hour, in_minutes?: number}\n\
-- reminder_done {match, at?}\n\
+- reminder_done {match?, at?}\n\
 - reminder_update {match, time?: \"HH:MM\" 24-hour, when_phrase?, in_minutes?, new_title?, at?}  (CHANGE an existing reminder: \"change the dentist reminder to 8:55\", \"move it to tomorrow\"; never create a new one for that)\n\
-- reminder_delete {match, at?}  (\"delete / cancel / remove the dentist reminder\"; at = the reminder's current time \"HH:MM\" if one was said, to tell two apart)\n\
+- reminder_delete {match?, at?}  (\"delete / cancel / remove the dentist reminder\"; match = words of its title, left out if only a time was said; at = the reminder's current time \"HH:MM\" if one was said)\n\
 - meeting_search {query}  (questions about what was said or decided in past meetings)\n\
 - commitments_list {owner?, status?: \"open\"|\"overdue\"|\"done\"}\n\
 - notes_search {query}; note_create {body}\n\
@@ -108,6 +108,8 @@ Reply with JSON {intent, tool, args, confidence}. Use only these tools and argum
 - projects_list {}\n\
 - open_page {page: \"today\"|\"tasks\"|\"notes\"|\"projects\"|\"meetings\"|\"voice\"|\"bin\"|\"settings\"|\"time\"|\"archive\"|\"character\"}  \
 (\"meetings kholo\", \"go to settings\", \"show my notes\": open that page; home = today, reminders = tasks, trash = bin)\n\
+open_page is ONLY for being asked to open, go to or show a page; deleting, moving, changing, adding or asking about anything is never open_page. \
+For example \"delete the reminder set at 8:55 pm\" gives {tool: reminder_delete, args: {at: \"20:55\"}} and \"change the dentist reminder to 9\" gives {tool: reminder_update, args: {match: \"dentist\", time: \"09:00\"}}.\n\
 Intents: meeting_query, task, reminder, note, focus, project, navigate (for open_page), or noise for anything that is not a command (set tool null). \
 Write a task title, reminder title or note as English a person can understand at a glance: a clear phrase with the action and what it is about, about 3 to 10 words, \
 keeping the names and details that were said (\"Send the revised budget report to Ravi\"; never a single word like \"Send\" or \"Report\"). \
@@ -195,21 +197,26 @@ fn resolve_args(tool: &str, raw: &Map<String, Value>, clock: &Clock) -> Option<V
             json!({"match": text(raw, "match").or_else(|| text(raw, "title"))?})
         }
         "reminder_done" | "reminder_delete" => {
+            let at = text(raw, "at").filter(|a| parse_hhmm(a).is_some());
+            // The title may be left out when the time says which one.
+            let m = text(raw, "match").or_else(|| text(raw, "title"));
             let mut out = Map::from_iter([(
                 "match".to_owned(),
-                json!(text(raw, "match").or_else(|| text(raw, "title"))?),
+                json!(m.or_else(|| at.as_ref().map(|_| String::new()))?),
             )]);
-            if let Some(at) = text(raw, "at").filter(|a| parse_hhmm(a).is_some()) {
+            if let Some(at) = at {
                 out.insert("at".into(), json!(at));
             }
             Value::Object(out)
         }
         "reminder_update" => {
+            let at = text(raw, "at").filter(|a| parse_hhmm(a).is_some());
+            let m = text(raw, "match").or_else(|| text(raw, "title"));
             let mut out = Map::from_iter([(
                 "match".to_owned(),
-                json!(text(raw, "match").or_else(|| text(raw, "title"))?),
+                json!(m.or_else(|| at.as_ref().map(|_| String::new()))?),
             )]);
-            if let Some(at) = text(raw, "at").filter(|a| parse_hhmm(a).is_some()) {
+            if let Some(at) = at {
                 out.insert("at".into(), json!(at));
             }
             if let Some(t) = text(raw, "time").filter(|t| parse_hhmm(t).is_some()) {
@@ -302,6 +309,31 @@ fn resolve_args(tool: &str, raw: &Map<String, Value>, clock: &Clock) -> Option<V
         }
         _ => return None,
     })
+}
+
+/// Whether the words ask for a page to be opened ("open", "go to", "show me", "kholo", ...).
+fn asks_to_open(text: &str) -> bool {
+    let t = format!(" {} ", text.to_lowercase());
+    [
+        " open",
+        " go to",
+        " goto",
+        " take me",
+        " switch to",
+        " navigate",
+        " jump to",
+        " show",
+        " kholo",
+        " khol ",
+        " jao",
+        " dikhao",
+        " chalo",
+        " tab",
+        " page",
+        " screen",
+    ]
+    .iter()
+    .any(|cue| t.contains(cue))
 }
 
 fn user_prompt(text: &str, ctx: &DecideContext, clock: &Clock) -> String {
@@ -415,6 +447,11 @@ impl Decider for DefaultDecider {
             tracing::info!("the model named a tool that does not exist");
             return Ok(done(Intent::Noise, None, json!({})));
         };
+        // "Delete the reminder..." must never become "Opening Voice": a page opens only when asked.
+        if *tool_intent == Intent::Navigate && !asks_to_open(text) {
+            tracing::info!("the model chose open_page but nothing asked to open a page");
+            return Ok(done(Intent::Noise, None, json!({})));
+        }
         let empty = Map::new();
         let raw = v["args"].as_object().unwrap_or(&empty);
         match resolve_args(tool, raw, &clock) {

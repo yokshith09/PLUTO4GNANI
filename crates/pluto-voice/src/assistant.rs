@@ -565,7 +565,10 @@ impl Assistant {
     /// matches), narrowed to the one at `at` ("HH:MM") when several share a title.
     async fn pick_reminders(&self, m: &str, at: Option<&str>) -> VoiceResult<Vec<Reminder>> {
         let list = self.open_reminders().await?;
-        let mut found: Vec<Reminder> = if is_reference(m) {
+        let mut found: Vec<Reminder> = if is_reference(m) && at.is_some() {
+            // Only a time was said ("the one at 8:55"): every open reminder is a candidate.
+            list.clone()
+        } else if is_reference(m) {
             self.last_item(true)
                 .into_iter()
                 .filter_map(|(id, _)| list.iter().find(|r| r.id == id).cloned())

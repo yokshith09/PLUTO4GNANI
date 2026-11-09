@@ -319,7 +319,7 @@ export function MeetingEditor({ meetingId, onBack, onCreated }: { meetingId: str
         </ul>
         <Button size="sm" variant="ghost" onClick={() => change({ action_items: [...draft.action_items, { id: newId(), body: "", assignee: null }] })}><Plus />Add action item</Button>
       </section>
-      {id && (saved?.decisions.length || saved?.action_items.length) ? <RecapPanel key={id} meetingId={id} /> : null}
+      {id && (saved?.decisions.length || saved?.action_items.length) ? <RecapPanel key={id} meetingId={id} title={draft.title} /> : null}
       {id && <AiPanel meetingId={id} participants={draft.participants} />}
     </div>
   );

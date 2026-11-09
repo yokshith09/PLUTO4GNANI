@@ -21,6 +21,8 @@ describe("Voice page", () => {
     const user = userEvent.setup();
     await mount();
     await user.type(screen.getByLabelText("Type a command"), "which tasks do I have today{Enter}");
+    expect(screen.queryByRole("list", { name: "Assistant history" }), "history starts hidden").toBeNull();
+    await user.click(await screen.findByRole("button", { name: /Show history/ }));
     expect(await screen.findByText("“which tasks do I have today”", {}, { timeout: 4000 })).toBeTruthy();
     expect((screen.getByLabelText("Type a command") as HTMLInputElement).value).toBe("");
   });
@@ -37,6 +39,7 @@ describe("Voice page", () => {
     const user = userEvent.setup();
     await mount();
     await user.type(screen.getByLabelText("Type a command"), "hello{Enter}");
+    await user.click(await screen.findByRole("button", { name: /Show history/ }));
     await screen.findByText("“hello”", {}, { timeout: 4000 });
     await user.click(screen.getByRole("button", { name: /Clear history/ }));
     expect(screen.getByText(/Delete all 1 entries/)).toBeTruthy();

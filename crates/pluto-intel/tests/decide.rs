@@ -358,3 +358,31 @@ async fn moving_a_task_to_a_day_of_the_month_uses_that_day_not_a_weekday() {
     .await;
     assert_eq!(d.args["due_date"], "2026-11-11");
 }
+
+#[tokio::test]
+async fn deleting_a_reminder_by_its_time_alone_and_never_opening_a_page_by_mistake() {
+    let d = decide_with(
+        json!({"intent":"reminder","tool":"reminder_delete","args":{"at":"20:55"}}),
+        "Can you delete the reminder which was set at 8:55 pm?",
+    )
+    .await;
+    assert_eq!(d.tool.as_deref(), Some("reminder_delete"));
+    assert_eq!(d.args["match"], "");
+    assert_eq!(d.args["at"], "20:55");
+
+    // The model sent a delete to open_page: nothing asked to open a page, so nothing happens.
+    let d = decide_with(
+        json!({"intent":"navigate","tool":"open_page","args":{"page":"voice"}}),
+        "Can you delete the reminder which was set at 8:55 pm?",
+    )
+    .await;
+    assert_eq!((d.intent, d.tool), (Intent::Noise, None));
+
+    // A real request still opens it.
+    let d = decide_with(
+        json!({"intent":"navigate","tool":"open_page","args":{"page":"voice"}}),
+        "can you open the voice page",
+    )
+    .await;
+    assert_eq!(d.tool.as_deref(), Some("open_page"));
+}
