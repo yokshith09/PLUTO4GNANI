@@ -146,7 +146,7 @@ export function RecordDialog({ open, onClose, onRecorded, audio = realAudio }: {
   return (
     // While a recording exists the dialog cannot be dismissed by accident: Stop is the way out.
     <Dialog open={open} onOpenChange={(o) => { if (!o && !busy) { reset(); onClose(); } }}>
-      <DialogContent className="max-w-md" onEscapeKeyDown={(e) => busy && e.preventDefault()} onInteractOutside={(e) => busy && e.preventDefault()}>
+      <DialogContent className="max-w-md gap-3 p-5" onEscapeKeyDown={(e) => busy && e.preventDefault()} onInteractOutside={(e) => busy && e.preventDefault()}>
         <DialogTitle className="text-base font-semibold">{busy ? "Recording" : "Record a meeting"}</DialogTitle>
         {!busy ? (
           <>

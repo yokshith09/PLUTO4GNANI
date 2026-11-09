@@ -55,7 +55,7 @@ export function ImportDialog({ open, onClose, onImported }: { open: boolean; onC
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && close()}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md gap-3 p-5">
         <DialogTitle className="text-base font-semibold">Import a recording</DialogTitle>
         <DialogDescription className="text-[13px] text-muted-foreground">
           Pluto sends the audio to Gnani to be transcribed, then finds decisions and action items. WAV, MP3, M4A, FLAC or OGG, up to {MAX_IMPORT_MB} MB.

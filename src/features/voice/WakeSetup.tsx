@@ -51,7 +51,7 @@ export function AlwaysOnRow({ s, onChange }: { s: VoiceSettings; onChange: (on: 
       </Row>
 
       <Dialog open={confirm} onOpenChange={setConfirm}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md gap-3 p-5">
           <DialogTitle className="text-base font-semibold">Turn on always-on listening?</DialogTitle>
           <DialogDescription className="text-[13px] leading-relaxed text-muted-foreground">{ALWAYS_ON_WARNING}</DialogDescription>
           <div className="mt-4 flex justify-end gap-2">
@@ -120,7 +120,7 @@ export function TeachDialog({ record, onClose }: { record: (ms: number) => Promi
   const allAsked = clips >= ASK_FOR;
   return (
     <Dialog open onOpenChange={(open) => !open && void close()}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md gap-3 p-5">
         <DialogTitle className="text-base font-semibold">Teach Pluto your voice</DialogTitle>
         {!started ? (
           <>

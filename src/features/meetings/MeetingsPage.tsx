@@ -86,7 +86,7 @@ export function MeetingsPage({ newTick = 0 }: { newTick?: number }) {
   }
 
   return (
-    <div className="mx-auto max-w-4xl">
+    <div>
       <PageHeader
         title="Meetings" description="Decisions and action items, with action items one click from becoming tasks."
         actions={(

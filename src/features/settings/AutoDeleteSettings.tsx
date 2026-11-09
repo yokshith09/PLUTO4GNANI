@@ -46,7 +46,7 @@ export function AutoDeleteSettings() {
         </select>
       </Row>
       <Dialog open={pending !== null} onOpenChange={(o) => !o && setPending(null)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md gap-3 p-5">
           <DialogTitle>Turn on auto-delete?</DialogTitle>
           <DialogDescription>{pending?.text}</DialogDescription>
           <div className="mt-4 flex justify-end gap-2">

@@ -221,7 +221,7 @@ export function VoiceSection() {
       </Section>
 
       <Dialog open={confirmOn} onOpenChange={setConfirmOn}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md gap-3 p-5">
           <DialogTitle className="text-base font-semibold">Turn on cloud voice?</DialogTitle>
           <DialogDescription className="text-[13px] leading-relaxed text-muted-foreground">{DISCLOSURE}</DialogDescription>
           <div className="mt-4 flex justify-end gap-2">

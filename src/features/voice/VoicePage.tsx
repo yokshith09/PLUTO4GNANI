@@ -45,7 +45,7 @@ export function VoicePage() {
   useEffect(() => onNamed("voice://turn", () => void qc.invalidateQueries({ queryKey: ["voice-history"] })), [qc]);
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <div>
       <PageHeader title="Voice" description="Press Talk at the bottom of the window and speak. Pluto asks before it changes anything." />
       <section aria-label="History" className="overflow-hidden rounded-xl border bg-card">
         <h2 className="flex items-center gap-2 border-b px-4 py-2.5 text-sm font-semibold"><MessageSquare className="size-4 text-muted-foreground" />History</h2>

@@ -56,6 +56,7 @@ export function SettingsPage() {
           <Switch checked={autostart ?? false} onCheckedChange={(v) => void setAutostart(v)} aria-label="Open Pluto at login" />
         </Row>
       </Section>
+      <VoiceSection />
       <GuideSection />
       <Section title="Keyboard shortcuts">
         {GLOBAL_SHORTCUTS.map((g) => (
@@ -73,7 +74,6 @@ export function SettingsPage() {
           <Row key={keys} label={what ?? ""}><span className="rounded-md border bg-muted px-2 py-0.5 font-mono text-[12px]">{keys}</span></Row>
         ))}
       </Section>
-      <VoiceSection />
       <AutoDeleteSettings />
       <DataSection />
       <Section title="Advanced">
