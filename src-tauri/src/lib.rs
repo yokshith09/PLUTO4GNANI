@@ -298,6 +298,7 @@ pub fn run() {
             auto_meeting::auto_meeting_answer,
             auto_meeting::auto_meeting_stop,
             auto_meeting::auto_meeting_state,
+            auto_meeting::pet_recording_stop,
             auto_meeting::auto_meeting_capture_failed,
             meeting_ai::meeting_audio_pick,
             meeting_ai::meeting_import,

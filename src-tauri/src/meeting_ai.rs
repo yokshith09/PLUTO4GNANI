@@ -29,7 +29,7 @@ use pluto_intel::meeting::recorder::{ActiveRecording, Recorder};
 use pluto_intel::meeting::service::MeetingAi;
 use pluto_voice::meeting_jobs::MeetingJobs;
 use pluto_voice::privacy::CloudGated;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_dialog::DialogExt;
 
 use crate::voice::VoiceShell;
@@ -40,6 +40,8 @@ pub(crate) struct MeetingShell {
     sessions: Mutex<HashMap<String, Arc<ActiveRecording>>>,
     /// Recordings that also capture the computer's sound; dropping one stops that capture.
     system: Mutex<HashMap<String, pluto_loopback::Loopback>>,
+    /// The recording running now (any kind), so the pet can show it with a Stop button.
+    current: Mutex<Option<crate::auto_meeting::AutoRec>>,
     recorder: Arc<Recorder>,
     /// The real transcript/extraction service, built on first use (keys come from the keychain).
     ai: OnceLock<Arc<MeetingAi>>,
@@ -50,9 +52,26 @@ impl MeetingShell {
         Self {
             sessions: Mutex::new(HashMap::new()),
             system: Mutex::new(HashMap::new()),
+            current: Mutex::new(None),
             recorder,
             ai: OnceLock::new(),
         }
+    }
+
+    pub(crate) fn current_recording(&self) -> Option<crate::auto_meeting::AutoRec> {
+        self.current
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+
+    /// Records which recording runs and tells the pet (`pet://recording`; `None` clears it).
+    fn set_current(&self, app: &AppHandle, rec: Option<crate::auto_meeting::AutoRec>) {
+        *self
+            .current
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = rec.clone();
+        let _ = app.emit("pet://recording", rec);
     }
 
     fn system_lock(&self) -> MutexGuard<'_, HashMap<String, pluto_loopback::Loopback>> {
@@ -167,6 +186,14 @@ pub(crate) async fn begin_recording(
         shell.system_lock().insert(session.id.clone(), c);
     }
     shell.lock().insert(session.id.clone(), Arc::new(rec));
+    shell.set_current(
+        voice.app(),
+        Some(crate::auto_meeting::AutoRec {
+            session_id: session.id.clone(),
+            meeting_id: session.meeting_id.clone(),
+            started_at: session.started_at,
+        }),
+    );
     Ok((session, with_system))
 }
 
@@ -186,6 +213,7 @@ pub(crate) async fn finish_recording(
     voice.runtime.recording_stopped();
     let session = shell.recorder.stop(&rec).await?;
     shell.lock().remove(session_id);
+    shell.set_current(voice.app(), None);
     jobs.queue(&session.meeting_id).await?;
     Ok(session)
 }

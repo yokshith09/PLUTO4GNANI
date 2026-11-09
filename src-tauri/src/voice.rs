@@ -614,6 +614,11 @@ impl VoiceShell {
         self.tts.clone()
     }
 
+    /// The app handle, for events from code that only has the shell.
+    pub(crate) fn app(&self) -> &AppHandle {
+        &self.app
+    }
+
     /// Where fixed spoken replies are saved on this computer.
     fn reply_cache_dir(&self) -> PathBuf {
         self.data_dir.join("tts-cache")
@@ -1047,6 +1052,23 @@ pub(crate) fn hotkey_dictation(app: &AppHandle) {
 }
 
 fn toggle_turn(app: &AppHandle, dictation: bool) {
+    // A hotkey must never take the app down: whatever goes wrong here is logged and ignored.
+    let app = app.clone();
+    let name = if dictation { "dictation" } else { "hands-free" };
+    #[cfg(debug_assertions)]
+    eprintln!("[voice] hotkey: {name} pressed");
+    if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        toggle_turn_inner(&app, dictation)
+    }))
+    .is_err()
+    {
+        tracing::error!(name, "the voice hotkey panicked; ignored");
+        #[cfg(debug_assertions)]
+        eprintln!("[voice] hotkey: {name} panicked (ignored)");
+    }
+}
+
+fn toggle_turn_inner(app: &AppHandle, dictation: bool) {
     use tauri::Manager;
     let Some(shell) = app.try_state::<VoiceShell>() else {
         return;

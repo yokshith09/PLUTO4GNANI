@@ -385,13 +385,14 @@ export function PetApp() {
   const extra = asked
     ? <AskCard ask={asked} width={CARD_W} onAnswer={(c) => meet.answer(asked, c)} />
     : panel === "card"
-    ? <PetCard className="shrink-0" style={{ width: CARD_W, height: CARD_H }} napping={napping} onNap={setNapping} />
+    ? <PetCard className="shrink-0" style={{ width: CARD_W, height: CARD_H }} napping={napping} onNap={setNapping} {...(meet.rec ? { recording: { elapsed: elapsedText(meet.elapsedMs), onStop: meet.stop } } : {})} />
     : panel === "bubble" && playing
       ? <Bubble text={bubbleText(playing)} anchor={anchor} />
-      : panel === "timer" && focus.session
-        ? <FocusChip width={size} label={focus.session.kind === "BREAK" ? "Break" : focus.session.label || "Focus"} left={clock(focus.remaining)} paused={focus.session.paused_at !== null} onPause={(p) => void focus.pause(p)} />
-        : meet.rec
-          ? <RecordChip width={CARD_W} elapsed={elapsedText(meet.elapsedMs)} onStop={meet.stop} />
+      // Recording beats the focus timer: it stays on under the pet until it is stopped.
+      : meet.rec
+        ? <RecordChip width={size} elapsed={elapsedText(meet.elapsedMs)} onStop={meet.stop} />
+        : panel === "timer" && focus.session
+          ? <FocusChip width={size} label={focus.session.kind === "BREAK" ? "Break" : focus.session.label || "Focus"} left={clock(focus.remaining)} paused={focus.session.paused_at !== null} onPause={(p) => void focus.pause(p)} />
           : null;
 
   return (

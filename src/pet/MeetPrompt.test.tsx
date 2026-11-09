@@ -53,15 +53,25 @@ describe("Google Meet auto mode on the pet", () => {
   });
 
   it("shows that it is recording, with the time, and Stop ends it", async () => {
-    const stop = vi.spyOn(ipc, "autoMeetingStop").mockResolvedValue(null);
+    const stop = vi.spyOn(ipc, "petRecordingStop").mockResolvedValue(null);
     renderPet();
     await screen.findByRole("button", { name: /^Pluto\./ });
     send("pluto-pet-recording", { session_id: "s", meeting_id: "m", started_at: Date.now() - 125_000 });
     const chip = await screen.findByRole("status", { name: /^Recording 2:0\d$/ });
-    fireEvent.click(within(chip).getByRole("button", { name: "Stop" }));
+    fireEvent.click(within(chip).getByRole("button", { name: "Stop recording" }));
     expect(stop).toHaveBeenCalled();
     send("pluto-pet-recording", null);
     await waitFor(() => expect(screen.queryByRole("status", { name: /^Recording/ })).toBeNull());
+  });
+
+  it("hovering the pet shows the recording inside the card, with Stop, instead of hiding it", async () => {
+    const stop = vi.spyOn(ipc, "petRecordingStop").mockResolvedValue(null);
+    const { PetCard } = await import("./PetCard");
+    render(<QueryClientProvider client={new QueryClient()}><PetCard recording={{ elapsed: "2:05", onStop: () => void ipc.petRecordingStop() }} /></QueryClientProvider>);
+    const row = await screen.findByRole("group", { name: "Recording controls" });
+    expect(row.textContent).toContain("Recording 2:05");
+    fireEvent.click(within(row).getByRole("button", { name: "Stop recording" }));
+    expect(stop).toHaveBeenCalled();
   });
 
   it("the recording time reads like a clock", () => {

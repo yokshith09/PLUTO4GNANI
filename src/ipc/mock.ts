@@ -612,6 +612,7 @@ export function createMock() {
     pet_solid: () => null,
     auto_meeting_answer: () => null,
     pet_proposal_answer: () => null,
+    pet_recording_stop: () => null,
     auto_meeting_stop: () => null,
     auto_meeting_state: () => null,
     auto_meeting_capture_failed: () => null,

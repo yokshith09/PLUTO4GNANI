@@ -17,6 +17,8 @@ export interface NamedEvents {
   "voice://dictation": boolean;
   /** Beta native microphone: Rust could not open it; the window captures instead. */
   "voice://native-mic-failed": string;
+  /** The pet's Stop button was pressed for a recording started with the Record button. */
+  "meeting://stop-request": null;
   "meeting://caption": TranscriptSegment;
   "meeting://ticker": ExtractedItem;
   "meeting://job": TranscriptionJob;

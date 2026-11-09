@@ -89,6 +89,20 @@ describe("Record a meeting (T-207), against the in-memory shell", () => {
     expect((dialog().getByRole("button", { name: /Start recording/ }) as HTMLButtonElement).disabled).toBe(false);
   });
 
+  it("the pet's Stop button ends a recording started here", async () => {
+    const user = userEvent.setup();
+    const { emitNamed } = await import("@/ipc/namedEvents");
+    const audio = fakeAudio();
+    const { onRecorded } = await mount(audio);
+    await user.type(dialog().getByLabelText("Meeting title"), "Launch sync");
+    await user.click(dialog().getByLabelText(/Everyone in this meeting/));
+    await user.click(dialog().getByRole("button", { name: /Start recording/ }));
+    await statusIs("Recording");
+    emitNamed("meeting://stop-request", null);
+    await waitFor(() => expect(onRecorded).toHaveBeenCalledTimes(1));
+    expect(audio.captures[0]?.stopped).toBe(true);
+  });
+
   it("records, pauses (microphone released), resumes into a new part, and stops into the new meeting", async () => {
     const user = userEvent.setup();
     const audio = fakeAudio();

@@ -41,7 +41,7 @@ export function useAutoMeet(onAsk: () => void) {
     },
     rec,
     elapsedMs: rec ? Math.max(0, now - rec.started_at) : 0,
-    stop: () => void ipc.autoMeetingStop(),
+    stop: () => void ipc.petRecordingStop(),
   };
 }
 
@@ -75,12 +75,13 @@ export function AskCard({ ask, width, onAnswer }: { ask: PetAsk; width: number; 
   );
 }
 
-/** Shown under the pet's card while a call is being recorded. */
+/** Under the pet while anything is being recorded: as wide as the pet, with the time and a Stop button. */
 export function RecordChip({ width, elapsed, onStop }: { width: number; elapsed: string; onStop: () => void }) {
   return (
-    <div className="flex shrink-0 items-center justify-between gap-2 rounded-xl border bg-popover px-2.5 py-1.5 text-popover-foreground shadow-md" style={{ width }} role="status" aria-label={`Recording ${elapsed}`}>
-      <span className="flex items-center gap-1.5 text-[12px] font-semibold"><span className="size-2 animate-pulse rounded-full bg-destructive" />Recording {elapsed}</span>
-      <button type="button" onClick={onStop} className="rounded-md border px-2 py-0.5 text-[12px] font-medium outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring">Stop</button>
+    <div className="flex shrink-0 items-center justify-between gap-1 border-2 border-foreground/70 bg-popover px-1.5 font-mono text-popover-foreground shadow-[3px_3px_0_0_var(--border)]" style={{ width, height: 36, imageRendering: "pixelated" }} role="status" aria-label={`Recording ${elapsed}`} title="Recording">
+      <span className="size-2 shrink-0 animate-pulse bg-destructive" />
+      <span className="text-[13px] font-bold tabular-nums">{elapsed}</span>
+      <button type="button" aria-label="Stop recording" onClick={onStop} className="grid size-6 shrink-0 place-items-center border-2 border-foreground/70 bg-background text-[10px] leading-none outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring">■</button>
     </div>
   );
 }

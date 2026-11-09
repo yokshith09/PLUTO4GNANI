@@ -393,10 +393,29 @@ pub async fn auto_meeting_stop(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// What is recording now, so the pet can show it after a reload.
+/// What is recording now (auto mode or the Record button), so the pet can show it after a reload.
 #[tauri::command]
-pub fn auto_meeting_state(shell: State<'_, AutoMeetShell>) -> Option<AutoRec> {
-    shell.lock().recording.clone()
+pub fn auto_meeting_state(
+    shell: State<'_, AutoMeetShell>,
+    meetings: State<'_, MeetingShell>,
+) -> Option<AutoRec> {
+    shell
+        .lock()
+        .recording
+        .clone()
+        .or_else(|| meetings.current_recording())
+}
+
+/// The Stop button on the pet, for any recording. Auto mode stops itself; a recording started with
+/// the Record button is stopped by the dashboard page that holds its microphone.
+#[tauri::command]
+pub async fn pet_recording_stop(app: AppHandle) -> Result<(), String> {
+    let auto = app.state::<AutoMeetShell>().lock().recording.is_some();
+    if auto {
+        return auto_meeting_stop(app).await;
+    }
+    let _ = app.emit_to("main", "meeting://stop-request", ());
+    Ok(())
 }
 
 /// The page could not open the microphone: end the recording and say why.

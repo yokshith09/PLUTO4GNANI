@@ -21,7 +21,7 @@ export function topTasks(rows: TaskRow[], n = 2): TaskRow[] {
 }
 
 /** What the pet shows on hover: today's time, top apps, the two tasks that matter, and two lines of context. */
-export function PetCard({ className, style, napping = false, onNap }: { className?: string; style?: React.CSSProperties; napping?: boolean; onNap?: (nap: boolean) => void }) {
+export function PetCard({ className, style, napping = false, onNap, recording }: { className?: string; style?: React.CSSProperties; napping?: boolean; onNap?: (nap: boolean) => void; /** A recording is running: its time and a way to stop it, inside the card. */ recording?: { elapsed: string; onStop: () => void } }) {
   const today = rangeBounds("today");
   const { data: status } = useTrackingStatus();
   const { data: usage } = useUsage(today.from, today.to);
@@ -31,7 +31,7 @@ export function PetCard({ className, style, napping = false, onNap }: { classNam
   const tracking = status?.enabled ?? false;
   const focus = useFocus();
   // The focus controls take a row; one app fewer keeps the card the same height.
-  const apps = (usage?.apps ?? []).slice(0, focus.session ? 2 : 3);
+  const apps = (usage?.apps ?? []).slice(0, Math.max(1, 3 - (focus.session ? 1 : 0) - (recording ? 1 : 0)));
   const top = topTasks(tasks);
   const next = reminders.filter((r) => r.remind_at >= Date.now()).sort((a, b) => a.remind_at - b.remind_at)[0];
   const done = log?.snapshot.stats.completed_count ?? 0;
@@ -49,6 +49,16 @@ export function PetCard({ className, style, napping = false, onNap }: { classNam
         )}
         <span className="text-[11px] text-muted-foreground">{new Date().toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })}</span>
       </div>
+      {recording && (
+        <div className="flex items-center gap-2 rounded-md bg-destructive/10 px-2 py-1" role="group" aria-label="Recording controls">
+          <span className="size-2 shrink-0 animate-pulse rounded-full bg-destructive" />
+          <span className="text-[12px] font-semibold tabular-nums">Recording {recording.elapsed}</span>
+          <button type="button" onClick={recording.onStop} onPointerUp={(e) => e.stopPropagation()} aria-label="Stop recording"
+            className="ml-auto flex items-center gap-1 rounded-md border bg-background px-2 py-0.5 text-[12px] font-medium outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring">
+            <Square className="size-3" />Stop
+          </button>
+        </div>
+      )}
       {focus.session && (
         <div className="flex items-center gap-1" role="group" aria-label="Focus controls">
           {focus.session.paused_at === null

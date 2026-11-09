@@ -7,6 +7,7 @@ import type { CaptureHandle, FrameSender } from "@/audio";
 import { realAudio, type AudioDeps } from "@/features/voice/VoiceProvider";
 import type { RecordingSession } from "@/ipc/generated";
 import { meetingAi } from "@/ipc/meetingAi";
+import { onNamed } from "@/ipc/namedEvents";
 import { voiceErrorMessage } from "@/ipc/voiceClient";
 
 type Phase = "form" | "starting" | "recording" | "paused" | "stopping";
@@ -140,6 +141,15 @@ export function RecordDialog({ open, onClose, onRecorded, audio = realAudio }: {
       setPhase("paused");
     }
   };
+
+  // The pet's Stop button ends a recording started here.
+  const stopRef = useRef(stop);
+  stopRef.current = stop;
+  const phaseRef = useRef(phase);
+  phaseRef.current = phase;
+  useEffect(() => onNamed("meeting://stop-request", () => {
+    if (phaseRef.current === "recording" || phaseRef.current === "paused") void stopRef.current();
+  }), []);
 
   const reset = () => { setTitle(""); setPeople(""); setConsent(false); setSystem(false); setElapsed(0); setPhase("form"); setError(null); };
   const busy = phase !== "form";
