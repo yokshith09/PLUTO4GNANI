@@ -1,10 +1,17 @@
-import { Section } from "@/features/settings/parts";
+import { Button } from "@/components/ui/button";
+import { Row, Section } from "@/features/settings/parts";
+import { TOUR_PREF, parseTour } from "./tourSteps";
+import { usePref } from "./usePref";
 import { GUIDE } from "./content";
 
-/** Settings → Guide: short how-to answers, each open on demand. */
+/** Settings → Guide: replay the tour, and short how-to answers, each open on demand. */
 export function GuideSection() {
+  const tour = usePref(TOUR_PREF, parseTour);
   return (
     <Section title="Guide">
+      <Row label="Product tour" hint="A short walk through the pages. It plays once on first use.">
+        <Button variant="outline" size="sm" onClick={() => void tour.set("pending")}>Replay the tour</Button>
+      </Row>
       <div className="divide-y">
         {GUIDE.map((g) => (
           <details key={g.id} className="py-3 text-[13px]">

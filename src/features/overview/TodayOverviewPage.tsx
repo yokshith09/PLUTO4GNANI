@@ -1,5 +1,3 @@
-import { LearnCard } from "@/features/guide/LearnCard";
-import type { Page } from "@/features/shell/Sidebar";
 import { LinksCard } from "@/features/links/Shortcuts";
 import { RoutineCard } from "@/features/routine/RoutineCard";
 import { TimeHero } from "@/features/time/TimeHero";
@@ -13,7 +11,7 @@ import { useAgenda } from "./TodayAgenda";
 import { YesterdayLine, type TaskFocus } from "./YesterdayLine";
 
 /** Today: the day's list, focus, routine, time and links (owner 2026-10-25: no activity feed, no week count). */
-export function TodayOverviewPage({ onShowTasks = () => {}, onNavigate = () => {} }: { onShowTasks?: (focus: TaskFocus) => void; onNavigate?: (page: Page) => void }) {
+export function TodayOverviewPage({ onShowTasks = () => {} }: { onShowTasks?: (focus: TaskFocus) => void }) {
   const agenda = useAgenda();
   const now = new Date();
   const flagged = agenda.overdue + agenda.missed;
@@ -40,7 +38,6 @@ export function TodayOverviewPage({ onShowTasks = () => {}, onNavigate = () => {
         </div>
         <QuoteOfTheDay className="w-full sm:w-auto sm:min-w-80 sm:flex-1 lg:flex-none lg:w-[30rem]" />
       </header>
-      <LearnCard onShow={onNavigate} />
       <MovableTiles tiles={tiles} />
     </div>
   );

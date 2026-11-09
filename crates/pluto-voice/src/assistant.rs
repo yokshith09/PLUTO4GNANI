@@ -120,7 +120,6 @@ pub fn page_title(page: &str) -> &'static str {
         "archive" => "Archive",
         "bin" => "Bin",
         "character" => "Character",
-        "mcp" => "MCP",
         "settings" => "Settings",
         _ => "That",
     }

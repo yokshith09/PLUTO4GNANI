@@ -101,7 +101,7 @@ Reply with JSON {intent, tool, args, confidence}. Use only these tools and argum
 - notes_search {query}; note_create {body}\n\
 - focus_start {minutes}; focus_stop {}\n\
 - projects_list {}\n\
-- open_page {page: \"today\"|\"tasks\"|\"notes\"|\"projects\"|\"meetings\"|\"voice\"|\"bin\"|\"settings\"|\"time\"|\"archive\"|\"character\"|\"mcp\"}  \
+- open_page {page: \"today\"|\"tasks\"|\"notes\"|\"projects\"|\"meetings\"|\"voice\"|\"bin\"|\"settings\"|\"time\"|\"archive\"|\"character\"}  \
 (\"meetings kholo\", \"go to settings\", \"show my notes\": open that page; home = today, reminders = tasks, trash = bin)\n\
 Intents: meeting_query, task, reminder, note, focus, project, navigate (for open_page), or noise for anything that is not a command (set tool null). \
 Titles and queries are short English. Copy time words exactly into due_phrase / when_phrase (for example \"kal tak\", \"Friday\"); \

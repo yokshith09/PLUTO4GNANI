@@ -1,11 +1,11 @@
 import {
-  Archive, CheckSquare, Mic, Clock3, FolderKanban, LayoutDashboard, Moon, NotebookPen, PawPrint, Plug, Settings, Sun, Trash2, Users,
+  Archive, CheckSquare, Mic, Clock3, FolderKanban, LayoutDashboard, Moon, NotebookPen, PawPrint, Settings, Sun, Trash2, Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Bear } from "./Bear";
 import { isPageVisible } from "./pages";
 
-export type Page = "today" | "tasks" | "time" | "notes" | "projects" | "meetings" | "voice" | "archive" | "bin" | "character" | "mcp" | "settings";
+export type Page = "today" | "tasks" | "time" | "notes" | "projects" | "meetings" | "voice" | "archive" | "bin" | "character" | "settings";
 
 interface Props {
   page: Page;
@@ -75,7 +75,6 @@ export function Sidebar({ page, counts, onPage, isDark, onToggleTheme, demoOnly 
         <Item active={page === "meetings"} onClick={go("meetings")} icon={<Users />}>Meetings</Item>
         <Item active={page === "voice"} onClick={go("voice")} icon={<Mic />}>Voice</Item>
         {show("character") && <Item active={page === "character"} onClick={go("character")} tour="nav-character" icon={<PawPrint />}>Character</Item>}
-        {show("mcp") && <Item active={page === "mcp"} onClick={go("mcp")} icon={<Plug />}>MCP</Item>}
       </Group>
 
       <Group title="Library">

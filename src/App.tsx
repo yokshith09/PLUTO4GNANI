@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Plug } from "lucide-react";
 import { useRoutineReminder } from "@/features/routine/useRoutine";
 import { useDailyGreeting } from "@/features/companion/useCompanion";
 import { useWellbeingNudges } from "@/features/wellbeing/useWellbeing";
@@ -19,7 +18,6 @@ import { NoteEditor } from "@/features/notes/NoteEditor";
 import { NotesPage } from "@/features/notes/NotesPage";
 import type { NotesLayout } from "@/features/notes/NotesBoard";
 import { SettingsPage } from "@/features/settings/SettingsPage";
-import { ComingSoon } from "@/features/shell/ComingSoon";
 import { Sidebar, type Page } from "@/features/shell/Sidebar";
 import { TasksPage } from "@/features/tasks/TasksPage";
 import { TimePage } from "@/features/time/TimePage";
@@ -32,13 +30,12 @@ import { ProjectsPage } from "@/features/projects/ProjectsPage";
 import type { TaskFocus } from "@/features/overview/YesterdayLine";
 import { Welcome, useFirstRun, type WelcomeNext } from "@/features/welcome/Welcome";
 import { Tour } from "@/features/guide/Tour";
-import { ROLE_PREF, parseRole } from "@/features/guide/roles";
-import { TOUR_PREF, parseTour, stepsFor } from "@/features/guide/tourSteps";
+import { TOUR_PREF, TOUR_STEPS, parseTour } from "@/features/guide/tourSteps";
 import { usePref } from "@/features/guide/usePref";
 import { isPageVisible } from "@/features/shell/pages";
 import { useSetting } from "@/hooks/useTheme";
 
-const PAGES: readonly Page[] = ["today", "tasks", "time", "notes", "projects", "meetings", "voice", "archive", "bin", "character", "mcp", "settings"];
+const PAGES: readonly Page[] = ["today", "tasks", "time", "notes", "projects", "meetings", "voice", "archive", "bin", "character", "settings"];
 
 function Screen() {
   const [page, setPageState] = useState<Page>("today");
@@ -57,7 +54,6 @@ function Screen() {
   const demoOnly = demoSetting === true;
   const firstRun = useFirstRun();
   const tour = usePref(TOUR_PREF, parseTour);
-  const role = usePref(ROLE_PREF, parseRole);
   // FR-85: "You have N daily routine tasks pending", once a day at the chosen time.
   useRoutineReminder();
   // FR-93/94: hello once a day, and birthdays.
@@ -144,6 +140,8 @@ function Screen() {
   if (firstRun.show) {
     const start = async (next: WelcomeNext) => {
       await firstRun.finish();
+      // The tour starts by itself on Today; from a new task or note it waits in Settings → Guide.
+      if (next === "today") await tour.set("pending");
       if (next === "note") return void newNote();
       if (next === "meeting") {
         setPage("meetings");
@@ -183,7 +181,7 @@ function Screen() {
               />
             )}
             {page === "today" && (
-              <TodayOverviewPage onShowTasks={(focus) => { setPage("tasks"); setTaskFocus(focus); }} onNavigate={setPage} />
+              <TodayOverviewPage onShowTasks={(focus) => { setPage("tasks"); setTaskFocus(focus); }} />
             )}
             {page === "bin" && <BinPage />}
             {page === "character" && <CharacterPage />}
@@ -193,14 +191,13 @@ function Screen() {
             {page === "voice" && <VoicePage />}
             {page === "projects" && <ProjectsPage />}
             {page === "time" && <TimePage />}
-            {page === "mcp" && <ComingSoon icon={<Plug />} title="MCP" description="Connect external tools and services to Pluto through the Model Context Protocol. This arrives in a later release." />}
           </div>
         </main>
         <VoiceBar onOpenSettings={() => setPage("settings")} />
       </div>
       <NoteEditor noteId={editing} onClose={() => setEditing(null)} />
-      {tour.value === "pending" && role.value && (
-        <Tour steps={stepsFor(role.value)} onNavigate={setPage} onClose={() => void tour.set("done")} />
+      {tour.value === "pending" && (
+        <Tour steps={TOUR_STEPS} onNavigate={setPage} onClose={() => void tour.set("done")} />
       )}
       <Notices />
     </div>

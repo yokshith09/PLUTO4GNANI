@@ -1,6 +1,5 @@
 import { PageHeader } from "@/features/shell/PageHeader";
 import { mod } from "@/lib/platform";
-import { YourProfile } from "@/features/guide/YourProfile";
 import { GuideSection } from "@/features/guide/GuideSection";
 import { CREDIT } from "@/features/guide/content";
 import { DataSection } from "./DataSection";
@@ -57,7 +56,6 @@ export function SettingsPage() {
           <Switch checked={autostart ?? false} onCheckedChange={(v) => void setAutostart(v)} aria-label="Open Pluto at login" />
         </Row>
       </Section>
-      <YourProfile />
       <GuideSection />
       <Section title="Keyboard shortcuts">
         {GLOBAL_SHORTCUTS.map((g) => (
@@ -80,7 +78,7 @@ export function SettingsPage() {
       <DataSection />
       <Section title="Advanced">
         {/* Log rows removed (FR-47, owner V2-07): logging stays on for bug reports, it is just not shown. */}
-        <Row label="Show only the main pages" hint="Hides Time, Character, MCP and Archive. Nothing is deleted; turn it off to bring them back.">
+        <Row label="Show only the main pages" hint="Hides Time, Character and Archive. Nothing is deleted; turn it off to bring them back.">
           <Switch checked={demoOnly ?? false} onCheckedChange={(v) => void setDemoOnly(v)} aria-label="Show only the main pages" />
         </Row>
         <Row label="Reset settings" hint="Every setting on this page back to its default. Your notes, tasks, meetings and layout stay.">

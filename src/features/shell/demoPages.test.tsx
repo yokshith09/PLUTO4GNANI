@@ -38,15 +38,15 @@ describe("Demo view (T-402), against the in-memory shell", () => {
   it("shows every page by default", async () => {
     render(<App />);
     const s = await side();
-    for (const n of ["Time", "Character", "MCP", "Archive", "Voice", "Meetings"]) expect(await s.findByRole("button", { name: new RegExp(`^${n}`) })).toBeTruthy();
+    for (const n of ["Time", "Character", "Archive", "Voice", "Meetings"]) expect(await s.findByRole("button", { name: new RegExp(`^${n}`) })).toBeTruthy();
   });
 
-  it("hides Time, Character, MCP and Archive when the setting is on, and keeps the product pages", async () => {
+  it("hides Time, Character and Archive when the setting is on, and keeps the product pages", async () => {
     await ipc.settingSet("advanced.demo_pages_only", true);
     render(<App />);
     const s = await side();
     await s.findByRole("button", { name: /^Voice/ });
-    for (const n of ["Time", "Character", "MCP", "Archive"]) expect(s.queryByRole("button", { name: new RegExp(`^${n}`) })).toBeNull();
+    for (const n of ["Time", "Character", "Archive"]) expect(s.queryByRole("button", { name: new RegExp(`^${n}`) })).toBeNull();
     for (const n of ["Today overview", "Tasks", "Notes", "Projects", "Meetings", "Voice", "Bin", "Settings"]) expect(s.getByRole("button", { name: new RegExp(`^${n}`) })).toBeTruthy();
     expect((await names()).length).toBeGreaterThan(6);
   });

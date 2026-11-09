@@ -352,7 +352,6 @@ describe("Notes screen (against the in-memory shell)", () => {
     await petSays(/^Everything was deleted/);
     // An empty Pluto starts over at the welcome screen; past it, Notes is empty.
     await user.click(await screen.findByRole("button", { name: "Start" }, { timeout: 3000 }));
-    await user.click(await screen.findByRole("button", { name: "Skip" }));
     await user.click(await screen.findByRole("button", { name: "Skip tour" }));
     await openNotes(user);
     expect(await screen.findByText("No notes yet")).toBeTruthy();
@@ -537,15 +536,13 @@ describe("first run (F1-26)", () => {
     expect(screen.getByRole("switch", { name: "Show Pluto the bear on your desktop" }).getAttribute("aria-checked")).toBe("true");
     expect(screen.getByRole("switch", { name: "Track app time" }).getAttribute("aria-checked")).toBe("false");
     await user.click(screen.getByRole("button", { name: "Start" }));
-    // One tap on who you are; it only orders the tour and the quiz.
-    expect(await screen.findByRole("heading", { name: "What describes you best?" })).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: /^Student who codes/ }));
+    // No questions about who you are: straight to Today.
+    expect(screen.queryByRole("heading", { name: "What describes you best?" })).toBeNull();
     expect(await screen.findByRole("region", { name: "Today’s agenda" })).toBeTruthy();
     expect(await ipc.prefsGet("ui.onboarded")).toBe(true);
-    expect(await ipc.prefsGet("ui.role")).toBe("student_dev");
-    // The spotlight tour starts by itself on Today, in this role's order, and Skip ends it for good.
+    // The spotlight tour starts by itself on Today, and Skip ends it for good.
     const tour = await screen.findByRole("dialog", { name: "Pluto tour" });
-    expect(within(tour).getByText("Step 1 of 9")).toBeTruthy();
+    expect(within(tour).getByText("Step 1 of 8")).toBeTruthy();
     await user.click(within(tour).getByRole("button", { name: "Skip tour" }));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Pluto tour" })).toBeNull());
     expect(await ipc.prefsGet("ui.tour")).toBe("done");
@@ -559,9 +556,8 @@ describe("first run (F1-26)", () => {
     await screen.findByText("Review the sync PR");
     await ipc.dataDeleteAll("DELETE");
     await user.click(await screen.findByRole("button", { name: /Write a note/ }, { timeout: 3000 }));
-    await user.click(await screen.findByRole("button", { name: "Skip" }));
     await waitFor(() => expect(screen.queryByRole("heading", { name: "Welcome to Pluto" })).toBeNull());
-    // Not on Today, so the tour waits (Settings → Your profile) instead of jumping you away from the note.
+    // Not on Today, so the tour waits (Settings → Guide) instead of jumping you away from the note.
     expect(screen.queryByRole("dialog", { name: "Pluto tour" })).toBeNull();
     expect((await ipc.notesList(false, null, "last_edited")).length).toBe(1);
   });
