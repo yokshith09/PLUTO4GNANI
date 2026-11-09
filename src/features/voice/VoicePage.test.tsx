@@ -22,10 +22,12 @@ describe("Voice page", () => {
     await mount();
     await user.type(screen.getByLabelText("Type a command"), "which tasks do I have today{Enter}");
     expect(screen.queryByRole("list", { name: "Assistant history" }), "history starts hidden").toBeNull();
+    // Wait until the turn is really recorded (a loaded CI machine can be slow), then look.
+    await waitFor(async () => expect((await voiceIpc.history(10)).length).toBe(1), { timeout: 10_000 });
     await user.click(await screen.findByRole("button", { name: /Show history/ }));
-    expect(await screen.findByText("“which tasks do I have today”", {}, { timeout: 4000 })).toBeTruthy();
+    expect(await screen.findByText("“which tasks do I have today”", {}, { timeout: 10_000 })).toBeTruthy();
     expect((screen.getByLabelText("Type a command") as HTMLInputElement).value).toBe("");
-  });
+  }, 30_000);
 
   it("an example runs when pressed", async () => {
     const user = userEvent.setup();
@@ -39,12 +41,13 @@ describe("Voice page", () => {
     const user = userEvent.setup();
     await mount();
     await user.type(screen.getByLabelText("Type a command"), "hello{Enter}");
+    await waitFor(async () => expect((await voiceIpc.history(10)).length).toBe(1), { timeout: 10_000 });
     await user.click(await screen.findByRole("button", { name: /Show history/ }));
-    await screen.findByText("“hello”", {}, { timeout: 4000 });
+    await screen.findByText("“hello”", {}, { timeout: 10_000 });
     await user.click(screen.getByRole("button", { name: /Clear history/ }));
     expect(screen.getByText(/Delete all 1 entries/)).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Delete" }));
-    await waitFor(() => expect(screen.queryByText("“hello”")).toBeNull());
+    await waitFor(() => expect(screen.queryByText("“hello”")).toBeNull(), { timeout: 10_000 });
     expect(screen.getByText(/Nothing yet/)).toBeTruthy();
-  });
+  }, 30_000);
 });
