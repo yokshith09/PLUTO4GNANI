@@ -18,7 +18,7 @@ use pluto_core::bus::{EventBus, Recv};
 use pluto_core::events::Event;
 use pluto_core::settings_service::SettingsService;
 use serde_json::Value;
-use tauri::{AppHandle, Manager, Runtime};
+use tauri::{AppHandle, Manager};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 /// What a shortcut does.
@@ -27,10 +27,14 @@ pub enum Action {
     TogglePet,
     ToggleDashboard,
     NewNote,
+    /// Talk hands-free: press once, speak, it sends after a pause.
+    HandsFree,
+    /// Dictation: press to type what you say where the cursor is, press again to stop.
+    Dictation,
 }
 
 /// Each action, its setting (if it can be changed) and its default.
-pub const ACTIONS: [(Action, Option<&str>, &str); 3] = [
+pub const ACTIONS: [(Action, Option<&str>, &str); 5] = [
     // Off unless chosen in Settings (FR-48): an empty default means "not registered".
     (Action::TogglePet, Some("shortcuts.global_pet"), ""),
     (
@@ -42,6 +46,16 @@ pub const ACTIONS: [(Action, Option<&str>, &str); 3] = [
         Action::NewNote,
         Some("shortcuts.global_new_note"),
         "CmdOrCtrl+Shift+N",
+    ),
+    (
+        Action::HandsFree,
+        Some("shortcuts.voice_hands_free"),
+        "Ctrl+Alt+Space",
+    ),
+    (
+        Action::Dictation,
+        Some("shortcuts.voice_dictation"),
+        "Ctrl+Alt+Shift+Space",
     ),
 ];
 
@@ -61,7 +75,7 @@ pub fn combos(settings: &std::collections::BTreeMap<String, Value>) -> Vec<(Acti
         .collect()
 }
 
-fn run<R: Runtime>(app: &AppHandle<R>, action: Action) {
+fn run(app: &AppHandle, action: Action) {
     match action {
         Action::TogglePet => crate::pet::toggle_pet(app),
         Action::ToggleDashboard => {
@@ -76,6 +90,8 @@ fn run<R: Runtime>(app: &AppHandle<R>, action: Action) {
             }
         }
         Action::NewNote => crate::pet::command(app, "new-note"),
+        Action::HandsFree => crate::voice::hotkey_hands_free(app),
+        Action::Dictation => crate::voice::hotkey_dictation(app),
     }
 }
 
@@ -103,35 +119,6 @@ fn register_all(app: &AppHandle, combos: &[(Action, String)]) {
         }
     }
     register_voice_ptt(app);
-    register_toggle(
-        app,
-        crate::voice::HANDS_FREE_HOTKEY,
-        "hands-free",
-        crate::voice::hotkey_hands_free,
-    );
-    register_toggle(
-        app,
-        crate::voice::DICTATION_HOTKEY,
-        "dictation",
-        crate::voice::hotkey_dictation,
-    );
-}
-
-/// A key that acts once per press (hands-free listening, dictation).
-fn register_toggle(app: &AppHandle, combo: &str, name: &'static str, run: fn(&AppHandle)) {
-    let Ok(shortcut) = Shortcut::from_str(combo) else {
-        return;
-    };
-    let result = app
-        .global_shortcut()
-        .on_shortcut(shortcut, move |app, _shortcut, event| {
-            if event.state() == ShortcutState::Pressed {
-                run(app);
-            }
-        });
-    if let Err(error) = result {
-        tracing::warn!(%error, name, "the {name} hotkey is taken by another app; skipped");
-    }
 }
 
 /// The push-to-talk hotkey: press and release both matter.

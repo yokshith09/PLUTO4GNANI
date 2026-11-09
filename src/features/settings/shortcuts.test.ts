@@ -15,7 +15,8 @@ describe("recording a global shortcut", () => {
   it("refuses a bare key, Shift alone, or keys that aren't letters, digits or F-keys", () => {
     expect(comboFromEvent(ev("KeyK"), false)).toBeNull();
     expect(comboFromEvent(ev("KeyK", { shiftKey: true }), false)).toBeNull();
-    expect(comboFromEvent(ev("Space", { ctrlKey: true }), false)).toBeNull();
+    expect(comboFromEvent(ev("Tab", { ctrlKey: true }), false)).toBeNull();
+    expect(comboFromEvent(ev("Space", { ctrlKey: true, altKey: true }), false)).toBe("CmdOrCtrl+Alt+Space");
     expect(comboFromEvent(ev("ControlLeft", { ctrlKey: true }), false)).toBeNull();
   });
   it("shows Ctrl on Windows", () => {

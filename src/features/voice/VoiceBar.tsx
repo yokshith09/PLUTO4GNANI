@@ -1,3 +1,5 @@
+import { VOICE_SHORTCUTS, showCombo } from "@/features/settings/shortcuts";
+import { useSetting } from "@/hooks/useTheme";
 import { getWakeWord } from "./WakeSetup";
 import { useEffect } from "react";
 import { Mic, MicOff, Square, X } from "lucide-react";
@@ -28,7 +30,8 @@ export function VoiceBar({ onOpenSettings }: { onOpenSettings: () => void }) {
   const off = v.status?.state === "disabled";
   const recording = v.status?.state === "recording";
   // Always-on (T-705): when idle, say that Pluto is waiting for its name.
-  const dictationLabel = v.dictating ? "Dictating: what you say is typed where your cursor is. Press Ctrl+Alt+D to stop." : null;
+  const [dictationKey] = useSetting("shortcuts.voice_dictation");
+  const dictationLabel = v.dictating ? `Dictating: what you say is typed where your cursor is. Press ${showCombo(dictationKey ?? VOICE_SHORTCUTS[1].fallback)} to stop.` : null;
   const idleLabel = state === "idle" && v.wake?.session_id ? `Say “${getWakeWord()}” to start` : STATE_LABEL[state];
   const label = v.error ?? dictationLabel ?? (v.status?.detail && state !== "listening" ? v.status.detail : idleLabel);
 

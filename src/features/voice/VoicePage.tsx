@@ -8,6 +8,8 @@ import { PageHeader } from "@/features/shell/PageHeader";
 import { onNamed } from "@/ipc/namedEvents";
 import { voiceErrorMessage, voiceIpc } from "@/ipc/voiceClient";
 import { notify } from "@/lib/notify";
+import { useSetting } from "@/hooks/useTheme";
+import { VOICE_SHORTCUTS, showCombo } from "@/features/settings/shortcuts";
 import type { AssistantTurn } from "@/ipc/generated";
 
 export const INTENT_LABEL: Record<AssistantTurn["decision"]["intent"], string> = {
@@ -41,6 +43,10 @@ function Turn({ t }: { t: AssistantTurn }) {
   );
 }
 
+function Key({ combo }: { combo: string }) {
+  return <kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-[11px]">{showCombo(combo)}</kbd>;
+}
+
 /** Things to say, grouped by what they do. Pressing one runs it as if it had been said. */
 export const EXAMPLES: { group: string; lines: string[] }[] = [
   { group: "Tasks", lines: ["Add a task to send the report to Akhil on the 11th", "Which tasks do I have today?", "On which day is the report task?", "Move the report task to the 11th", "Mark the report task done"] },
@@ -61,6 +67,10 @@ export function VoicePage() {
   const [sending, setSending] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [handsFreeSet] = useSetting("shortcuts.voice_hands_free");
+  const [dictationSet] = useSetting("shortcuts.voice_dictation");
+  const handsFree = handsFreeSet ?? VOICE_SHORTCUTS[0].fallback;
+  const dictation = dictationSet ?? VOICE_SHORTCUTS[1].fallback;
 
   const run = async (command: string) => {
     const t = command.trim();
@@ -92,11 +102,11 @@ export function VoicePage() {
       <PageHeader title="Voice" description="Say “Pluto” or press Talk at the bottom of the window, or type a command here. Pluto asks before it changes anything." />
 
       <section aria-label="Ways to talk" className="mb-4 rounded-xl border bg-card p-4">
-        <h2 className="text-sm font-semibold">Ways to talk</h2>
+        <h2 className="text-sm font-semibold">Ways to talk <span className="font-normal text-muted-foreground">· change the keys in Settings → Voice &amp; privacy</span></h2>
         <ul className="mt-2 grid gap-x-6 gap-y-1.5 text-[13px] sm:grid-cols-2">
-          <li><kbd className="rounded border bg-muted px-1.5 py-0.5 text-[11px]">Ctrl</kbd> <kbd className="rounded border bg-muted px-1.5 py-0.5 text-[11px]">Alt</kbd> <kbd className="rounded border bg-muted px-1.5 py-0.5 text-[11px]">Space</kbd> <span className="text-muted-foreground">Press once, say your command, stop talking. It ends by itself.</span></li>
-          <li><kbd className="rounded border bg-muted px-1.5 py-0.5 text-[11px]">Ctrl</kbd> <kbd className="rounded border bg-muted px-1.5 py-0.5 text-[11px]">Alt</kbd> <kbd className="rounded border bg-muted px-1.5 py-0.5 text-[11px]">D</kbd> <span className="text-muted-foreground">Dictation: what you say is typed where your cursor is. Press again to stop.</span></li>
-          <li><span className="font-medium">Hold the talk key</span> <span className="text-muted-foreground">(Settings → Voice &amp; privacy) and release to send.</span></li>
+          <li><Key combo={handsFree} /> <span className="text-muted-foreground">Talk hands-free: press once, say it, stop talking. It sends by itself.</span></li>
+          <li><Key combo={dictation} /> <span className="text-muted-foreground">Dictate: what you say is typed where your cursor is. Press again to stop.</span></li>
+          <li><span className="font-medium">Hold the talk key</span> <span className="text-muted-foreground">and release to send.</span></li>
           <li><span className="font-medium">Say “Pluto…”</span> <span className="text-muted-foreground">with always-on listening turned on and taught.</span></li>
         </ul>
       </section>

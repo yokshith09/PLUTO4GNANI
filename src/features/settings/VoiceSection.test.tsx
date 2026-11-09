@@ -91,6 +91,32 @@ describe("Voice and hotkey settings (T-401)", () => {
   });
 });
 
+describe("Hands-free and dictation keys", () => {
+  it("each says what it does, and each can be changed", async () => {
+    const user = userEvent.setup();
+    wrap();
+    expect(await screen.findByText(/Press once, say your command, stop talking/)).toBeTruthy();
+    expect(screen.getByText(/typing what you say wherever your cursor is/)).toBeTruthy();
+    expect(screen.getByText("Ctrl+Alt+Space")).toBeTruthy();
+    expect(screen.getByText("Ctrl+Alt+Shift+Space")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Change shortcut: Dictate" }));
+    await user.keyboard("{Control>}{Alt>}j{/Alt}{/Control}");
+    await waitFor(() => expect(screen.getByText("Ctrl+Alt+J")).toBeTruthy());
+    await user.click(screen.getByRole("button", { name: "Reset shortcut: Dictate" }));
+    await waitFor(() => expect(screen.getByText("Ctrl+Alt+Shift+Space")).toBeTruthy());
+  });
+
+  it("refuses a key another Pluto shortcut already uses", async () => {
+    const user = userEvent.setup();
+    wrap();
+    await user.click(await screen.findByRole("button", { name: "Change shortcut: Dictate" }));
+    // Ctrl+Alt+Space belongs to hands-free.
+    await user.keyboard("{Control>}{Alt>}[Space]{/Alt}{/Control}");
+    await waitFor(() => expect(screen.queryByText(/Press the new keys/)).toBeNull());
+    expect(screen.getByText("Ctrl+Alt+Shift+Space")).toBeTruthy();
+  });
+});
+
 describe("Offer to record Google Meet (auto mode)", () => {
   it("is off by default and can be switched on and off", async () => {
     const user = userEvent.setup();

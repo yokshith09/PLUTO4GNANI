@@ -8,6 +8,12 @@ export const GLOBAL_SHORTCUTS = [
   { key: "shortcuts.global_pet", label: "Show or hide the pet, from any app", fallback: "" },
 ] as const;
 
+/** The voice shortcuts: what each one does, and its default. Shown in Settings → Voice & privacy. */
+export const VOICE_SHORTCUTS = [
+  { key: "shortcuts.voice_hands_free", label: "Talk hands-free", description: "Press once, say your command, stop talking. Pluto sends it after a pause. Press again to send at once.", fallback: "Ctrl+Alt+Space" },
+  { key: "shortcuts.voice_dictation", label: "Dictate", description: "Press to start typing what you say wherever your cursor is, in any app. Press again to stop.", fallback: "Ctrl+Alt+Shift+Space" },
+] as const;
+
 /** `CmdOrCtrl+Shift+L` as the person sees it: `Ctrl+Shift+L` or `⌘⇧L`. */
 export function showCombo(combo: string): string {
   const parts = combo.split("+");
@@ -18,7 +24,7 @@ export function showCombo(combo: string): string {
 
 /**
  * A key press turned into a stored combination, or null if it can't be one: it needs Ctrl/⌘ or
- * Alt (Shift alone would steal ordinary typing) and a letter, digit or F-key. Matches the core's
+ * Alt (Shift alone would steal ordinary typing) and a letter, digit, Space or F-key. Matches the core's
  * `shortcut_is_valid`.
  */
 export function comboFromEvent(e: Pick<KeyboardEvent, "key" | "code" | "ctrlKey" | "metaKey" | "altKey" | "shiftKey">, mac = isMac): string | null {
@@ -26,6 +32,7 @@ export function comboFromEvent(e: Pick<KeyboardEvent, "key" | "code" | "ctrlKey"
     : /^Digit[0-9]$/.test(e.code) ? e.code.slice(5)
     : /^F([1-9]|1[0-9]|2[0-4])$/.test(e.code) ? e.code
     : /^F([1-9]|1[0-9]|2[0-4])$/.test(e.key) ? e.key // some keyboards report no code for F-keys
+    : e.code === "Space" ? "Space"
     : null;
   if (!key) return null;
   const primary = mac ? e.metaKey : e.ctrlKey;

@@ -1044,11 +1044,6 @@ fn in_runtime<R>(f: impl FnOnce() -> R) -> R {
     f()
 }
 
-/// Where the hands-free key and the dictation key are, until they become settings: the first
-/// press starts, a pause (hands-free) or the second press (dictation) ends.
-pub(crate) const HANDS_FREE_HOTKEY: &str = "Ctrl+Alt+Space";
-pub(crate) const DICTATION_HOTKEY: &str = "Ctrl+Alt+D";
-
 /// Hands-free from the Talk button (native microphone): starts a turn that ends after a pause,
 /// or ends the one that is running. Returns the session when one started.
 #[tauri::command]

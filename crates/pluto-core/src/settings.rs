@@ -69,6 +69,12 @@ pub enum SettingsKey {
     /// Show or hide the pet from any app (FR-48). Null = off, the default.
     #[serde(rename = "shortcuts.global_pet")]
     ShortcutsGlobalPet,
+    /// Talk hands-free: press once, speak, it sends after a pause. Null = the default.
+    #[serde(rename = "shortcuts.voice_hands_free")]
+    ShortcutsVoiceHandsFree,
+    /// Dictation: press to type what you say where the cursor is, press again to stop. Null = the default.
+    #[serde(rename = "shortcuts.voice_dictation")]
+    ShortcutsVoiceDictation,
 
     // tracking (opt-in; Phase 2 pulled forward)
     #[serde(rename = "tracking.apps")]
@@ -121,13 +127,14 @@ pub enum SettingsKey {
 
 /// A global shortcut as stored: `Mod+…+Key`, e.g. `CmdOrCtrl+Shift+L`. It needs Ctrl, Alt, Cmd
 /// or CmdOrCtrl (Shift alone would steal ordinary typing), each modifier once, and one key:
-/// a letter, a digit or F1–F24.
+/// a letter, a digit, Space or F1–F24.
 pub fn shortcut_is_valid(combo: &str) -> bool {
     let parts: Vec<&str> = combo.split('+').map(str::trim).collect();
     let Some((key, mods)) = parts.split_last() else {
         return false;
     };
     let key_ok = (key.len() == 1 && key.chars().all(|c| c.is_ascii_alphanumeric()))
+        || *key == "Space"
         || key
             .strip_prefix('F')
             .and_then(|n| n.parse::<u8>().ok())
@@ -169,6 +176,8 @@ impl SettingsKey {
             Self::ShortcutsGlobalNewNote => "shortcuts.global_new_note",
             Self::ShortcutsGlobalNewTask => "shortcuts.global_new_task",
             Self::ShortcutsGlobalPet => "shortcuts.global_pet",
+            Self::ShortcutsVoiceHandsFree => "shortcuts.voice_hands_free",
+            Self::ShortcutsVoiceDictation => "shortcuts.voice_dictation",
             Self::TrackingApps => "tracking.apps",
             Self::TrackingExcludeApps => "tracking.exclude_apps",
             Self::TrackingSites => "tracking.sites",
@@ -208,6 +217,8 @@ impl SettingsKey {
             "shortcuts.global_new_note" => Some(Self::ShortcutsGlobalNewNote),
             "shortcuts.global_new_task" => Some(Self::ShortcutsGlobalNewTask),
             "shortcuts.global_pet" => Some(Self::ShortcutsGlobalPet),
+            "shortcuts.voice_hands_free" => Some(Self::ShortcutsVoiceHandsFree),
+            "shortcuts.voice_dictation" => Some(Self::ShortcutsVoiceDictation),
             "tracking.apps" => Some(Self::TrackingApps),
             "tracking.exclude_apps" => Some(Self::TrackingExcludeApps),
             "tracking.sites" => Some(Self::TrackingSites),
@@ -248,6 +259,8 @@ impl SettingsKey {
             Self::ShortcutsGlobalNewNote => json!(null),
             Self::ShortcutsGlobalNewTask => json!(null),
             Self::ShortcutsGlobalPet => json!(null),
+            Self::ShortcutsVoiceHandsFree => json!(null),
+            Self::ShortcutsVoiceDictation => json!(null),
             Self::TrackingApps => json!(false),
             Self::TrackingExcludeApps => json!([]),
             Self::TrackingSites => json!(false),
@@ -344,7 +357,9 @@ impl SettingsKey {
             Self::ShortcutsGlobalOpen
             | Self::ShortcutsGlobalNewNote
             | Self::ShortcutsGlobalNewTask
-            | Self::ShortcutsGlobalPet => {
+            | Self::ShortcutsGlobalPet
+            | Self::ShortcutsVoiceHandsFree
+            | Self::ShortcutsVoiceDictation => {
                 if value.is_null() {
                     return Ok(());
                 }
@@ -470,6 +485,8 @@ pub fn all_defaults() -> BTreeMap<String, Value> {
         SettingsKey::ShortcutsGlobalNewNote,
         SettingsKey::ShortcutsGlobalNewTask,
         SettingsKey::ShortcutsGlobalPet,
+        SettingsKey::ShortcutsVoiceHandsFree,
+        SettingsKey::ShortcutsVoiceDictation,
         SettingsKey::TrackingApps,
         SettingsKey::TrackingExcludeApps,
         SettingsKey::TrackingSites,
@@ -522,6 +539,12 @@ mod tests {
         ] {
             assert!(!shortcut_is_valid(bad), "{bad}");
         }
+        assert!(shortcut_is_valid("Ctrl+Alt+Space"));
+        assert!(shortcut_is_valid("Ctrl+Alt+Shift+Space"));
+        assert!(!shortcut_is_valid("Space"));
+        assert!(SettingsKey::ShortcutsVoiceDictation
+            .validate(&serde_json::json!("Ctrl+Alt+K"))
+            .is_ok());
         assert!(SettingsKey::ShortcutsGlobalOpen
             .validate(&serde_json::json!("Shift+L"))
             .is_err());
@@ -534,7 +557,7 @@ mod tests {
     #[test]
     fn all_defaults_exist() {
         let defaults = all_defaults();
-        assert_eq!(defaults.len(), 33);
+        assert_eq!(defaults.len(), 35);
         assert_eq!(
             defaults["advanced.demo_pages_only"],
             json!(false),

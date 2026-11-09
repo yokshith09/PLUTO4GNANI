@@ -14,7 +14,8 @@ import type { Destination, VoiceSettings, VoiceSettingsPatch } from "@/ipc/gener
 import { notify } from "@/lib/notify";
 import { useSetting } from "@/hooks/useTheme";
 import { Row, Section } from "./parts";
-import { comboFromEvent, showCombo } from "./shortcuts";
+import { ShortcutRow } from "./ShortcutRow";
+import { VOICE_SHORTCUTS, comboFromEvent, showCombo } from "./shortcuts";
 
 export const LANGUAGES: { code: string; name: string }[] = [
   { code: "hi-IN", name: "Hindi" }, { code: "en-IN", name: "English" }, { code: "ta-IN", name: "Tamil" }, { code: "te-IN", name: "Telugu" },
@@ -80,6 +81,31 @@ function MeetOfferRow() {
     <Row label="Offer to record Google Meet" hint="When a Meet call is open in your browser, the pet asks if you want to record it. To spot the call, Pluto reads which tab is showing in the browser in front; nothing is stored. It only records when you say yes, and only record when everyone knows. Recorded audio is sent to Gnani, and the decisions and action items are written into Meetings for you to edit.">
       <Switch checked={on ?? false} onCheckedChange={(v) => void setOn(v)} aria-label="Offer to record Google Meet" />
     </Row>
+  );
+}
+
+/** The hands-free and dictation keys: each says what it does and can be changed. */
+function VoiceShortcutRows({ pushToTalk }: { pushToTalk: string }) {
+  const [handsFree] = useSetting("shortcuts.voice_hands_free");
+  const [dictation] = useSetting("shortcuts.voice_dictation");
+  const [open] = useSetting("shortcuts.global_open");
+  const [note] = useSetting("shortcuts.global_new_note");
+  const [pet] = useSetting("shortcuts.global_pet");
+  const current: Record<string, string> = {
+    "shortcuts.voice_hands_free": handsFree ?? VOICE_SHORTCUTS[0].fallback,
+    "shortcuts.voice_dictation": dictation ?? VOICE_SHORTCUTS[1].fallback,
+  };
+  // Every other key Pluto uses, so two things never share one.
+  const others = [pushToTalk, open ?? "CmdOrCtrl+Shift+L", note ?? "CmdOrCtrl+Shift+N", pet ?? ""].filter(Boolean);
+  return (
+    <>
+      {VOICE_SHORTCUTS.map((v) => (
+        <ShortcutRow
+          key={v.key} settingKey={v.key} label={v.label} description={v.description} fallback={v.fallback}
+          taken={[...others, ...VOICE_SHORTCUTS.filter((o) => o.key !== v.key).map((o) => current[o.key] as string)]}
+        />
+      ))}
+    </>
   );
 }
 
@@ -214,6 +240,7 @@ export function VoiceSection() {
           <Button size="sm" variant="outline" disabled={previewing} onClick={() => void preview()}>{previewing ? "Playing…" : "Preview"}</Button>
         </Row>
         <HotkeyRow value={s.hotkey} onChange={(hotkey) => patch.mutate({ hotkey })} />
+        <VoiceShortcutRows pushToTalk={s.hotkey} />
         <Row label="Expressive replies" hint="Lets spoken replies sound warmer (laughs, pauses).">
           <Switch checked={s.audio_tags} onCheckedChange={(v) => patch.mutate({ audio_tags: v })} aria-label="Expressive replies" />
         </Row>

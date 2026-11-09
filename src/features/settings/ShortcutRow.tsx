@@ -2,10 +2,17 @@ import { useEffect, useState } from "react";
 import { notify } from "@/lib/notify";
 import { Button } from "@/components/ui/button";
 import { useSetting } from "@/hooks/useTheme";
+import { isMac } from "@/lib/platform";
 import { comboFromEvent, showCombo } from "./shortcuts";
 import { Row } from "./parts";
 
-type Key = "shortcuts.global_open" | "shortcuts.global_new_note" | "shortcuts.global_pet";
+type Key = "shortcuts.global_open" | "shortcuts.global_new_note" | "shortcuts.global_pet" | "shortcuts.voice_hands_free" | "shortcuts.voice_dictation";
+
+/** The same keys spelled one way, so `CmdOrCtrl+Alt+K` and `Ctrl+Alt+K` compare equal on Windows. */
+const same = (a: string, b: string) => {
+  const norm = (c: string) => c.replace("CmdOrCtrl", isMac ? "Cmd" : "Ctrl");
+  return norm(a) === norm(b);
+};
 
 function Keys({ combo }: { combo: string }) {
   if (!combo) return <span className="text-[12px] text-muted-foreground">Off</span>;
@@ -13,7 +20,7 @@ function Keys({ combo }: { combo: string }) {
 }
 
 /** A global shortcut you can change: "Change", press the keys, done. Esc cancels. */
-export function ShortcutRow({ settingKey, label, fallback, taken }: { settingKey: Key; label: string; fallback: string; taken: string[] }) {
+export function ShortcutRow({ settingKey, label, fallback, taken, description }: { settingKey: Key; label: string; fallback: string; taken: string[]; /** What pressing it does. */ description?: string }) {
   const [value, setValue] = useSetting(settingKey);
   const [recording, setRecording] = useState(false);
   const combo = value ?? fallback;
@@ -27,7 +34,7 @@ export function ShortcutRow({ settingKey, label, fallback, taken }: { settingKey
       const next = comboFromEvent(e);
       if (!next) return; // still holding modifiers, or not a usable key
       setRecording(false);
-      if (taken.includes(next)) return void notify.error(`${showCombo(next)} is already used by another Pluto shortcut.`);
+      if (taken.some((t) => same(t, next))) return void notify.error(`${showCombo(next)} is already used by another Pluto shortcut.`);
       void setValue(next === fallback ? null : next);
     };
     window.addEventListener("keydown", onKey, true);
@@ -35,7 +42,7 @@ export function ShortcutRow({ settingKey, label, fallback, taken }: { settingKey
   }, [recording, taken, fallback, setValue]);
 
   return (
-    <Row label={label} {...(value ? { hint: fallback ? `Default: ${showCombo(fallback)}` : "Off by default" } : {})}>
+    <Row label={label} hint={[description, value ? (fallback ? `Default: ${showCombo(fallback)}` : "Off by default") : null].filter(Boolean).join(" ")}>
       <div className="flex items-center gap-2">
         {recording ? (
           <span className="rounded-md border border-primary px-2 py-0.5 text-[12px] text-primary" role="status">Press the new keys… (Esc to cancel)</span>
