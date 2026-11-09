@@ -21,8 +21,7 @@
         "center": true,
         "visible": false,
         "minWidth": 900,
-        "minHeight": 600,
-        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,CalculateNativeWinOcclusion --disable-background-timer-throttling --disable-renderer-backgrounding --disable-backgrounding-occluded-windows"
+        "minHeight": 600
       },
       {
         "label": "pet",

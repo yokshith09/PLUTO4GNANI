@@ -107,21 +107,37 @@ fn forward_events(app: AppHandle, bus: &EventBus) {
     });
 }
 
-/// WebView2 ignores `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` once the app passes its own browser
-/// arguments, and wry always does. The end-to-end driver hands its debugging flags over that
-/// variable, so on Windows we append it to each window's arguments ourselves (R11). Unset in
-/// normal use, so this changes nothing for users.
-fn forward_webview_args(context: &mut tauri::Context) {
-    #[cfg(windows)]
+/// The browser arguments every window of the app uses, on Windows. WebView2 needs them to be the
+/// same for every window of one app (a second window with different ones fails to open, which
+/// stopped the app from starting), so they come from here for the windows in `tauri.conf.json` and
+/// for note windows alike.
+///
+/// * `CalculateNativeWinOcclusion` off and no background throttling: Windows stops a window that
+///   is covered by other apps, which also stopped the always-on microphone in it.
+/// * `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`: WebView2 ignores it once the app passes its own
+///   arguments, and wry always does. The end-to-end driver hands its debugging flags over that
+///   variable, so they are appended here (R11). Unset in normal use.
+#[cfg(windows)]
+pub(crate) fn webview_args() -> String {
+    let mut args = String::from(
+        "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,CalculateNativeWinOcclusion \
+         --disable-background-timer-throttling --disable-renderer-backgrounding \
+         --disable-backgrounding-occluded-windows",
+    );
     if let Some(extra) = std::env::var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS")
         .ok()
         .filter(|v| !v.trim().is_empty())
     {
-        for window in &mut context.config_mut().app.windows {
-            window.additional_browser_args = Some(format!(
-                "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection {extra}"
-            ));
-        }
+        args.push(' ');
+        args.push_str(&extra);
+    }
+    args
+}
+
+fn forward_webview_args(context: &mut tauri::Context) {
+    #[cfg(windows)]
+    for window in &mut context.config_mut().app.windows {
+        window.additional_browser_args = Some(webview_args());
     }
     #[cfg(not(windows))]
     let _ = context;

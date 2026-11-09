@@ -29,16 +29,18 @@ pub fn note_window_open<R: Runtime>(app: AppHandle<R>, id: String) -> Result<()>
         let _ = window.set_focus();
         return Ok(());
     }
-    WebviewWindowBuilder::new(&app, &label, WebviewUrl::App("main.html".into()))
+    let builder = WebviewWindowBuilder::new(&app, &label, WebviewUrl::App("main.html".into()))
         .title("Pluto note")
         .inner_size(720.0, 640.0)
         .min_inner_size(420.0, 360.0)
-        .initialization_script(format!("window.__PLUTO_NOTE__ = \"{id}\";"))
-        .build()
-        .map_err(|error| {
-            tracing::warn!(%error, "couldn't open a note window");
-            AppError::io("Pluto couldn't open the note in its own window.")
-        })?;
+        .initialization_script(format!("window.__PLUTO_NOTE__ = \"{id}\";"));
+    // Same browser arguments as every other window, or WebView2 refuses to open this one.
+    #[cfg(windows)]
+    let builder = builder.additional_browser_args(&crate::webview_args());
+    builder.build().map_err(|error| {
+        tracing::warn!(%error, "couldn't open a note window");
+        AppError::io("Pluto couldn't open the note in its own window.")
+    })?;
     Ok(())
 }
 
