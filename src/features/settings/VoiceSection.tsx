@@ -12,6 +12,7 @@ import { AlwaysOnRow } from "@/features/voice/WakeSetup";
 import { voiceErrorMessage, voiceIpc, type KeyAccount } from "@/ipc/voiceClient";
 import type { Destination, VoiceSettings, VoiceSettingsPatch } from "@/ipc/generated";
 import { notify } from "@/lib/notify";
+import { useSetting } from "@/hooks/useTheme";
 import { Row, Section } from "./parts";
 import { comboFromEvent, showCombo } from "./shortcuts";
 
@@ -71,6 +72,16 @@ const DESTINATION: Record<Destination, string> = {
   gnani_realtime: "Gnani (live speech)", gnani_rest: "Gnani (speech)", gnani_batch: "Gnani (meeting audio)", gnani_tts: "Gnani (voice)",
   gnani_clone: "Gnani (voice clone)", gemini: "Gemini", groq: "Groq",
 };
+
+/** Offer to record Google Meet calls from the pet (auto mode). */
+function MeetOfferRow() {
+  const [on, setOn] = useSetting("meetings.auto_offer");
+  return (
+    <Row label="Offer to record Google Meet" hint="When a Meet call is open in your browser, the pet asks if you want to record it. To spot the call, Pluto reads which tab is showing in the browser in front; nothing is stored. It only records when you say yes, and only record when everyone knows. Recorded audio is sent to Gnani, and the decisions and action items are written into Meetings for you to edit.">
+      <Switch checked={on ?? false} onCheckedChange={(v) => void setOn(v)} aria-label="Offer to record Google Meet" />
+    </Row>
+  );
+}
 
 export const DISCLOSURE = "When this is on, audio you record, import or speak is sent to Gnani to be turned into text, and the text of your meetings and commands is sent to Google Gemini or Groq to find decisions, answer questions and write recaps. Nothing is sent while it is off. Pluto keeps a list of everything it sends.";
 
@@ -197,6 +208,7 @@ export function VoiceSection() {
           <Switch checked={s.audio_tags} onCheckedChange={(v) => patch.mutate({ audio_tags: v })} aria-label="Expressive replies" />
         </Row>
         <AlwaysOnRow s={s} onChange={(on) => patch.mutate({ always_on_enabled: on })} />
+        <MeetOfferRow />
       </Section>
 
       <Section title="Sent to the cloud">

@@ -90,3 +90,17 @@ describe("Voice and hotkey settings (T-401)", () => {
     await waitFor(() => expect(screen.getByText("Ctrl+Shift+Space")).toBeTruthy());
   });
 });
+
+describe("Offer to record Google Meet (auto mode)", () => {
+  it("is off by default and can be switched on and off", async () => {
+    const user = userEvent.setup();
+    wrap();
+    const toggle = await screen.findByRole("switch", { name: "Offer to record Google Meet" });
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    expect(screen.getByText(/only record when everyone knows/i)).toBeTruthy();
+    await user.click(toggle);
+    await waitFor(() => expect(screen.getByRole("switch", { name: "Offer to record Google Meet" }).getAttribute("aria-checked")).toBe("true"));
+    await user.click(screen.getByRole("switch", { name: "Offer to record Google Meet" }));
+    await waitFor(() => expect(screen.getByRole("switch", { name: "Offer to record Google Meet" }).getAttribute("aria-checked")).toBe("false"));
+  });
+});

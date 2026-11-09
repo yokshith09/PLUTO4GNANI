@@ -60,7 +60,7 @@ impl MeetingShell {
     }
 
     /// The meeting-AI service: Gemini and Groq through the router, calls written to the privacy log.
-    fn ai(&self, core: &Core) -> Arc<MeetingAi> {
+    pub(crate) fn ai(&self, core: &Core) -> Arc<MeetingAi> {
         self.ai
             .get_or_init(|| {
                 let secrets: Arc<dyn SecretStore> = Arc::new(KeychainSecrets);
@@ -89,20 +89,20 @@ impl MeetingShell {
 
 /// Starts a recording: needs consent, creates the meeting, and opens the audio session the UI
 /// streams microphone frames into (`audio_push`) so they land in chunked WAV files (T-207).
-#[tauri::command]
-pub async fn meeting_rec_start(
-    title: String,
+/// Shared by the Record button and by auto mode (Google Meet).
+pub(crate) async fn begin_recording(
+    voice: &VoiceShell,
+    shell: &MeetingShell,
+    title: &str,
     participants: Vec<String>,
     live_captions: bool,
     consent: bool,
-    voice: State<'_, VoiceShell>,
-    shell: State<'_, MeetingShell>,
 ) -> VoiceResult<RecordingSession> {
     // Push-to-talk answers Busy while a meeting records; refused if Pluto is mid-turn.
     voice.runtime.try_recording_started()?;
     let rec = match shell
         .recorder
-        .start(&title, participants, live_captions, consent)
+        .start(title, participants, live_captions, consent)
         .await
     {
         Ok(rec) => rec,
@@ -123,6 +123,36 @@ pub async fn meeting_rec_start(
     Ok(session)
 }
 
+/// Ends the recording, saves the last chunk and queues the transcription job (T-201).
+pub(crate) async fn finish_recording(
+    voice: &VoiceShell,
+    jobs: &Arc<MeetingJobs>,
+    shell: &MeetingShell,
+    session_id: &str,
+) -> VoiceResult<RecordingSession> {
+    let rec = shell.get(session_id)?;
+    // Closing the audio session ends the sink, which closes the last chunk.
+    voice.router.close(session_id);
+    // Voice is released first, so a failure while saving can't leave push-to-talk stuck on Busy.
+    voice.runtime.recording_stopped();
+    let session = shell.recorder.stop(&rec).await?;
+    shell.lock().remove(session_id);
+    jobs.queue(&session.meeting_id).await?;
+    Ok(session)
+}
+
+#[tauri::command]
+pub async fn meeting_rec_start(
+    title: String,
+    participants: Vec<String>,
+    live_captions: bool,
+    consent: bool,
+    voice: State<'_, VoiceShell>,
+    shell: State<'_, MeetingShell>,
+) -> VoiceResult<RecordingSession> {
+    begin_recording(&voice, &shell, &title, participants, live_captions, consent).await
+}
+
 #[tauri::command]
 pub async fn meeting_rec_pause(
     session_id: String,
@@ -141,7 +171,6 @@ pub async fn meeting_rec_resume(
     Ok(shell.recorder.resume(&rec))
 }
 
-/// Ends the recording, saves the last chunk and queues the transcription job (T-201).
 #[tauri::command]
 pub async fn meeting_rec_stop(
     session_id: String,
@@ -149,15 +178,7 @@ pub async fn meeting_rec_stop(
     jobs: State<'_, Arc<MeetingJobs>>,
     shell: State<'_, MeetingShell>,
 ) -> VoiceResult<RecordingSession> {
-    let rec = shell.get(&session_id)?;
-    // Closing the audio session ends the sink, which closes the last chunk.
-    voice.router.close(&session_id);
-    // Voice is released first, so a failure while saving can't leave push-to-talk stuck on Busy.
-    voice.runtime.recording_stopped();
-    let session = shell.recorder.stop(&rec).await?;
-    shell.lock().remove(&session_id);
-    jobs.queue(&session.meeting_id).await?;
-    Ok(session)
+    finish_recording(&voice, &jobs, &shell, &session_id).await
 }
 
 // ---- import and transcription --------------------------------------------------------------

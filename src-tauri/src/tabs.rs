@@ -48,6 +48,12 @@ pub async fn pet_open_tabs(settings: State<'_, Arc<SettingsService>>) -> Result<
         .unwrap_or_default())
 }
 
+/// The tabs of the browser in front, read now, for auto mode (Google Meet). The caller has its own
+/// permission switch (`meetings.auto_offer`); nothing is stored. Empty when no browser is in front.
+pub(crate) fn read_front_tabs() -> Vec<OpenTab> {
+    os::list()
+}
+
 /// Close one tab. `false` if it couldn't be found or closed (it may have changed since the list
 /// was read) or the switches are off; never an error for that — the panel just re-reads the list.
 #[tauri::command]

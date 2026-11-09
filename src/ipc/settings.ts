@@ -43,6 +43,7 @@ export interface Settings {
   "voice.audio_tags": boolean;
   /** Always-on listening is opt-in. */
   "voice.always_on": boolean;
+  "meetings.auto_offer": boolean;
   "llm.gemini_model": string;
   "llm.groq_model": string;
 }

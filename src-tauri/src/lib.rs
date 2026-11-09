@@ -1,6 +1,7 @@
 //! Pluto desktop shell. Thin by design: windows, tray and OS integration live
 //! here; logic lives in `pluto-core` (ADR-002).
 
+mod auto_meeting;
 mod autostart;
 mod earlier_app;
 mod ipc;
@@ -288,6 +289,10 @@ pub fn run() {
             meeting_ai::meeting_rec_pause,
             meeting_ai::meeting_rec_resume,
             meeting_ai::meeting_rec_stop,
+            auto_meeting::auto_meeting_answer,
+            auto_meeting::auto_meeting_stop,
+            auto_meeting::auto_meeting_state,
+            auto_meeting::auto_meeting_capture_failed,
             meeting_ai::meeting_audio_pick,
             meeting_ai::meeting_import,
             meeting_ai::meeting_job_get,
@@ -401,6 +406,9 @@ pub fn run() {
             // Always-on listening starts with the app (when it was left on and the wake word is
             // taught), not only when a setting changes.
             app.state::<voice::VoiceShell>().refresh_wake();
+            // Google Meet auto mode: looks for a call only while it is switched on in Settings.
+            app.manage(auto_meeting::AutoMeetShell::new());
+            auto_meeting::start(app.handle().clone());
             app.manage(Core {
                 db: db.clone(),
                 bus: bus.clone(),

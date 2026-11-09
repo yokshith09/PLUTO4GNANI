@@ -11,6 +11,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { ipc, onEvent, onPetMenu, onPetPlaced, onPetSay, petAction, type TaskRow } from "@/ipc";
 import { cn } from "@/lib/utils";
 import { PetCard } from "./PetCard";
+import { AskCard, RecordChip, elapsedText, useAutoMeet } from "./MeetPrompt";
 import { glanceText } from "./glance";
 import { WARDROBE_KEY, useWorn } from "@/features/wardrobe/useWardrobe";
 import { enqueue, isAsleep, reactionForSay, type Reaction } from "./reactions";
@@ -378,13 +379,20 @@ export function PetApp() {
   );
   const bear = bearButton;
 
-  const extra = panel === "card"
+  // Google Meet auto mode: a question takes the panel until it is answered; while recording, a chip says so.
+  const meet = useAutoMeet(wake);
+  const asked = meet.ask;
+  const extra = asked
+    ? <AskCard ask={asked} width={CARD_W} onAnswer={(c) => meet.answer(asked, c)} />
+    : panel === "card"
     ? <PetCard className="shrink-0" style={{ width: CARD_W, height: CARD_H }} napping={napping} onNap={setNapping} />
     : panel === "bubble" && playing
       ? <Bubble text={bubbleText(playing)} anchor={anchor} />
       : panel === "timer" && focus.session
         ? <FocusChip width={size} label={focus.session.kind === "BREAK" ? "Break" : focus.session.label || "Focus"} left={clock(focus.remaining)} paused={focus.session.paused_at !== null} onPause={(p) => void focus.pause(p)} />
-        : null;
+        : meet.rec
+          ? <RecordChip width={CARD_W} elapsed={elapsedText(meet.elapsedMs)} onStop={meet.stop} />
+          : null;
 
   return (
     <div

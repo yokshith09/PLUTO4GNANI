@@ -386,3 +386,112 @@ async fn a_typed_meeting_has_no_job_and_a_sample_import_runs_the_whole_journey()
         "Imported meeting"
     );
 }
+
+// ---- auto mode (Google Meet): everything found is written into the meeting, no review ----------
+
+#[tokio::test]
+async fn auto_process_writes_decisions_actions_and_a_summary_without_creating_tasks() {
+    let r = rig().await;
+    r.llm.push_json(json!({"items": [
+        {"kind":"decision","body":"Start with the annual plan.","segment_id":"s1","quote":"annual plan se start karenge"},
+        {"kind":"action_item","body":"Finish the copy.","owner":"Ravi","due_phrase":"Thursday","segment_id":"s2","quote":"copy Thursday tak complete kar dunga"},
+        {"kind":"risk","body":"The copy may slip.","segment_id":"s2","quote":"copy Thursday tak complete kar dunga"},
+    ]}));
+    r.llm.push_json(
+        json!({"recap": "We start with the annual plan. Ravi finishes the copy by Thursday."}),
+    );
+
+    let out = r.ai.auto_process(&r.meeting_id).await.unwrap();
+    assert_eq!(
+        (out.decisions, out.action_items, out.other, out.summary),
+        (1, 1, 1, true)
+    );
+
+    let m = meetings::get(&r.db, &r.meeting_id).await.unwrap();
+    assert_eq!(m.decisions.len(), 1);
+    assert_eq!(m.action_items.len(), 1);
+    assert_eq!(m.action_items[0].assignee.as_deref(), Some("Ravi"));
+    assert!(m.notes.starts_with("Summary\n"), "{}", m.notes);
+    assert!(m.notes.contains("annual plan"));
+    // Nothing is pushed into Tasks: the person decides later.
+    assert_eq!(m.action_items[0].task_id, None);
+    let all = pluto_core::tasks::query(
+        &r.db,
+        &*r.clock,
+        pluto_core::tasks::TaskView::All,
+        pluto_core::tasks::TaskFilters::default(),
+    )
+    .await
+    .unwrap();
+    assert!(all.is_empty(), "no tasks were created");
+}
+
+#[tokio::test]
+async fn auto_process_keeps_existing_notes_and_survives_a_busy_summary_service() {
+    let r = rig().await;
+    // Notes the person already wrote stay, and the summary goes under them.
+    let m = meetings::get(&r.db, &r.meeting_id).await.unwrap();
+    meetings::update(
+        &r.db,
+        &*r.clock,
+        &r.meeting_id,
+        MeetingInput {
+            title: m.title,
+            starts_at: Some(m.starts_at),
+            notes: "My own notes".into(),
+            follow_up_date: None,
+            participants: m.participants,
+            decisions: vec![],
+            action_items: vec![],
+        },
+    )
+    .await
+    .unwrap();
+    r.llm.push_json(json!({"items": [
+        {"kind":"decision","body":"Start with the annual plan.","segment_id":"s1","quote":"annual plan se start karenge"},
+    ]}));
+    r.llm
+        .push_json(json!({"recap": "We start with the annual plan."}));
+    let out = r.ai.auto_process(&r.meeting_id).await.unwrap();
+    assert!(out.summary);
+    let m = meetings::get(&r.db, &r.meeting_id).await.unwrap();
+    assert!(
+        m.notes.starts_with("My own notes\n\nSummary\n"),
+        "{}",
+        m.notes
+    );
+
+    // The summary service failing does not lose the items.
+    let r2 = rig().await;
+    r2.llm.push_json(json!({"items": [
+        {"kind":"decision","body":"Start with the annual plan.","segment_id":"s1","quote":"annual plan se start karenge"},
+    ]}));
+    // No second reply is queued, so the recap call fails.
+    let out = r2.ai.auto_process(&r2.meeting_id).await.unwrap();
+    assert_eq!((out.decisions, out.summary), (1, false));
+    let m = meetings::get(&r2.db, &r2.meeting_id).await.unwrap();
+    assert_eq!(m.decisions.len(), 1);
+    assert!(m.notes.is_empty());
+}
+
+#[tokio::test]
+async fn auto_process_with_nothing_found_leaves_the_meeting_alone() {
+    let r = rig().await;
+    r.llm.push_json(json!({"items": []}));
+    let out = r.ai.auto_process(&r.meeting_id).await.unwrap();
+    assert_eq!(out, pluto_intel::meeting::service::AutoSummary::default());
+    let m = meetings::get(&r.db, &r.meeting_id).await.unwrap();
+    assert!(m.decisions.is_empty() && m.action_items.is_empty() && m.notes.is_empty());
+    // And a meeting with no transcript is an error, not an empty success.
+    let blank = meetings::create(
+        &r.db,
+        &*r.clock,
+        MeetingInput {
+            title: "Blank".into(),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert!(r.ai.auto_process(&blank.id).await.is_err());
+}

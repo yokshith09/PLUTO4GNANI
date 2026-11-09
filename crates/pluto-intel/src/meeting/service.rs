@@ -453,6 +453,99 @@ impl MeetingAi {
     }
 }
 
+/// What auto mode wrote into a meeting.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct AutoSummary {
+    pub decisions: usize,
+    pub action_items: usize,
+    /// Open questions and risks.
+    pub other: usize,
+    /// A short summary was added to the meeting's notes.
+    pub summary: bool,
+}
+
+impl MeetingAi {
+    /// Auto mode, after a recording is transcribed: find the decisions, action items, questions and
+    /// risks, write all of them into the meeting with no review step, and add a short summary to
+    /// its notes. Tasks are *not* created: the action items sit in the meeting for the person to
+    /// give an owner, change or delete later, and to turn into tasks when they want. A meeting with
+    /// nothing found is left as it is.
+    pub async fn auto_process(&self, meeting_id: &str) -> VoiceResult<AutoSummary> {
+        use pluto_contracts::meeting::{ApplyExtraction, EditedItem, Relevance};
+
+        let found = self.extract(meeting_id).await?;
+        let accepted: Vec<EditedItem> = found
+            .items
+            .iter()
+            .map(|i| EditedItem {
+                item_id: i.id.clone(),
+                body: i.body.clone(),
+                owner: i.owner.clone(),
+                due_date: i.due_date.clone(),
+                priority: i.priority,
+                create_task: false,
+            })
+            .collect();
+        let count = |k: Relevance| found.items.iter().filter(|i| i.kind == k).count();
+        let mut summary = AutoSummary {
+            decisions: count(Relevance::Decision),
+            action_items: count(Relevance::ActionItem),
+            other: count(Relevance::Question) + count(Relevance::Risk),
+            summary: false,
+        };
+        if accepted.is_empty() {
+            return Ok(summary);
+        }
+        let outcome = self
+            .apply(&ApplyExtraction {
+                meeting_id: meeting_id.to_owned(),
+                accepted,
+            })
+            .await?;
+        // The summary is a bonus: if the language service is busy the items are already saved.
+        if let Ok(text) = self.recap_text(meeting_id, "en-IN").await {
+            let m = outcome.meeting;
+            let notes = if m.notes.trim().is_empty() {
+                format!("Summary\n{text}")
+            } else {
+                format!("{}\n\nSummary\n{text}", m.notes.trim_end())
+            };
+            let saved = meetings::update(
+                &self.db,
+                &*self.clock,
+                meeting_id,
+                MeetingInput {
+                    title: m.title,
+                    starts_at: Some(m.starts_at),
+                    notes,
+                    follow_up_date: m.follow_up_date,
+                    participants: m.participants,
+                    decisions: m
+                        .decisions
+                        .into_iter()
+                        .map(|d| meetings::DecisionInput {
+                            id: Some(d.id),
+                            body: d.body,
+                        })
+                        .collect(),
+                    action_items: m
+                        .action_items
+                        .into_iter()
+                        .map(|a| meetings::ActionItemInput {
+                            id: Some(a.id),
+                            body: a.body,
+                            assignee: a.assignee,
+                        })
+                        .collect(),
+                },
+            )
+            .await;
+            summary.summary = saved.is_ok();
+        }
+        Ok(summary)
+    }
+}
+
 #[async_trait::async_trait]
 impl pluto_contracts::meeting::MeetingKnowledge for MeetingAi {
     async fn recall(

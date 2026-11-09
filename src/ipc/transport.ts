@@ -170,3 +170,43 @@ export function onPetPlaced(cb: () => void): () => void {
   window.addEventListener("pluto-pet-placed", handler);
   return () => window.removeEventListener("pluto-pet-placed", handler);
 }
+
+// ---- Google Meet auto mode: messages between the shell, the pet and the page -------------------
+
+/** A question on the pet with buttons (`options`; the first is the main one). */
+export interface PetAsk { id: number; title: string; detail: string; options: string[] }
+/** The recording auto mode is running. */
+export interface AutoRec { session_id: string; meeting_id: string; started_at: number }
+
+/** One Tauri event, or a window event of the same name outside the app (browser preview, tests). */
+function listenBoth<T>(tauriName: string, windowName: string, cb: (payload: T) => void): () => void {
+  if (isTauri()) {
+    const pending = listen<T>(tauriName, (e) => cb(e.payload));
+    return () => void pending.then((off) => off());
+  }
+  const handler = (e: Event) => cb((e as CustomEvent<T>).detail);
+  window.addEventListener(windowName, handler);
+  return () => window.removeEventListener(windowName, handler);
+}
+
+/** A question for the person (`ask`), and the shell taking it back (`done`, the question's id). */
+export function onPetAsk(ask: (a: PetAsk) => void, done: (id: number) => void): () => void {
+  const a = listenBoth<PetAsk>("pet://ask", "pluto-pet-ask", ask);
+  const d = listenBoth<number>("pet://ask-done", "pluto-pet-ask-done", done);
+  return () => { a(); d(); };
+}
+
+/** The recording started or ended (`null`). */
+export function onAutoRecording(cb: (rec: AutoRec | null) => void): () => void {
+  return listenBoth<AutoRec | null>("pet://recording", "pluto-pet-recording", cb);
+}
+
+/** The page should open (`on`) or close the microphone for a recording session. */
+export function onAutoCapture(cb: (m: { session_id: string; on: boolean }) => void): () => void {
+  return listenBoth<{ session_id: string; on: boolean }>("meeting://auto-capture", "pluto-auto-capture", cb);
+}
+
+/** The shell asks the page to show Settings (`voice` = the Voice & privacy tab). */
+export function onOpenSettings(cb: (tab: "general" | "voice") => void): () => void {
+  return listenBoth<"general" | "voice">("app://open-settings", "pluto-open-settings", cb);
+}

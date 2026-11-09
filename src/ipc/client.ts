@@ -112,6 +112,12 @@ export const ipc = {
    * and whether a drag is on. Clicks go through the rest of the window to the app underneath.
    */
   petSolid: (rects: number[][], holding: boolean) => call<unknown>("pet_solid", { rects, holding }),
+  /** A button on a question the pet is asking was pressed. */
+  autoMeetingAnswer: (id: number, choice: string) => call<unknown>("auto_meeting_answer", { id, choice }),
+  /** The Stop button on the pet while a Google Meet call is being recorded. */
+  autoMeetingStop: () => call<unknown>("auto_meeting_stop"),
+  autoMeetingState: () => call<{ session_id: string; meeting_id: string; started_at: number } | null>("auto_meeting_state"),
+  autoMeetingCaptureFailed: (message: string) => call<unknown>("auto_meeting_capture_failed", { message }),
   petClick: () => call<unknown>("pet_click"),
   /** Hover-card buttons: open the dashboard and start a new note or task (FR-111). */
   petCommand: (what: "new-note" | "new-task" | "focus" | "tasks") => call<unknown>("pet_command", { what }),

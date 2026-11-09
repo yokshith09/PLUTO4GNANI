@@ -166,7 +166,7 @@ export function createMock() {
     "tracking.apps": true, "tracking.exclude_apps": [], "tracking.sites": false, "tracking.safari": false,
     "advanced.log_level": "info", "advanced.demo_pages_only": false,
     "voice.cloud_enabled": false, "voice.languages": [], "voice.stt_format": "codemix", "voice.tts_voice": "Arya", "voice.tts_model": "timbre-v3",
-    "voice.audio_tags": true, "voice.always_on": false, "llm.gemini_model": "gemini-2.5-flash", "llm.groq_model": "openai/gpt-oss-120b",
+    "voice.audio_tags": true, "voice.always_on": false, "meetings.auto_offer": false, "llm.gemini_model": "gemini-2.5-flash", "llm.groq_model": "openai/gpt-oss-120b",
   });
   const settings = defaultSettings();
 
@@ -610,6 +610,10 @@ export function createMock() {
       return back < 0 || back > 20 ? null : sampleLog(String(a.date), back);
     },
     pet_solid: () => null,
+    auto_meeting_answer: () => null,
+    auto_meeting_stop: () => null,
+    auto_meeting_state: () => null,
+    auto_meeting_capture_failed: () => null,
     pet_hover: (a) => (a.expanded ? { pet: "right", card: "above" } : null),
     pet_click: () => null,
     pet_command: () => null,

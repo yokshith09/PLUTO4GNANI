@@ -11,13 +11,14 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { useBin, useBusSync, useLabels, useNoteActions, useNotes, useSettings } from "@/hooks/usePluto";
 import { useAgenda } from "@/features/overview/TodayAgenda";
 import { useTheme } from "@/hooks/useTheme";
-import { ipc, onCommand, type NoteSort } from "@/ipc";
+import { ipc, onCommand, onOpenSettings, type NoteSort } from "@/ipc";
 import { BinPage } from "@/features/bin/BinPage";
 import { CharacterPage } from "@/features/character/CharacterPage";
 import { NoteEditor } from "@/features/notes/NoteEditor";
 import { NotesPage } from "@/features/notes/NotesPage";
 import type { NotesLayout } from "@/features/notes/NotesBoard";
 import { SettingsPage, type SettingsTab } from "@/features/settings/SettingsPage";
+import { AutoCapture } from "@/features/meetings/AutoCapture";
 import { Sidebar, type Page } from "@/features/shell/Sidebar";
 import { TasksPage } from "@/features/tasks/TasksPage";
 import { TimePage } from "@/features/time/TimePage";
@@ -113,6 +114,8 @@ function Screen() {
   // A due reminder shows above the pet (with Done) and as a system notification; nothing pops up
   // inside the dashboard (owner 2026-10-23).
 
+  // From the shell: a question on the pet asked to open Settings (for a key or Cloud voice).
+  useEffect(() => onOpenSettings((tab) => { setSettingsTab(tab); setPage("settings"); }), []);
   // From the shell: global shortcuts and the pet's menu.
   useEffect(() => onCommand((command) => {
     if (command === "new-note") void newNote();
@@ -194,6 +197,7 @@ function Screen() {
             {page === "time" && <TimePage />}
           </div>
         </main>
+        <AutoCapture />
         <VoiceBar onOpenSettings={() => { setSettingsTab("voice"); setPage("settings"); }} />
       </div>
       <NoteEditor noteId={editing} onClose={() => setEditing(null)} />

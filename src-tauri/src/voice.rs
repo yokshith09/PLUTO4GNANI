@@ -171,6 +171,8 @@ struct AppJobEvents(AppHandle);
 impl JobEvents for AppJobEvents {
     fn job(&self, job: &TranscriptionJob) {
         emit(&self.0, events::MEETING_JOB, job);
+        // A call recorded by auto mode is written into its meeting once it is transcribed.
+        crate::auto_meeting::job_update(&self.0, job);
     }
 }
 
@@ -470,6 +472,19 @@ impl VoiceShell {
             Some((_, status)) => status.clone(),
             None => self.runtime.status(),
         }
+    }
+
+    /// Is Cloud voice on, and is there a Gnani key? What recording a call needs.
+    pub(crate) fn recording_readiness(&self) -> (bool, bool) {
+        let s = self.settings();
+        (s.cloud_voice_enabled, s.has_gnani_key)
+    }
+
+    /// Turns Cloud voice on (the person agreed in a question on the pet) and saves it.
+    pub(crate) fn enable_cloud_voice(&self) {
+        lock_settings(&self.settings).cloud_voice_enabled = true;
+        self.refresh_enabled();
+        save_settings(&self.data_dir, &lock_settings(&self.settings));
     }
 
     /// Where fixed spoken replies are saved on this computer.
