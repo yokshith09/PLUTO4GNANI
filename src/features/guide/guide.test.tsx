@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ipc } from "@/ipc";
 import { BANK, QUIZ_ORDER, parseLearn, questionsFor } from "./learn";
 import { LearnCard } from "./LearnCard";
-import { ROLES, parseRole, parseStudentPack, studentPackOn } from "./roles";
+import { ROLES, parseRole } from "./roles";
 import { Tour } from "./Tour";
 import { STEPS, TOUR_ORDER, stepsFor } from "./tourSteps";
 import { YourProfile } from "./YourProfile";
@@ -43,12 +43,6 @@ describe("what each role is shown (data)", () => {
     }
     // The right answer is not always the first button.
     expect(new Set(Object.values(BANK).map((q) => q.answer)).size).toBeGreaterThan(1);
-  });
-  it("only the student pack differs by role, and a saved choice overrides the role", () => {
-    expect(ROLES.filter((r) => studentPackOn(r, null))).toEqual(["student", "student_dev"]);
-    expect(studentPackOn("general", true)).toBe(true);
-    expect(studentPackOn("student", false)).toBe(false);
-    expect(parseStudentPack("yes")).toBeNull();
   });
   it("saved quiz answers drop anything unknown", () => {
     expect(parseLearn({ answers: { focus: 1, nope: 2, pet: 7 }, dismissed: true })).toEqual({ answers: { focus: 1 }, dismissed: true });
@@ -159,7 +153,7 @@ describe("the Learn Pluto card", () => {
 });
 
 describe("Settings → Your profile", () => {
-  it("changes the role, switches the student pack, and replays the tour and the quiz", async () => {
+  it("changes the role and replays the tour and the quiz", async () => {
     const store: Record<string, unknown> = { "ui.role": "general", "ui.tour": "done", "ui.learn": { answers: { pet: 0 }, dismissed: true } };
     vi.spyOn(ipc, "prefsGet").mockImplementation(async (k: string) => (store[k] ?? null) as never);
     vi.spyOn(ipc, "prefsSet").mockImplementation(async (k: string, v: unknown) => { store[k] = v; return null as never; });
@@ -168,10 +162,7 @@ describe("Settings → Your profile", () => {
     expect(within(group).getByRole("radio", { name: /Something else/ }).getAttribute("aria-checked")).toBe("true");
     fireEvent.click(within(group).getByRole("radio", { name: /^Developer/ }));
     await waitFor(() => expect(store["ui.role"]).toBe("developer"));
-    const pack = screen.getByRole("checkbox", { name: /Student pack/ }) as HTMLInputElement;
-    expect(pack.checked).toBe(false);
-    fireEvent.click(pack);
-    await waitFor(() => expect(store["ui.studentPack"]).toBe(true));
+    expect(screen.queryByRole("checkbox", { name: /Student pack/ })).toBeNull();
     fireEvent.click(within(group).getByRole("radio", { name: /^Student Tasks/ }));
     await waitFor(() => expect(store["ui.role"]).toBe("student"));
     fireEvent.click(screen.getByRole("button", { name: "Replay the tour" }));
@@ -182,7 +173,7 @@ describe("Settings → Your profile", () => {
 });
 
 describe("Settings → Guide", () => {
-  it("has a short answer per feature, covers tracking and privacy, and shows the student entries only with the pack", async () => {
+  it("has a short answer per feature and covers tracking and privacy", async () => {
     expect(new Set(GUIDE.map((g) => g.id)).size).toBe(GUIDE.length);
     expect(GUIDE.map((g) => g.id)).toEqual(expect.arrayContaining(["tracking", "privacy", "data"]));
     expect(CREDIT).toBe("Built by QUORBIT TECHNOLOGIES");
@@ -190,11 +181,8 @@ describe("Settings → Guide", () => {
     render(wrap(<GuideSection />));
     expect(await screen.findByText("Add a task")).toBeTruthy();
     expect(screen.getByText("App and website time")).toBeTruthy();
+    // The study pack is gone, so its guide entries are too.
     expect(screen.queryByText("Courses and exams")).toBeNull();
-    cleanup();
-    vi.spyOn(ipc, "prefsGet").mockImplementation(async (k: string) => (k === "ui.role" ? "student" : null) as never);
-    render(wrap(<GuideSection />));
-    expect(await screen.findByText("Courses and exams")).toBeTruthy();
-    expect(screen.getByText("Weekly report")).toBeTruthy();
+    expect(screen.queryByText("Weekly report")).toBeNull();
   });
 });

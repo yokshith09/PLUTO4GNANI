@@ -80,7 +80,7 @@ export function SettingsPage() {
       <DataSection />
       <Section title="Advanced">
         {/* Log rows removed (FR-47, owner V2-07): logging stays on for bug reports, it is just not shown. */}
-        <Row label="Show only the main pages" hint="Hides Time, Study, Character, MCP and Archive. Nothing is deleted; turn it off to bring them back.">
+        <Row label="Show only the main pages" hint="Hides Time, Character, MCP and Archive. Nothing is deleted; turn it off to bring them back.">
           <Switch checked={demoOnly ?? false} onCheckedChange={(v) => void setDemoOnly(v)} aria-label="Show only the main pages" />
         </Row>
         <Row label="Reset settings" hint="Every setting on this page back to its default. Your notes, tasks, meetings and layout stay.">

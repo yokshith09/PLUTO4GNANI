@@ -1,12 +1,11 @@
 import {
-  Archive, CheckSquare, Mic, Clock3, FolderKanban, GraduationCap, LayoutDashboard, Moon, NotebookPen, PawPrint, Plug, Settings, Sun, Trash2, Users,
+  Archive, CheckSquare, Mic, Clock3, FolderKanban, LayoutDashboard, Moon, NotebookPen, PawPrint, Plug, Settings, Sun, Trash2, Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useStudentPack } from "@/features/student/useStudent";
 import { Bear } from "./Bear";
 import { isPageVisible } from "./pages";
 
-export type Page = "today" | "tasks" | "time" | "notes" | "projects" | "study" | "meetings" | "voice" | "archive" | "bin" | "character" | "mcp" | "settings";
+export type Page = "today" | "tasks" | "time" | "notes" | "projects" | "meetings" | "voice" | "archive" | "bin" | "character" | "mcp" | "settings";
 
 interface Props {
   page: Page;
@@ -57,7 +56,6 @@ function Group({ title, children }: { title?: string; children: React.ReactNode 
 export function Sidebar({ page, counts, onPage, isDark, onToggleTheme, demoOnly = false }: Props) {
   const go = (p: Page) => () => onPage(p);
   const show = (p: Page) => isPageVisible(p, demoOnly);
-  const study = useStudentPack();
   return (
     <aside className="flex w-14 shrink-0 flex-col border-r bg-[var(--sidebar)] px-2 pb-3 pt-3.5 lg:w-56 lg:px-3">
       <div className="mb-3 flex items-center justify-center gap-2.5 lg:justify-start lg:px-1.5">
@@ -74,7 +72,6 @@ export function Sidebar({ page, counts, onPage, isDark, onToggleTheme, demoOnly 
         {show("time") && <Item active={page === "time"} onClick={go("time")} tour="nav-time" icon={<Clock3 />}>Time</Item>}
         <Item active={page === "notes"} onClick={go("notes")} tour="nav-notes" icon={<NotebookPen />} count={counts.notes}>Notes</Item>
         <Item active={page === "projects"} onClick={go("projects")} tour="nav-projects" icon={<FolderKanban />}>Projects</Item>
-        {show("study") && (study || page === "study") && <Item active={page === "study"} onClick={go("study")} icon={<GraduationCap />}>Study</Item>}
         <Item active={page === "meetings"} onClick={go("meetings")} icon={<Users />}>Meetings</Item>
         <Item active={page === "voice"} onClick={go("voice")} icon={<Mic />}>Voice</Item>
         {show("character") && <Item active={page === "character"} onClick={go("character")} tour="nav-character" icon={<PawPrint />}>Character</Item>}

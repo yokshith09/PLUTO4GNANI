@@ -19,14 +19,3 @@ export const ROLE_INFO: Record<Role, { label: string; blurb: string }> = {
 export function parseRole(raw: unknown): Role {
   return typeof raw === "string" && (ROLES as readonly string[]).includes(raw) ? (raw as Role) : "general";
 }
-
-/**
- * The one thing that differs by role (owner 2026-10-28): the student pack (course label, exam
- * countdown, weekly report). On for Student and Student who codes, off for the rest; everything
- * else is on for everyone. `ui.studentPack` (true/false) overrides the role default.
- */
-export const STUDENT_PACK_PREF = "ui.studentPack";
-export const STUDENT_PACK_FEATURES = ["Course label on tasks and notes", "Exam countdown on Today", "Weekly report"] as const;
-export const studentPackDefault = (role: Role): boolean => role === "student" || role === "student_dev";
-export const parseStudentPack = (raw: unknown): boolean | null => (typeof raw === "boolean" ? raw : null);
-export const studentPackOn = (role: Role, override: boolean | null | undefined): boolean => override ?? studentPackDefault(role);

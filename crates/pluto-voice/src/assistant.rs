@@ -115,7 +115,6 @@ fn page_title(page: &str) -> &'static str {
         "time" => "Time",
         "notes" => "Notes",
         "projects" => "Projects",
-        "study" => "Study",
         "meetings" => "Meetings",
         "voice" => "Voice",
         "archive" => "Archive",

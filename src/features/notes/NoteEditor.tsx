@@ -16,7 +16,6 @@ import { TaskDetail } from "@/features/tasks/TaskDetail";
 import { STATUS_LABEL } from "@/lib/taskStatus";
 import { COLOR_NAMES } from "./colors";
 import { MarkdownView } from "./MarkdownView";
-import { CoursePicker } from "@/features/student/CoursePicker";
 import { NOTE_FONTS, continueList, fontClass, lines, toggleCheck, wrap, type Edit, type LineKind, type NoteFont } from "./format";
 
 const FONT_KEY = ["prefs", "ui.note_font"] as const;
@@ -206,8 +205,7 @@ function EditorBody({ note, onClose, fullWindow }: { note: Note; onClose: () => 
           className="h-7 rounded-md border border-foreground/15 bg-transparent px-1.5 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring">
           {NOTE_FONTS.map((f) => <option key={f.value} value={f.value} className="bg-popover">{f.label}</option>)}
         </select>
-        <div className="ml-auto"><CoursePicker kind="note" id={note.id} compact /></div>
-        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <label className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
           <FolderKanban className="size-3.5" />
           <input value={project} onChange={(e) => setProject(e.target.value)} onBlur={saveProject} onKeyDown={(e) => e.key === "Enter" && (e.currentTarget as HTMLInputElement).blur()}
             list="note-projects" maxLength={100} placeholder="No project" aria-label="Project"
