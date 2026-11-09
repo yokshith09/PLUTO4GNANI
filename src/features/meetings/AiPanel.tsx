@@ -1,33 +1,32 @@
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { AudioLines, Loader2, RotateCcw, Users } from "lucide-react";
+import { Loader2, RotateCcw, Search, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { aiKeys, useMeetingJob, useTranscript } from "@/hooks/useMeetingAi";
 import { meetingAi } from "@/ipc/meetingAi";
 import { voiceErrorMessage } from "@/ipc/voiceClient";
 import type { AiStatus, SpeakerMapping, TranscriptSegment } from "@/ipc/generated";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
-import { ReviewPanel } from "./ReviewPanel";
+import { Marked } from "./Marked";
 import { AI_STATUS_LABEL, aiStatusFor, jobStep, speakersOf, timeLabel } from "./aiStatus";
-
-type Tab = "transcript" | "speakers" | "review";
 
 export function StatusChip({ status }: { status: AiStatus }) {
   const variant = status === "failed" ? "destructive" : status === "done" ? "success" : status === "needs_speakers" || status === "needs_review" ? "primary" : "default";
   return <Badge variant={variant}>{status === "transcribing" && <Loader2 className="size-3 animate-spin" />}{AI_STATUS_LABEL[status]}</Badge>;
 }
 
-function Transcript({ segments, speakerName, highlight }: { segments: TranscriptSegment[]; speakerName: (s: TranscriptSegment) => string; highlight: string | null }) {
+function Transcript({ segments, speakerName, highlight, query }: { segments: TranscriptSegment[]; speakerName: (s: TranscriptSegment) => string; highlight: string | null; query: string }) {
   return (
-    <ol aria-label="Transcript" className="max-h-96 divide-y overflow-y-auto rounded-lg border bg-card">
+    <ol aria-label="Transcript" className="max-h-[32rem] divide-y overflow-y-auto rounded-lg border bg-card">
       {segments.map((s) => (
         <li key={s.id} id={`seg-${s.id}`} aria-current={s.id === highlight ? "true" : undefined} className={cn("flex gap-3 px-3 py-2 text-[13px]", s.id === highlight && "bg-primary/10")}>
           <span className="w-10 shrink-0 pt-0.5 text-right text-[11px] tabular-nums text-muted-foreground">{timeLabel(s.start_ms)}</span>
           <span className="min-w-0 flex-1">
             <span className="mr-2 font-medium">{speakerName(s)}</span>
-            <span>{s.text}</span>
+            <span><Marked text={s.text} query={query} /></span>
           </span>
           {s.language && <span className="shrink-0 pt-0.5 text-[11px] text-muted-foreground">{s.language}</span>}
         </li>
@@ -80,19 +79,30 @@ function Speakers({ meetingId, segments, participants }: { meetingId: string; se
   );
 }
 
+/** Whether a search word matches the start of a word in `text`. */
+function matches(text: string, words: string[]) {
+  const tokens = text.toLowerCase().split(/[^\p{L}\p{N}]+/u);
+  return words.every((w) => tokens.some((t) => t.startsWith(w)));
+}
+
 /**
- * Where a meeting's audio stands (T-202): status chip, progress while transcribing, Retry on failure,
- * then the Transcript and Speakers tabs. Nothing shows for a meeting that was typed by hand.
+ * The Transcript tab (T-202): where the audio stands (status, progress, Retry on failure), then the
+ * transcript with a search box that narrows it to the lines you want, and the speakers behind a
+ * button. Nothing shows for a meeting that was typed by hand.
  */
-export function AiPanel({ meetingId, participants }: { meetingId: string; participants: string[] }) {
+export function AiPanel({ meetingId, participants, highlight = null }: { meetingId: string; participants: string[]; highlight?: string | null }) {
   const qc = useQueryClient();
   const { data: job } = useMeetingJob(meetingId);
   const ready = job?.status === "completed" || job?.status === "partial_failure";
   const { data: segments } = useTranscript(meetingId, ready);
-  const [tab, setTab] = useState<Tab>("transcript");
-  const [highlight, setHighlight] = useState<string | null>(null);
+  const [find, setFind] = useState("");
+  const [showSpeakers, setShowSpeakers] = useState(false);
   const status = aiStatusFor(job, segments);
-  if (!status || !job) return null;
+  // Coming from a search result: bring that line into view.
+  useEffect(() => {
+    if (highlight && segments) setTimeout(() => document.getElementById(`seg-${highlight}`)?.scrollIntoView?.({ block: "center" }), 0);
+  }, [highlight, segments]);
+  if (!status || !job) return <p className="rounded-xl border bg-card px-4 py-10 text-center text-[13px] text-muted-foreground">This meeting has no recording. Record it, or import audio, to get a transcript.</p>;
   const step = jobStep(job);
 
   const retry = async () => {
@@ -104,12 +114,12 @@ export function AiPanel({ meetingId, participants }: { meetingId: string; partic
     }
   };
   const name = (s: TranscriptSegment) => s.participant ?? (s.speaker_label === null ? "Unknown" : `Speaker ${s.speaker_label}`);
+  const words = find.toLowerCase().split(/\s+/).map((w) => w.replace(/[^\p{L}\p{N}]/gu, "")).filter(Boolean);
+  const shown = segments && words.length ? segments.filter((s) => matches(s.text, words)) : segments;
 
   return (
-    <section aria-label="Audio and transcript" className="mt-6 space-y-3 rounded-xl border bg-card/50 p-4">
+    <section aria-label="Audio and transcript" className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <AudioLines className="size-4 text-muted-foreground" />
-        <h2 className="text-sm font-semibold">Audio and transcript</h2>
         <StatusChip status={status} />
         {job.status === "partial_failure" && <Badge variant="destructive">Some parts failed</Badge>}
         {(status === "failed" || job.status === "partial_failure") && (
@@ -125,26 +135,18 @@ export function AiPanel({ meetingId, participants }: { meetingId: string; partic
       {job.error && <p role="alert" className="text-[13px] text-destructive">{job.error}</p>}
       {ready && segments && (
         <>
-          <div role="tablist" aria-label="Transcript views" className="flex gap-1">
-            {(["transcript", "speakers", "review"] as const).map((t) => (
-              <button
-                key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => setTab(t)}
-                className={cn("flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[13px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring", tab === t ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/60")}
-              >
-                {t === "speakers" && <Users className="size-3.5" />}{t === "transcript" ? "Transcript" : t === "speakers" ? "Speakers" : "Review"}
-              </button>
-            ))}
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input aria-label="Search this transcript" value={find} onChange={(e) => setFind(e.target.value)} placeholder="Search this transcript" className="pl-9" />
+            </div>
+            <Button variant={showSpeakers ? "secondary" : "outline"} aria-expanded={showSpeakers} onClick={() => setShowSpeakers((v) => !v)}><Users />Name speakers</Button>
           </div>
-          <div role="tabpanel">
-            {tab === "transcript" && <Transcript segments={segments} speakerName={name} highlight={highlight} />}
-            {tab === "speakers" && <Speakers meetingId={meetingId} segments={segments} participants={participants} />}
-            {tab === "review" && (
-              <ReviewPanel
-                meetingId={meetingId} participants={participants}
-                onShowSegment={(id) => { setHighlight(id); setTab("transcript"); setTimeout(() => document.getElementById(`seg-${id}`)?.scrollIntoView?.({ block: "center" }), 0); }}
-              />
-            )}
-          </div>
+          {showSpeakers && <Speakers meetingId={meetingId} segments={segments} participants={participants} />}
+          {words.length > 0 && <p className="text-[12px] text-muted-foreground" role="status">{shown?.length ?? 0} of {segments.length} lines</p>}
+          {shown && shown.length > 0
+            ? <Transcript segments={shown} speakerName={name} highlight={highlight} query={find} />
+            : <p className="rounded-lg border bg-card px-4 py-8 text-center text-[13px] text-muted-foreground">No line has “{find}” in it.</p>}
         </>
       )}
     </section>

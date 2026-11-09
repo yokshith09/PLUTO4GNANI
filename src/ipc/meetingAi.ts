@@ -7,6 +7,17 @@ import type {
 } from "./generated";
 import type { Meeting } from "./types";
 
+/** One line of a transcript that matches a search, with the meeting it is in. */
+export interface TranscriptHit {
+  meeting_id: string;
+  meeting_title: string;
+  meeting_starts_at: number;
+  segment_id: string;
+  start_ms: number;
+  speaker: string | null;
+  text: string;
+}
+
 export const meetingAi = {
   recStart: (title: string, participants: string[], liveCaptions: boolean, consent: boolean, systemAudio = false) =>
     call<RecordingSession>("meeting_rec_start", { title, participants, liveCaptions, consent, systemAudio }),
@@ -21,6 +32,8 @@ export const meetingAi = {
   jobGet: (meetingId: string) => call<TranscriptionJob | null>("meeting_job_get", { meetingId }),
   jobRetry: (meetingId: string) => call<TranscriptionJob>("meeting_job_retry", { meetingId }),
   transcriptGet: (meetingId: string) => call<TranscriptSegment[]>("meeting_transcript_get", { meetingId }),
+  /** Search as you type across every transcript ("budg" finds "budget"). Best matches first. */
+  transcriptSearch: (query: string) => call<TranscriptHit[]>("meeting_transcript_search", { query }),
   speakersSet: (meetingId: string, mapping: SpeakerMapping[]) =>
     call<null>("meeting_speakers_set", { meetingId, mapping }),
   extract: (meetingId: string) => call<ExtractionResult>("meeting_extract", { meetingId }),

@@ -305,6 +305,7 @@ pub fn run() {
             meeting_ai::meeting_job_get,
             meeting_ai::meeting_job_retry,
             meeting_ai::meeting_transcript_get,
+            meeting_ai::meeting_transcript_search,
             meeting_ai::meeting_speakers_set,
             meeting_ai::meeting_extract,
             meeting_ai::meeting_extraction_apply,

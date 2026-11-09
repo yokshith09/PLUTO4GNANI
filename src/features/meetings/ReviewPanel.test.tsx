@@ -51,17 +51,18 @@ describe("Review and apply (T-204), against the in-memory shell", () => {
     const user = userEvent.setup();
     render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><MeetingsPage /></QueryClientProvider>);
 
-    await user.click(await screen.findByRole("button", { name: /Import recording/ }));
+    await user.click(await screen.findByRole("button", { name: "More" }));
+    await user.click(await screen.findByRole("menuitem", { name: /Import a recording/ }));
     const dialog = await screen.findByRole("dialog");
     await user.click(within(dialog).getByRole("button", { name: /Choose audio file/ }));
     await within(dialog).findByText("launch-sync.wav");
     await user.type(within(dialog).getByLabelText(/Participants/), "Asha, Ravi, Meena");
     await user.click(within(dialog).getByRole("button", { name: /Start transcription/ }));
 
-    const panel = await screen.findByRole("region", { name: "Audio and transcript" });
-    await within(panel).findByRole("tab", { name: "Transcript" }, { timeout: 4000 });
-    await user.click(within(panel).getByRole("tab", { name: "Review" }));
-    await user.click(within(panel).getByRole("button", { name: /Find decisions and action items/ }));
+    // The Summary tab offers to find decisions once the transcript is ready.
+    const panel = document.body;
+    const find = await within(panel).findByRole("button", { name: /Find decisions and action items/ }, { timeout: 5000 });
+    await user.click(find);
 
     const review = await within(panel).findByRole("region", { name: "Review" });
     const actions = within(review).getByRole("list", { name: "Action items" });
@@ -84,18 +85,18 @@ describe("Review and apply (T-204), against the in-memory shell", () => {
   it("shows the quote and jumps to the transcript line", async () => {
     const user = userEvent.setup();
     render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><MeetingsPage /></QueryClientProvider>);
-    await user.click(await screen.findByRole("button", { name: /Import recording/ }));
+    await user.click(await screen.findByRole("button", { name: "More" }));
+    await user.click(await screen.findByRole("menuitem", { name: /Import a recording/ }));
     const dialog = await screen.findByRole("dialog");
     await user.click(within(dialog).getByRole("button", { name: /Choose audio file/ }));
     await within(dialog).findByText("launch-sync.wav");
     await user.click(within(dialog).getByRole("button", { name: /Start transcription/ }));
-    const panel = await screen.findByRole("region", { name: "Audio and transcript" });
-    await within(panel).findByRole("tab", { name: "Review" }, { timeout: 4000 });
-    await user.click(within(panel).getByRole("tab", { name: "Review" }));
-    await user.click(within(panel).getByRole("button", { name: /Find decisions/ }));
+    const panel = document.body;
+    await user.click(await within(panel).findByRole("button", { name: /Find decisions/ }, { timeout: 5000 }));
     const review = await within(panel).findByRole("region", { name: "Review" });
     expect(within(review).getByText(/Main Thursday tak copy complete kar dunga/)).toBeTruthy();
     await user.click(within(review).getAllByText("Show in transcript")[0] as HTMLElement);
+    // Showing a quote opens the Transcript tab with that line marked.
     const line = await within(panel).findByRole("list", { name: "Transcript" });
     expect(line.querySelector('[aria-current="true"]')).toBeTruthy();
   }, 20_000);

@@ -258,6 +258,14 @@ export function createVoiceMock({ now, createMeeting, applyItems, delayMs = 250 
         ...s, participant: map?.find((m) => m.speaker_label === s.speaker_label)?.participant ?? null,
       }));
     },
+    meeting_transcript_search: (a: Args) => {
+      const words = String(a.query ?? "").toLowerCase().split(/\s+/).filter(Boolean);
+      if (!words.length) return [];
+      const segs = segmentsAs1.data as TranscriptSegment[];
+      return [...jobs.keys()].flatMap((meetingId) => segs
+        .filter((s) => words.every((w) => s.text.toLowerCase().split(/[^\p{L}\p{N}]+/u).some((t) => t.startsWith(w))))
+        .map((s) => ({ meeting_id: meetingId, meeting_title: "Launch sync", meeting_starts_at: now(), segment_id: s.id, start_ms: s.start_ms ?? 0, speaker: s.speaker_label === null ? null : `Speaker ${s.speaker_label}`, text: s.text })));
+    },
     meeting_speakers_set: (a: Args) => { mappings.set(String(a.meetingId), a.mapping as SpeakerMapping[]); return null; },
     meeting_extract: (a: Args) => ({ ...(structuredClone(extractionAs1.data) as ExtractionResult), meeting_id: String(a.meetingId) }),
     meeting_extraction_apply: (a: Args) => {

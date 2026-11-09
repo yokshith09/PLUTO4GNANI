@@ -126,6 +126,39 @@ pub fn list_segments(conn: &Connection, meeting_id: &str) -> Result<Vec<SegmentR
     Ok(rows)
 }
 
+/// Search as you type: every word matches transcript words that start with it ("budg" finds
+/// "budget"), best matches first. The words are quoted, so user text is never FTS syntax.
+pub fn search_segments_prefix(
+    conn: &Connection,
+    query: &str,
+    limit: usize,
+) -> Result<Vec<SegmentRow>> {
+    let fts: String = query
+        .split_whitespace()
+        .map(|w| {
+            w.chars()
+                .filter(|c| c.is_alphanumeric())
+                .collect::<String>()
+        })
+        .filter(|w| !w.is_empty())
+        .map(|w| format!("\"{w}\"*"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    if fts.is_empty() {
+        return Ok(vec![]);
+    }
+    let sql = format!(
+        "SELECT {SEGMENT_COLS} FROM transcript_fts f JOIN transcript_segments s ON s.rowid = f.rowid
+         WHERE transcript_fts MATCH ?1 ORDER BY rank LIMIT {}",
+        limit.clamp(1, 200)
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt
+        .query_map([fts], segment_from)?
+        .collect::<rusqlite::Result<_>>()?;
+    Ok(rows)
+}
+
 /// Full-text search over all transcripts. The query is quoted per word, so user text can never
 /// be read as FTS syntax. Best matches first.
 pub fn search_segments(conn: &Connection, query: &str) -> Result<Vec<SegmentRow>> {
@@ -699,6 +732,28 @@ mod tests {
         assert_eq!(search_segments(&c, "budget friday").unwrap()[0].id, "a");
         assert!(search_segments(&c, "\" OR NEAR(").is_ok());
         assert!(search_segments(&c, "   ").unwrap().is_empty());
+    }
+
+    #[test]
+    fn typing_part_of_a_word_finds_it() {
+        let c = db();
+        replace_segments(
+            &c,
+            "m1",
+            &[
+                seg("a", 0, "ship the budget on Friday"),
+                seg("b", 1, "lunch"),
+            ],
+        )
+        .unwrap();
+        assert_eq!(search_segments_prefix(&c, "budg", 10).unwrap()[0].id, "a");
+        assert_eq!(
+            search_segments_prefix(&c, "the fri", 10).unwrap()[0].id,
+            "a"
+        );
+        assert!(search_segments_prefix(&c, "\" OR NEAR(", 10).is_ok());
+        assert!(search_segments_prefix(&c, "  ", 10).unwrap().is_empty());
+        assert!(search_segments_prefix(&c, "zzz", 10).unwrap().is_empty());
     }
 
     #[test]

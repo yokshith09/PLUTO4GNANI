@@ -2,15 +2,18 @@ import { useEffect, useId, useRef, useState } from "react";
 import { ConfirmAction } from "@/components/ConfirmAction";
 import { Presets } from "@/components/Presets";
 import { dayPresets } from "@/lib/datePresets";
-import { ArrowDown, ArrowLeft, ArrowUp, Check, Eye, ListChecks, Pencil, Plus, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowUp, CalendarClock, Check, ChevronDown, ChevronRight, Eye, ListChecks, Pencil, Plus, Trash2, Users, X } from "lucide-react";
 import { notify } from "@/lib/notify";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MarkdownView } from "@/features/notes/MarkdownView";
-import { AiPanel } from "./AiPanel";
+import { AiPanel, StatusChip } from "./AiPanel";
+import { ReviewPanel } from "./ReviewPanel";
+import { aiStatusFor } from "./aiStatus";
 import { RecapPanel } from "./RecapPanel";
 import { useMeeting, useMeetingActions, useParticipantSuggestions } from "@/hooks/usePluto";
+import { useMeetingJob, useTranscript } from "@/hooks/useMeetingAi";
 import { errorMessage, type ActionItemInput, type DecisionInput, type MeetingInput, type TaskStatus } from "@/ipc";
 import { STATUS_LABEL } from "@/lib/taskStatus";
 import { fromLocalInput, toLocalInput } from "@/lib/time";
@@ -25,6 +28,7 @@ const blank = (): MeetingInput => ({
 });
 
 type Status = "idle" | "saving" | "saved" | "error";
+type Tab = "summary" | "transcript" | "notes";
 
 /** Move item `i` of a list up (-1) or down (+1). */
 export function move<T>(list: T[], i: number, by: -1 | 1): T[] {
@@ -47,7 +51,7 @@ function Field({ label, htmlFor, children, className }: { label: string; htmlFor
 function RowTools({ label, i, count, onMove, onRemove }: { label: string; i: number; count: number; onMove: (by: -1 | 1) => void; onRemove: () => void }) {
   const btn = "grid size-7 shrink-0 place-items-center rounded text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-30";
   return (
-    <div className="flex shrink-0 items-center opacity-60 group-hover:opacity-100 group-focus-within:opacity-100">
+    <div className="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
       <button type="button" className={btn} aria-label={`Move ${label} up`} disabled={i === 0} onClick={() => onMove(-1)}><ArrowUp className="size-3.5" /></button>
       <button type="button" className={btn} aria-label={`Move ${label} down`} disabled={i === count - 1} onClick={() => onMove(1)}><ArrowDown className="size-3.5" /></button>
       <ConfirmAction message={`Remove ${label}?`} verb="Remove" onConfirm={onRemove}>
@@ -100,7 +104,7 @@ function statusVariant(s: TaskStatus) {
  * One meeting (R1-30…R1-34): saved by itself a moment after each change. A new meeting is
  * created the first time it has a title. Action items show their task's status live.
  */
-export function MeetingEditor({ meetingId, onBack, onCreated }: { meetingId: string | null; onBack: () => void; onCreated: (id: string) => void }) {
+export function MeetingEditor({ meetingId, focusSegment = null, onBack, onCreated }: { meetingId: string | null; /** Open on the Transcript tab at this line (from a search result). */ focusSegment?: string | null; onBack: () => void; onCreated: (id: string) => void }) {
   const actions = useMeetingActions();
   const [id, setId] = useState(meetingId);
   const { data: saved } = useMeeting(id);
@@ -108,6 +112,9 @@ export function MeetingEditor({ meetingId, onBack, onCreated }: { meetingId: str
   const [loaded, setLoaded] = useState(meetingId === null);
   const [status, setStatus] = useState<Status>("idle");
   const [preview, setPreview] = useState(false);
+  const [tab, setTab] = useState<Tab>(focusSegment ? "transcript" : "summary");
+  const [highlight, setHighlight] = useState<string | null>(focusSegment);
+  const [details, setDetails] = useState(false);
   const dirty = useRef(false);
   const timer = useRef<number | undefined>(undefined);
   const inFlight = useRef<Promise<string | null> | null>(null);
@@ -212,10 +219,24 @@ export function MeetingEditor({ meetingId, onBack, onCreated }: { meetingId: str
     onBack();
   };
 
+  const { data: job } = useMeetingJob(id);
+  const ready = job?.status === "completed" || job?.status === "partial_failure";
+  const { data: segments } = useTranscript(id, ready);
+  const aiStatus = aiStatusFor(job, segments);
+
   if (!loaded) return <p className="py-10 text-center text-[13px] text-muted-foreground">Loading…</p>;
 
+  const when = new Date(draft.starts_at ?? Date.now());
+  const whenText = `${when.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })}, ${when.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+  const tabs: { id: Tab; label: string; count?: number }[] = [
+    { id: "summary", label: "Summary", count: draft.decisions.length + draft.action_items.length },
+    ...(job ? [{ id: "transcript" as const, label: "Transcript" }] : []),
+    { id: "notes", label: "Notes" },
+  ];
+  const showSegment = (segmentId: string) => { setHighlight(segmentId); setTab("transcript"); };
+
   return (
-    <div className="mx-auto max-w-3xl space-y-5">
+    <div className="mx-auto max-w-3xl space-y-4">
       <div className="flex items-center gap-2">
         <Button variant="ghost" size="sm" aria-label="Back to meetings" onClick={() => void back()}><ArrowLeft />Meetings</Button>
         <span className="ml-auto text-xs text-muted-foreground" role="status">
@@ -228,99 +249,137 @@ export function MeetingEditor({ meetingId, onBack, onCreated }: { meetingId: str
         )}
       </div>
 
-      <section className="space-y-4 rounded-xl border bg-card p-5">
-        <input
-          autoFocus={meetingId === null} value={draft.title} maxLength={200} placeholder="Meeting title" aria-label="Meeting title"
-          onChange={(e) => change({ title: e.target.value })}
-          className="w-full bg-transparent text-xl font-semibold tracking-tight outline-none placeholder:text-muted-foreground/60"
-        />
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="When" htmlFor="meeting-when">
-            <Input id="meeting-when" type="datetime-local" value={toLocalInput(draft.starts_at ?? Date.now())} onChange={(e) => e.target.value && change({ starts_at: fromLocalInput(e.target.value) })} />
-          </Field>
-          <Field label="Follow-up date" htmlFor="meeting-follow-up">
-            <Input id="meeting-follow-up" type="date" value={draft.follow_up_date ?? ""} onChange={(e) => change({ follow_up_date: e.target.value || null })} />
-            <Presets label="Follow-up presets" options={dayPresets()} value={draft.follow_up_date ?? ""} onPick={(v) => change({ follow_up_date: v })} />
-          </Field>
-        </div>
-        <Field label="Participants" htmlFor="meeting-participants">
-          <Participants value={draft.participants} onChange={(participants) => change({ participants })} />
-        </Field>
-      </section>
-
-      <section aria-label="Notes" className="space-y-2 rounded-xl border bg-card p-5">
-        <div className="flex items-center">
-          <h2 className="text-[13px] font-semibold">Notes</h2>
-          <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setPreview((p) => !p)}>{preview ? <><Pencil />Edit</> : <><Eye />Preview</>}</Button>
-        </div>
-        {preview ? (
-          <MarkdownView source={draft.notes || "_No notes yet._"} className="min-h-24" />
-        ) : (
-          <textarea
-            value={draft.notes} aria-label="Meeting notes" placeholder="What was discussed (Markdown works)"
-            onChange={(e) => change({ notes: e.target.value })}
-            className="min-h-32 w-full resize-y rounded-md border bg-transparent p-3 text-[13.5px] leading-relaxed outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      <section className="space-y-2.5 rounded-xl border bg-card p-5">
+        <div className="flex items-start gap-3">
+          <input
+            autoFocus={meetingId === null} value={draft.title} maxLength={200} placeholder="Meeting title" aria-label="Meeting title"
+            onChange={(e) => change({ title: e.target.value })}
+            className="min-w-0 flex-1 bg-transparent text-xl font-semibold tracking-tight outline-none placeholder:text-muted-foreground/60"
           />
+          {aiStatus && <StatusChip status={aiStatus} />}
+        </div>
+        <button type="button" aria-expanded={details} onClick={() => setDetails((v) => !v)} className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-md text-left text-[12.5px] text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
+          <span className="flex items-center gap-1"><CalendarClock className="size-3.5" />{whenText}</span>
+          <span className="flex items-center gap-1"><Users className="size-3.5" />{draft.participants.length ? draft.participants.join(", ") : "Add participants"}</span>
+          {draft.follow_up_date && <span>Follow up {new Date(`${draft.follow_up_date}T00:00:00`).toLocaleDateString([], { month: "short", day: "numeric" })}</span>}
+          <span className="ml-auto flex items-center gap-0.5">{details ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}Details</span>
+        </button>
+        {details && (
+          <div className="space-y-4 border-t pt-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="When" htmlFor="meeting-when">
+                <Input id="meeting-when" type="datetime-local" value={toLocalInput(draft.starts_at ?? Date.now())} onChange={(e) => e.target.value && change({ starts_at: fromLocalInput(e.target.value) })} />
+              </Field>
+              <Field label="Follow-up date" htmlFor="meeting-follow-up">
+                <Input id="meeting-follow-up" type="date" value={draft.follow_up_date ?? ""} onChange={(e) => change({ follow_up_date: e.target.value || null })} />
+                <Presets label="Follow-up presets" options={dayPresets()} value={draft.follow_up_date ?? ""} onPick={(v) => change({ follow_up_date: v })} />
+              </Field>
+            </div>
+            <Field label="Participants" htmlFor="meeting-participants">
+              <Participants value={draft.participants} onChange={(participants) => change({ participants })} />
+            </Field>
+          </div>
         )}
       </section>
 
-      <section aria-label="Decisions" className="space-y-2 rounded-xl border bg-card p-5">
-        <h2 className="flex items-center gap-1.5 text-[13px] font-semibold"><Check className="size-4 text-success" />Decisions</h2>
-        {draft.decisions.length === 0 && <p className="text-xs text-muted-foreground">What did you agree on?</p>}
-        <ol className="space-y-1.5">
-          {draft.decisions.map((d, i) => (
-            <li key={d.id ?? i} className="group flex items-center gap-2">
-              <span className="w-5 shrink-0 text-right text-xs tabular-nums text-muted-foreground">{i + 1}.</span>
-              <Input
-                value={d.body} maxLength={2000} aria-label={`Decision ${i + 1}`}
-                onChange={(e) => setDecision(i, { body: e.target.value })}
-                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); change({ decisions: [...draft.decisions.slice(0, i + 1), { id: newId(), body: "" }, ...draft.decisions.slice(i + 1)] }); } }}
-              />
-              <RowTools label={`decision ${i + 1}`} i={i} count={draft.decisions.length}
-                onMove={(by) => change({ decisions: move(draft.decisions, i, by) })}
-                onRemove={() => change({ decisions: draft.decisions.filter((_, j) => j !== i) })} />
-            </li>
-          ))}
-        </ol>
-        <Button size="sm" variant="ghost" onClick={() => change({ decisions: [...draft.decisions, { id: newId(), body: "" }] })}><Plus />Add decision</Button>
-      </section>
+      <div role="tablist" aria-label="Meeting sections" className="flex gap-1 border-b">
+        {tabs.map((t) => (
+          <button
+            key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)}
+            className={cn("-mb-px border-b-2 px-3 py-2 text-[13px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring", tab === t.id ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground")}
+          >
+            {t.label}{t.count ? <span className="ml-1.5 rounded-full bg-muted px-1.5 text-[11px] tabular-nums">{t.count}</span> : null}
+          </button>
+        ))}
+      </div>
 
-      <section aria-label="Action items" className="space-y-2 rounded-xl border bg-card p-5">
-        <h2 className="flex items-center gap-1.5 text-[13px] font-semibold"><ListChecks className="size-4 text-primary" />Action items</h2>
-        {draft.action_items.length === 0 && <p className="text-xs text-muted-foreground">Who does what next? Each one can become a task.</p>}
-        <datalist id="meeting-people">{draft.participants.map((p) => <option key={p} value={p} />)}</datalist>
-        <ul className="space-y-1.5">
-          {draft.action_items.map((a, i) => {
-            const linked = statusOf(a.id);
-            return (
-              <li key={a.id ?? i} className="group flex flex-wrap items-center gap-2 sm:flex-nowrap">
-                <Input
-                  value={a.body} maxLength={300} aria-label={`Action item ${i + 1}`} className="min-w-48 flex-1"
-                  onChange={(e) => setAction(i, { body: e.target.value })}
-                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); change({ action_items: [...draft.action_items.slice(0, i + 1), { id: newId(), body: "", assignee: null }, ...draft.action_items.slice(i + 1)] }); } }}
-                />
-                <Input
-                  value={a.assignee ?? ""} list="meeting-people" placeholder="Who" aria-label={`Assignee for action item ${i + 1}`} className="w-32"
-                  onChange={(e) => setAction(i, { assignee: e.target.value || null })}
-                />
-                {linked?.task_status ? (
-                  <Badge variant={statusVariant(linked.task_status)} className="shrink-0" title="The task made from this item">Task · {STATUS_LABEL[linked.task_status]}</Badge>
-                ) : (
-                  <Button size="sm" variant="secondary" className="shrink-0" disabled={!a.body.trim() || !draft.title.trim() || !a.id} onClick={() => a.id && void convert(a.id)}>
-                    Convert to task
-                  </Button>
-                )}
-                <RowTools label={`action item ${i + 1}`} i={i} count={draft.action_items.length}
-                  onMove={(by) => change({ action_items: move(draft.action_items, i, by) })}
-                  onRemove={() => change({ action_items: draft.action_items.filter((_, j) => j !== i) })} />
-              </li>
-            );
-          })}
-        </ul>
-        <Button size="sm" variant="ghost" onClick={() => change({ action_items: [...draft.action_items, { id: newId(), body: "", assignee: null }] })}><Plus />Add action item</Button>
-      </section>
-      {id && (saved?.decisions.length || saved?.action_items.length) ? <RecapPanel key={id} meetingId={id} title={draft.title} /> : null}
-      {id && <AiPanel meetingId={id} participants={draft.participants} />}
+      {tab === "summary" && (
+        <div role="tabpanel" className="space-y-4">
+          {ready && id && (
+            <div className="rounded-xl border border-dashed bg-card/50 p-4">
+              <ReviewPanel meetingId={id} participants={draft.participants} onShowSegment={showSegment} />
+            </div>
+          )}
+          <section aria-label="Decisions" className="space-y-2 rounded-xl border bg-card p-5">
+            <h2 className="flex items-center gap-1.5 text-[13px] font-semibold"><Check className="size-4 text-success" />Decisions</h2>
+            {draft.decisions.length === 0 && <p className="text-xs text-muted-foreground">What did you agree on?</p>}
+            <ol className="space-y-1.5">
+              {draft.decisions.map((d, i) => (
+                <li key={d.id ?? i} className="group flex items-center gap-2">
+                  <span className="w-5 shrink-0 text-right text-xs tabular-nums text-muted-foreground">{i + 1}.</span>
+                  <Input
+                    value={d.body} maxLength={2000} aria-label={`Decision ${i + 1}`}
+                    onChange={(e) => setDecision(i, { body: e.target.value })}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); change({ decisions: [...draft.decisions.slice(0, i + 1), { id: newId(), body: "" }, ...draft.decisions.slice(i + 1)] }); } }}
+                  />
+                  <RowTools label={`decision ${i + 1}`} i={i} count={draft.decisions.length}
+                    onMove={(by) => change({ decisions: move(draft.decisions, i, by) })}
+                    onRemove={() => change({ decisions: draft.decisions.filter((_, j) => j !== i) })} />
+                </li>
+              ))}
+            </ol>
+            <Button size="sm" variant="ghost" onClick={() => change({ decisions: [...draft.decisions, { id: newId(), body: "" }] })}><Plus />Add decision</Button>
+          </section>
+
+          <section aria-label="Action items" className="space-y-2 rounded-xl border bg-card p-5">
+            <h2 className="flex items-center gap-1.5 text-[13px] font-semibold"><ListChecks className="size-4 text-primary" />Action items</h2>
+            {draft.action_items.length === 0 && <p className="text-xs text-muted-foreground">Who does what next? Each one can become a task.</p>}
+            <datalist id="meeting-people">{draft.participants.map((p) => <option key={p} value={p} />)}</datalist>
+            <ul className="space-y-1.5">
+              {draft.action_items.map((a, i) => {
+                const linked = statusOf(a.id);
+                return (
+                  <li key={a.id ?? i} className="group flex flex-wrap items-center gap-2 sm:flex-nowrap">
+                    <Input
+                      value={a.body} maxLength={300} aria-label={`Action item ${i + 1}`} className="min-w-48 flex-1"
+                      onChange={(e) => setAction(i, { body: e.target.value })}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); change({ action_items: [...draft.action_items.slice(0, i + 1), { id: newId(), body: "", assignee: null }, ...draft.action_items.slice(i + 1)] }); } }}
+                    />
+                    <Input
+                      value={a.assignee ?? ""} list="meeting-people" placeholder="Who" aria-label={`Assignee for action item ${i + 1}`} className="w-32"
+                      onChange={(e) => setAction(i, { assignee: e.target.value || null })}
+                    />
+                    {linked?.task_status ? (
+                      <Badge variant={statusVariant(linked.task_status)} className="shrink-0" title="The task made from this item">Task · {STATUS_LABEL[linked.task_status]}</Badge>
+                    ) : (
+                      <Button size="sm" variant="secondary" className="shrink-0" disabled={!a.body.trim() || !draft.title.trim() || !a.id} onClick={() => a.id && void convert(a.id)}>
+                        Convert to task
+                      </Button>
+                    )}
+                    <RowTools label={`action item ${i + 1}`} i={i} count={draft.action_items.length}
+                      onMove={(by) => change({ action_items: move(draft.action_items, i, by) })}
+                      onRemove={() => change({ action_items: draft.action_items.filter((_, j) => j !== i) })} />
+                  </li>
+                );
+              })}
+            </ul>
+            <Button size="sm" variant="ghost" onClick={() => change({ action_items: [...draft.action_items, { id: newId(), body: "", assignee: null }] })}><Plus />Add action item</Button>
+          </section>
+          {id && (saved?.decisions.length || saved?.action_items.length) ? <RecapPanel key={id} meetingId={id} title={draft.title} /> : null}
+        </div>
+      )}
+
+      {tab === "transcript" && id && (
+        <div role="tabpanel"><AiPanel meetingId={id} participants={draft.participants} highlight={highlight} /></div>
+      )}
+
+      {tab === "notes" && (
+        <section aria-label="Notes" role="tabpanel" className="space-y-2 rounded-xl border bg-card p-5">
+          <div className="flex items-center">
+            <h2 className="text-[13px] font-semibold">Notes</h2>
+            <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setPreview((p) => !p)}>{preview ? <><Pencil />Edit</> : <><Eye />Preview</>}</Button>
+          </div>
+          {preview ? (
+            <MarkdownView source={draft.notes || "_No notes yet._"} className="min-h-24" />
+          ) : (
+            <textarea
+              value={draft.notes} aria-label="Meeting notes" placeholder="What was discussed (Markdown works)"
+              onChange={(e) => change({ notes: e.target.value })}
+              className="min-h-48 w-full resize-y rounded-md border bg-transparent p-3 text-[13.5px] leading-relaxed outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+          )}
+        </section>
+      )}
     </div>
   );
 }

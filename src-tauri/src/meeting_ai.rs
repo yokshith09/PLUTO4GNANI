@@ -343,6 +343,59 @@ pub async fn meeting_transcript_get(
     shell.ai(&core).transcript(&meeting_id).await
 }
 
+/// One line of a transcript that matches a search, with the meeting it is in.
+#[derive(serde::Serialize)]
+pub struct TranscriptHit {
+    pub meeting_id: String,
+    pub meeting_title: String,
+    pub meeting_starts_at: i64,
+    pub segment_id: String,
+    pub start_ms: i64,
+    /// Who said it: the mapped participant, or "Speaker N".
+    pub speaker: Option<String>,
+    pub text: String,
+}
+
+/// Search as you type across every transcript (Meetings → search). Best matches first.
+#[tauri::command]
+pub async fn meeting_transcript_search(
+    query: String,
+    core: State<'_, Core>,
+) -> VoiceResult<Vec<TranscriptHit>> {
+    let q = query.clone();
+    let rows = core
+        .db
+        .read(move |c| pluto_core::meeting_ai_store::search_segments_prefix(c, &q, 40))
+        .await?;
+    let mut meetings: HashMap<String, Option<Meeting>> = HashMap::new();
+    let mut out = Vec::new();
+    for r in rows {
+        if !meetings.contains_key(&r.meeting_id) {
+            let m = pluto_core::meetings::get(&core.db, &r.meeting_id)
+                .await
+                .ok();
+            meetings.insert(r.meeting_id.clone(), m);
+        }
+        let Some(Some(m)) = meetings.get(&r.meeting_id) else {
+            continue; // the meeting was deleted
+        };
+        let speaker = r
+            .participant_position
+            .and_then(|p| m.participants.get(p as usize).cloned())
+            .or_else(|| r.speaker_label.map(|l| format!("Speaker {l}")));
+        out.push(TranscriptHit {
+            meeting_id: r.meeting_id,
+            meeting_title: m.title.clone(),
+            meeting_starts_at: m.starts_at,
+            segment_id: r.id,
+            start_ms: r.start_ms,
+            speaker,
+            text: r.text,
+        });
+    }
+    Ok(out)
+}
+
 #[tauri::command]
 pub async fn meeting_speakers_set(
     meeting_id: String,

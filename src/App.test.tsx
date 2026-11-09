@@ -573,6 +573,7 @@ describe("meetings (F1-17…19)", () => {
     const list = await screen.findByRole("list", { name: "Meetings" });
     const rows = within(list).getAllByRole("button").map((b) => b.getAttribute("aria-label"));
     expect(rows).toEqual(["Open meeting “Sprint planning”", "Open meeting “Design review”"]);
+    await user.click(screen.getByRole("button", { name: /Filters/ }));
     await user.type(screen.getByLabelText("Participant"), "ava");
     await waitFor(() => expect(within(screen.getByRole("list", { name: "Meetings" })).getAllByRole("button")).toHaveLength(1));
     expect(screen.getByRole("button", { name: "Open meeting “Design review”" })).toBeTruthy();
@@ -616,6 +617,7 @@ describe("meetings (F1-17…19)", () => {
     await user.keyboard("{Control>}m{/Control}");
     const title = await screen.findByRole("textbox", { name: "Meeting title" });
     await user.type(title, "1:1 with Asha");
+    await user.click(screen.getByRole("button", { name: /Details/ }));
     await user.type(screen.getByRole("combobox", { name: "Add participant" }), "Asha{Enter}");
     await user.click(screen.getByRole("button", { name: "Add decision" }));
     await user.type(screen.getByRole("textbox", { name: "Decision 1" }), "Weekly check-ins");
