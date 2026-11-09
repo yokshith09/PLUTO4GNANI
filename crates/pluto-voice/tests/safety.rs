@@ -414,7 +414,11 @@ async fn t_pr_01_the_key_never_reaches_logs_errors_sqlite_or_the_export() {
     assert!(!export.contains(KEY), "data export");
     drop(db);
     for entry in std::fs::read_dir(dir.path()).unwrap() {
-        let bytes = std::fs::read(entry.unwrap().path()).unwrap();
+        // SQLite's journal and wal files can disappear while the database closes: a file that is
+        // gone has nothing to leak, so it is skipped rather than failing the test.
+        let Ok(bytes) = std::fs::read(entry.unwrap().path()) else {
+            continue;
+        };
         let text = String::from_utf8_lossy(&bytes);
         assert!(!text.contains(KEY), "database files");
     }
