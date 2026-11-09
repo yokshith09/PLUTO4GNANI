@@ -405,6 +405,33 @@ async fn push_to_talk_while_recording_is_busy() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn a_recording_holds_voice_only_when_voice_is_on_and_idle() {
+    // On and idle: voice is held for the recording and released after it.
+    let r = rig(MockStt::new(["x"]), Turn::Done);
+    assert!(r.rt.try_recording_started().unwrap());
+    assert_eq!(r.rt.state(), S::Recording);
+    r.rt.recording_stopped();
+    assert_eq!(r.rt.state(), S::Idle);
+
+    // Mid-turn: the recording is refused, nothing changes.
+    r.rt.ptt_down().unwrap();
+    assert_eq!(
+        r.rt.try_recording_started().unwrap_err().code,
+        VoiceErrorCode::Busy
+    );
+    assert_eq!(r.rt.state(), S::Listening);
+
+    // Voice off (no Cloud voice): the recording goes ahead and there is nothing to hold.
+    let off = rig(MockStt::new(["x"]), Turn::Done);
+    off.rt.set_enabled(false);
+    assert_eq!(off.rt.state(), S::Disabled);
+    assert!(!off.rt.try_recording_started().unwrap());
+    assert_eq!(off.rt.state(), S::Disabled);
+    off.rt.recording_stopped();
+    assert_eq!(off.rt.state(), S::Disabled);
+}
+
+#[tokio::test(start_paused = true)]
 async fn disabled_voice_refuses_and_turning_it_on_makes_it_ready() {
     let router = Arc::new(AudioRouter::new());
     let rt = Arc::new(VoiceRuntime::new(

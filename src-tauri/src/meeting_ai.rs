@@ -98,14 +98,24 @@ pub async fn meeting_rec_start(
     voice: State<'_, VoiceShell>,
     shell: State<'_, MeetingShell>,
 ) -> VoiceResult<RecordingSession> {
-    let rec = shell
+    // Push-to-talk answers Busy while a meeting records; refused if Pluto is mid-turn.
+    voice.runtime.try_recording_started()?;
+    let rec = match shell
         .recorder
         .start(&title, participants, live_captions, consent)
-        .await?;
+        .await
+    {
+        Ok(rec) => rec,
+        Err(e) => {
+            voice.runtime.recording_stopped();
+            return Err(e);
+        }
+    };
     let sink: Arc<dyn FrameSink> = rec.sink.clone();
     if let Err(e) = voice.router.open(&rec.session.id, vec![sink]) {
         // Nothing is being captured: don't leave a meeting stuck in "recording".
         let _ = shell.recorder.stop(&rec).await;
+        voice.runtime.recording_stopped();
         return Err(e);
     }
     let session = rec.session.clone();
@@ -142,6 +152,8 @@ pub async fn meeting_rec_stop(
     let rec = shell.get(&session_id)?;
     // Closing the audio session ends the sink, which closes the last chunk.
     voice.router.close(&session_id);
+    // Voice is released first, so a failure while saving can't leave push-to-talk stuck on Busy.
+    voice.runtime.recording_stopped();
     let session = shell.recorder.stop(&rec).await?;
     shell.lock().remove(&session_id);
     jobs.queue(&session.meeting_id).await?;
