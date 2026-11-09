@@ -105,13 +105,13 @@ export const ipc = {
   /** Opens the system "open" dialog and restores that export into an empty Pluto. `null` if cancelled. */
   dataImport: () => call<Record<string, number> | null>("data_import"),
   dataDeleteAll: (confirm: string) => call<unknown>("data_delete_all", { confirm }),
-  /** `below`: the panel prefers the side under the pet (the focus timer), if it fits there. */
-  petPlan: (cardWidth: number, cardHeight: number, below?: boolean) =>
-    call<{ pet: "left" | "right"; card: "above" | "below" } | null>("pet_plan", { cardWidth, cardHeight, below: below ?? null }),
-  /** Show the hover card in its own window beside the pet (`open: false` hides it). Size in logical pixels. */
-  petCard: (open: boolean, cardWidth: number, cardHeight: number) => call<null>("pet_card", { open, cardWidth, cardHeight }),
   petHover: (expanded: boolean, cardWidth: number, cardHeight: number, below?: boolean) =>
     call<{ pet: "left" | "right"; card: "above" | "below" } | null>("pet_hover", { expanded, cardWidth, cardHeight, below: below ?? null }),
+  /**
+   * Which parts of the pet window are drawn (left, top, width, height in CSS pixels from its top-left)
+   * and whether a drag is on. Clicks go through the rest of the window to the app underneath.
+   */
+  petSolid: (rects: number[][], holding: boolean) => call<unknown>("pet_solid", { rects, holding }),
   petClick: () => call<unknown>("pet_click"),
   /** Hover-card buttons: open the dashboard and start a new note or task (FR-111). */
   petCommand: (what: "new-note" | "new-task" | "focus" | "tasks") => call<unknown>("pet_command", { what }),

@@ -8,7 +8,7 @@ import { useFocus } from "@/hooks/useFocus";
 import { clock } from "@/lib/focus";
 import { ymd } from "@/lib/dates";
 import { useTheme } from "@/hooks/useTheme";
-import { ipc, onEvent, onPetCard, onPetMenu, onPetSay, petAction, petCardSend, type TaskRow } from "@/ipc";
+import { ipc, onEvent, onPetMenu, onPetPlaced, onPetSay, petAction, type TaskRow } from "@/ipc";
 import { cn } from "@/lib/utils";
 import { PetCard } from "./PetCard";
 import { glanceText } from "./glance";
@@ -55,26 +55,14 @@ type Panel = "card" | "bubble" | "timer" | null;
 /** All in place: a hover greeting must not move the pet (owner 2026-10-27: "it moves when my cursor comes near"). */
 export const PACK_MOTION: Partial<Record<BearPose, string>> = { wave: "pet-pop", ring: "pet-shake", toss: "pet-toss", catch: "pet-pop" };
 
-/** Longest the pet stays hidden for a window resize; it comes back even if no frame is ever painted. */
-const RESIZE_HIDE_MAX_MS = 250;
-
-/** Resolves after the browser has painted the current layout (or after `RESIZE_HIDE_MAX_MS`, whichever is first). */
-function nextPaint(): Promise<void> {
-  return new Promise((done) => {
-    const late = setTimeout(done, RESIZE_HIDE_MAX_MS);
-    const finish = () => { clearTimeout(late); done(); };
-    if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => requestAnimationFrame(finish));
-    else setTimeout(finish, 0);
-  });
+/** A box on screen as the shell wants it: left, top, width, height in CSS pixels. */
+function box(a: DOMRect, b?: DOMRect): number[] {
+  if (!b) return [a.left, a.top, a.width, a.height];
+  const [l, t] = [Math.min(a.left, b.left), Math.min(a.top, b.top)];
+  return [l, t, Math.max(a.right, b.right) - l, Math.max(a.bottom, b.bottom) - t];
 }
 
-/**
- * `cardWindow`: the hover card opens in its own small window beside the pet (the app), so the
- * pet's window never changes size on hover and the pet never has to be hidden for a moment
- * (owner 2026-11-01: "the pet disappears and appears"). Outside the app (browser preview, tests of
- * the rest) the card is drawn inside the pet window as before.
- */
-export function PetApp({ cardWindow = isTauri() }: { cardWindow?: boolean } = {}) {
+export function PetApp() {
   useTheme();
   const qc = useQueryClient();
   const worn = useWorn();
@@ -101,11 +89,6 @@ export function PetApp({ cardWindow = isTauri() }: { cardWindow?: boolean } = {}
   const [panel, setPanel] = useState<Panel>(null);
   const [hovering, setHovering] = useState(false);
   const [hop, setHop] = useState(false);
-  // True while the OS resizes the window. A transparent window can show its previous frame (the pet
-  // alone) at the top of the grown window for a frame or two, which looked like a second Pluto
-  // blinking above the card (owner 2026-10-31). The pet is invisible, not hidden, for that moment,
-  // so the pointer still counts as over it.
-  const [resizing, setResizing] = useState(false);
   const [dragging, setDragging] = useState(false);
   const draggingRef = useRef(false);
   draggingRef.current = dragging;
@@ -119,13 +102,6 @@ export function PetApp({ cardWindow = isTauri() }: { cardWindow?: boolean } = {}
   const [asleep, setAsleep] = useState(false);
   // "Sleep" on the card: a nap that lasts until Wake (or a click on the pet), not ended by hovering.
   const [napping, setNapping] = useState(false);
-  const nappingRef = useRef(false);
-  nappingRef.current = napping;
-  // The card's own window (see `cardWindow`): whether it is showing, whether the pointer is on it,
-  // and whether it should come back after a drag.
-  const cardOpenRef = useRef(false);
-  const cardHover = useRef(false);
-  const reopenAfterDrag = useRef(false);
   // "Sleep or wake" in the right-click menu (owner 2026-10-27).
   useEffect(() => onPetMenu((what) => { if (what === "nap") setNapping((n) => !n); }), []);
   const wake = () => {
@@ -142,72 +118,26 @@ export function PetApp({ cardWindow = isTauri() }: { cardWindow?: boolean } = {}
   hoverRef.current = hovering;
   panelRef.current = panel;
 
-  // A layout change (card, bubble, timer) while the OS is moving the window would resize it under
-  // the drag, so the pet slips off the cursor. It waits for the end of the drag instead.
-  const deferred = useRef<{ kind: "expand"; next: Exclude<Panel, null>; text: string } | { kind: "collapse" } | null>(null);
-  const expand = async (next: Exclude<Panel, null>, text = "") => {
-    if (draggingRef.current) {
-      deferred.current = { kind: "expand", next, text };
-      return;
-    }
-    const [w, h] = next === "card" ? [CARD_W, CARD_H] : next === "timer" ? [size, TIMER_H] : [BUBBLE_W, bubbleHeight(text)];
-    // The timer sits under the pet, in its own pixel area; the card and bubble keep above.
-    const below = next === "timer";
-    // Lay out for the grown window first (the pet in its corner, the panel clipped), then grow it:
-    // the pet is already where it will stay, so it does not jump when the cursor comes near.
-    const planned = await ipc.petPlan(w, h, below);
-    try {
-      if (planned) {
-        setResizing(true);
-        setAnchor(planned);
-        setPanel(next);
-        await nextPaint(); // the blank frame is on screen before the window changes size
-        // A drag that began meanwhile gets the window as it is; the panel follows at its end.
-        if (draggingRef.current) {
-          deferred.current = { kind: "expand", next, text };
-          return;
-        }
-      }
-      const a = await ipc.petHover(true, w, h, below);
-      if (a) {
-        setAnchor(a);
-        setPanel(next);
-      }
-      if (planned) await nextPaint(); // the grown window has painted its own layout
-    } finally {
-      setResizing(false);
-    }
-    placeCard();
+  // The window is laid out once at the size of pet and card (the stage) and keeps that size:
+  // the card, a bubble or the timer only appear inside it, so nothing is resized on hover and
+  // nothing flickers (owner 2026-11-02). Clicks go through its empty part (see `pet_solid`).
+  // It is laid out again when the shell puts the pet back in its square, and after a drag, when
+  // the card may need to open the other way.
+  const stage = async () => {
+    const a = await ipc.petHover(true, CARD_W, CARD_H, false);
+    if (a) setAnchor(a);
+  };
+  const stageRef = useRef(stage);
+  stageRef.current = stage;
+  useEffect(() => {
+    void stageRef.current();
+    return onPetPlaced(() => void stageRef.current());
+  }, [size]);
+  const expand = async (next: Exclude<Panel, null>) => {
+    setPanel(next);
   };
   const collapse = async () => {
-    if (draggingRef.current) {
-      deferred.current = { kind: "collapse" };
-      return;
-    }
-    // Shrink first, then drop the panel: the other order re-centred the pet in the big window
-    // for a moment, so it jumped every time the cursor left it.
-    try {
-      if (panelRef.current !== null) {
-        setResizing(true);
-        await nextPaint();
-      }
-      await ipc.petHover(false, 0, 0);
-      setAnchor(null);
-      setPanel(null);
-      if (panelRef.current !== null) await nextPaint();
-    } finally {
-      setResizing(false);
-    }
-    placeCard();
-  };
-  /** The card window follows the pet window when it grows or shrinks (a focus timer starting). */
-  const placeCard = () => {
-    if (cardWindow && cardOpenRef.current) void ipc.petCard(true, CARD_W, CARD_H);
-  };
-  const showCard = async (open: boolean) => {
-    cardOpenRef.current = open;
-    await ipc.petCard(open, CARD_W, CARD_H);
-    if (open) void petCardSend({ kind: "napping", value: nappingRef.current });
+    setPanel(null);
   };
   /** Back to resting: the focus timer while a session runs, else just the pet. */
   const settle = () => (focusRef.current ? expand("timer") : collapse());
@@ -224,7 +154,7 @@ export function PetApp({ cardWindow = isTauri() }: { cardWindow?: boolean } = {}
       return;
     }
     // While hovering, the card has the space, unless the card is turned off (FR-110).
-    if ((!hoverRef.current && !cardOpenRef.current) || !hoverCardRef.current) void expand("bubble", bubbleText(next));
+    if (!hoverRef.current || !hoverCardRef.current) void expand("bubble");
     timers.current.play = window.setTimeout(playNext, next.ms);
   };
   // The character's one special move, when its count comes round (see special.ts).
@@ -283,26 +213,14 @@ export function PetApp({ cardWindow = isTauri() }: { cardWindow?: boolean } = {}
 
   const openCard = async () => {
     clearTimeout(timers.current.leave);
-    if (cardWindow) {
-      // Shown again even if it was open: the shell may have put it away with the pet (full screen).
-      if (panelRef.current === "bubble") await settle(); // the card takes the bubble's place
-      await showCard(true);
-      return;
-    }
     if (panelRef.current === "card") return;
     await expand("card");
   };
   const closeCard = async () => {
     clearTimeout(timers.current.enter);
-    if (cardWindow) {
-      if (!cardOpenRef.current) return;
-      await showCard(false);
-      if (playingRef.current) await expand("bubble", bubbleText(playingRef.current));
-      return;
-    }
     if (panelRef.current !== "card") return;
     // A reaction still playing gets its bubble back.
-    if (playingRef.current) await expand("bubble", bubbleText(playingRef.current));
+    if (playingRef.current) await expand("bubble");
     else await settle();
   };
 
@@ -330,36 +248,8 @@ export function PetApp({ cardWindow = isTauri() }: { cardWindow?: boolean } = {}
     if (draggingRef.current) return; // the window is moving under the pointer; not a real leave
     setHovering(false);
     clearTimeout(timers.current.enter);
-    leaveSoon();
+    timers.current.leave = window.setTimeout(() => void closeCard(), 250);
   };
-  // The card closes a moment after the pointer has left both the pet and the card's window.
-  const leaveSoon = () => {
-    clearTimeout(timers.current.leave);
-    timers.current.leave = window.setTimeout(() => {
-      if (!hoverRef.current && !cardHover.current) void closeCardRef.current();
-    }, 250);
-  };
-  const closeCardRef = useRef(closeCard);
-  closeCardRef.current = closeCard;
-  const leaveSoonRef = useRef(leaveSoon);
-  leaveSoonRef.current = leaveSoon;
-  // Messages from the card's window: the pointer on it keeps it open; Sleep and Wake there.
-  useEffect(() => {
-    if (!cardWindow) return;
-    return onPetCard((m) => {
-      if (m.kind === "hover") {
-        cardHover.current = m.value;
-        if (m.value) clearTimeout(timers.current.leave);
-        else leaveSoonRef.current();
-      } else if (m.kind === "nap") {
-        setNapping(m.value);
-      }
-    });
-  }, [cardWindow]);
-  // The card shows Sleep or Wake to match.
-  useEffect(() => {
-    if (cardWindow && cardOpenRef.current) void petCardSend({ kind: "napping", value: napping });
-  }, [cardWindow, napping]);
 
   const click = () => {
     setNapping(false);
@@ -417,11 +307,6 @@ export function PetApp({ cardWindow = isTauri() }: { cardWindow?: boolean } = {}
     clearTimeout(timers.current.enter);
     draggingRef.current = true;
     setDragging(true);
-    // The card's window does not move with the pet: put it away and bring it back at the new spot.
-    if (cardWindow && cardOpenRef.current) {
-      reopenAfterDrag.current = true;
-      void showCard(false);
-    }
     void (async () => {
       if (isTauri()) {
         const { getCurrentWindow } = await import("@tauri-apps/api/window");
@@ -433,17 +318,8 @@ export function PetApp({ cardWindow = isTauri() }: { cardWindow?: boolean } = {}
   const endDrag = () => {
     draggingRef.current = false;
     setDragging(false);
-    const later = deferred.current;
-    deferred.current = null;
-    if (later?.kind === "collapse") void collapse();
-    // A bubble that finished while the pet was being dragged is not worth opening any more.
-    else if (later?.kind === "expand" && (later.next !== "bubble" || playingRef.current)) void expand(later.next, later.text);
-    // Otherwise lay the card out again for the new spot (it may need to open the other way now).
-    else if (panelRef.current) void expand(panelRef.current);
-    if (reopenAfterDrag.current) {
-      reopenAfterDrag.current = false;
-      void showCard(true);
-    }
+    // The card may need to open the other way at the new spot.
+    void stage();
   };
   // One pointermove handler for the whole window: arm a drag while pressed, or notice one ended.
   const onWindowPointerMove = (e: React.PointerEvent) => {
@@ -463,11 +339,27 @@ export function PetApp({ cardWindow = isTauri() }: { cardWindow?: boolean } = {}
     press.current = null;
   };
 
+  // Tell the shell which parts are drawn, so clicks go through the rest of the window.
+  const bearRef = useRef<HTMLButtonElement>(null);
+  const panelBox = useRef<HTMLDivElement>(null);
+  const sentSolid = useRef("");
+  useEffect(() => {
+    const bearBox = bearRef.current?.getBoundingClientRect();
+    if (!bearBox) return;
+    const panelRect = panelBox.current?.firstElementChild ? panelBox.current.getBoundingClientRect() : undefined;
+    const rects = [box(bearBox, panelRect && panelRect.width > 0 ? panelRect : undefined)];
+    const key = JSON.stringify([rects, dragging]);
+    if (key === sentSolid.current) return;
+    sentSolid.current = key;
+    void ipc.petSolid(rects, dragging);
+  });
+
   const working = openToday.some((r) => r.task.status === "IN_PROGRESS");
   // Typing along beats hover and the rest: you are busy, it keeps you company.
   const pose: BearPose = playing?.pose ?? (napping ? "sleep" : typing !== "off" ? typing : hovering ? "wave" : asleep ? "sleep" : working ? "work" : "idle");
-  const bear = (
+  const bearButton = (
     <button
+      ref={bearRef}
       type="button" data-pet-bear aria-label="Pluto. Click to open, double-click to hide, right-click for options"
       onPointerUp={onBearPointerUp}
       onContextMenu={(e) => { e.preventDefault(); void ipc.petMenu(); }}
@@ -484,6 +376,7 @@ export function PetApp({ cardWindow = isTauri() }: { cardWindow?: boolean } = {}
       )}
     </button>
   );
+  const bear = bearButton;
 
   const extra = panel === "card"
     ? <PetCard className="shrink-0" style={{ width: CARD_W, height: CARD_H }} napping={napping} onNap={setNapping} />
@@ -496,18 +389,16 @@ export function PetApp({ cardWindow = isTauri() }: { cardWindow?: boolean } = {}
   return (
     <div
       className="flex h-screen w-screen select-none flex-col overflow-hidden"
-      style={resizing ? { opacity: 0 } : undefined}
-      onMouseEnter={onEnter} onMouseLeave={onLeave}
       onPointerDown={onPointerDown} onPointerMove={onWindowPointerMove} onPointerUp={onWindowPointerUp}
     >
       <p className="sr-only" role="status">{playing?.bubble ?? ""}</p>
-      {anchor && extra ? (
+      {anchor ? (
         <div className={cn("flex h-full flex-col justify-end gap-2", anchor.card === "below" && "flex-col-reverse", anchor.pet === "right" ? "items-end" : "items-start")}>
-          <div className={cn("contents", dragging && "[&>*]:invisible")}>{extra}</div>
-          {bear}
+          <div ref={panelBox} onMouseEnter={onEnter} onMouseLeave={onLeave} className={cn("flex shrink-0 flex-col", anchor.pet === "right" ? "items-end" : "items-start", dragging && "invisible")}>{extra}</div>
+          <div className="shrink-0" onMouseEnter={onEnter} onMouseLeave={onLeave}>{bear}</div>
         </div>
       ) : (
-        <div className="grid h-full place-items-center">{bear}</div>
+        <div className="grid h-full place-items-center"><div onMouseEnter={onEnter} onMouseLeave={onLeave}>{bear}</div></div>
       )}
     </div>
   );

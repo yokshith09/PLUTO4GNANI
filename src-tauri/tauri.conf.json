@@ -39,23 +39,6 @@
         "visible": false,
         "shadow": false,
         "focus": false
-      },
-      {
-        "label": "pet-card",
-        "title": "Pluto card",
-        "url": "card.html",
-        "width": 300,
-        "height": 404,
-        "transparent": true,
-        "decorations": false,
-        "alwaysOnTop": true,
-        "skipTaskbar": true,
-        "resizable": false,
-        "maximizable": false,
-        "minimizable": false,
-        "visible": false,
-        "shadow": false,
-        "focus": false
       }
     ],
     "security": {

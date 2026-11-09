@@ -248,8 +248,7 @@ pub fn run() {
             ipc::action_item_convert,
             ipc::participants_suggest,
             pet::pet_hover,
-            pet::pet_plan,
-            pet::pet_card,
+            pet::pet_solid,
             pet::pet_click,
             pet::pet_double_click,
             pet::pet_command,
@@ -343,7 +342,7 @@ pub fn run() {
             #[cfg(windows)]
             {
                 tracking::win::trace::set_folder(&data_dir);
-                let own: Vec<_> = [pet::LABEL, pet::CARD_LABEL, "main"]
+                let own: Vec<_> = [pet::LABEL, "main"]
                     .into_iter()
                     .filter_map(|label| {
                         let hwnd = app.get_webview_window(label)?.hwnd().ok()?;

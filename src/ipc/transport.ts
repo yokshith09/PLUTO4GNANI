@@ -157,24 +157,16 @@ export function onPetMenu(cb: (what: string) => void): () => void {
 }
 
 /**
- * Pet window ↔ hover-card window (the card has its own window, so the pet's window never changes
- * size on hover and nothing flickers: owner 2026-11-01). `hover`: the pointer is over the card;
- * `nap`: Sleep or Wake was pressed on the card; `napping`: the pet tells the card its state.
- * Outside the app a `pluto-pet-card` window event stands in for it.
+ * The shell has put the pet back in its own square (after a drag, a move to another screen, or a
+ * change of size): the page lays its window out again. Outside the app a `pluto-pet-placed` window
+ * event stands in for it.
  */
-export interface PetCardMsg { kind: "hover" | "nap" | "napping"; value: boolean }
-
-export async function petCardSend(msg: PetCardMsg): Promise<void> {
-  if (isTauri()) return emit("pet-card://msg", msg);
-  window.dispatchEvent(new CustomEvent<PetCardMsg>("pluto-pet-card", { detail: msg }));
-}
-
-export function onPetCard(cb: (msg: PetCardMsg) => void): () => void {
+export function onPetPlaced(cb: () => void): () => void {
   if (isTauri()) {
-    const pending = listen<PetCardMsg>("pet-card://msg", (e) => cb(e.payload));
+    const pending = listen("pet://placed", () => cb());
     return () => void pending.then((off) => off());
   }
-  const handler = (e: Event) => cb((e as CustomEvent<PetCardMsg>).detail);
-  window.addEventListener("pluto-pet-card", handler);
-  return () => window.removeEventListener("pluto-pet-card", handler);
+  const handler = () => cb();
+  window.addEventListener("pluto-pet-placed", handler);
+  return () => window.removeEventListener("pluto-pet-placed", handler);
 }

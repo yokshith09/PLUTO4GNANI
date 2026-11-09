@@ -22,7 +22,7 @@ export default defineConfig(({ mode }) => ({
       // `--mode preview` builds one self-contained bundle for design previews.
       input: {
         main: resolve(import.meta.dirname, "main.html"),
-        ...(mode === "preview" ? {} : { pet: resolve(import.meta.dirname, "pet.html"), card: resolve(import.meta.dirname, "card.html") }),
+        ...(mode === "preview" ? {} : { pet: resolve(import.meta.dirname, "pet.html") }),
       } as Record<string, string>,
       ...(mode === "preview" ? { output: { inlineDynamicImports: true } } : {}),
     },

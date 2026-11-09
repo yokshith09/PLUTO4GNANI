@@ -106,7 +106,7 @@ describe("desktop pet", () => {
     await screen.findByRole("button", { name: /^Pluto\./ });
     await waitFor(() => expect(loaded).toHaveBeenCalled());
     await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
-    fireEvent.mouseEnter(bear().closest("div.flex") as HTMLElement);
+    fireEvent.mouseEnter(bear());
     expect((await screen.findAllByText(/today · next:|Nothing planned/, {}, { timeout: 2000 })).length).toBeGreaterThan(0);
     expect(screen.queryByRole("status", { name: "Today at a glance" })).toBeNull();
   });
@@ -114,7 +114,7 @@ describe("desktop pet", () => {
   it("the hover card has shortcuts: focus, add note, sleep and wake; tasks stand out (FR-111)", async () => {
     const cmd = vi.spyOn(ipc, "petCommand").mockResolvedValue(null);
     renderPet();
-    fireEvent.mouseEnter(bear().closest("div.flex") as HTMLElement);
+    fireEvent.mouseEnter(bear());
     const card = await screen.findByRole("status", { name: "Today at a glance" }, { timeout: 2000 });
     const shortcuts = within(card).getByRole("group", { name: "Shortcuts" });
     fireEvent.click(within(shortcuts).getByRole("button", { name: "Add note" }));
@@ -152,7 +152,7 @@ describe("desktop pet", () => {
   it("adds a task for today from the card's +, without opening the editor (owner 2026-10-27)", async () => {
     const add = vi.spyOn(ipc, "taskQuickAdd");
     renderPet();
-    fireEvent.mouseEnter(bear().closest("div.flex") as HTMLElement);
+    fireEvent.mouseEnter(bear());
     const card = await screen.findByRole("status", { name: "Today at a glance" }, { timeout: 2000 });
     fireEvent.click(within(card).getByRole("button", { name: "Add a task" }));
     const box = within(card).getByRole("textbox", { name: "New task for today" });
@@ -167,28 +167,27 @@ describe("desktop pet", () => {
     expect(add).toHaveBeenCalledTimes(1);
   });
 
-  it("the timer under the pet is as wide as the pet", async () => {
-    const hover = vi.spyOn(ipc, "petHover");
+  it("the timer by the pet is as wide as the pet", async () => {
     renderPet();
     await screen.findByRole("button", { name: /^Pluto\./ });
     await act(async () => { await ipc.focusStart({ kind: "FOCUS", minutes: 25, task_id: null }); });
     try {
       const timer = await screen.findByRole("timer", {}, { timeout: 2000 });
       expect(timer.style.width).toBe("128px"); // size M
-      await waitFor(() => expect(hover).toHaveBeenCalledWith(true, 128, expect.any(Number), true));
     } finally {
       await act(async () => { await ipc.focusStop(); });
     }
   });
 
-  it("the focus timer asks for the strip below the pet (H1)", async () => {
+  it("the focus timer shows without resizing the window", async () => {
     const hover = vi.spyOn(ipc, "petHover");
     renderPet();
     await screen.findByRole("button", { name: /^Pluto\./ });
+    await waitFor(() => expect(hover).toHaveBeenCalledTimes(1));
     await act(async () => { await ipc.focusStart({ kind: "FOCUS", minutes: 25, task_id: null }); });
     try {
       await screen.findByRole("timer", {}, { timeout: 2000 });
-      await waitFor(() => expect(hover).toHaveBeenCalledWith(true, expect.any(Number), expect.any(Number), true));
+      expect(hover).toHaveBeenCalledTimes(1);
     } finally {
       await act(async () => { await ipc.focusStop(); });
       hover.mockRestore();
@@ -233,8 +232,8 @@ describe("desktop pet", () => {
     vi.spyOn(ipc, "settingsGetAll").mockResolvedValue({ ...all, "pet.pack": "boba" });
     vi.spyOn(ipc, "petsSheet").mockResolvedValue("data:image/webp;base64,AA==");
     renderPet();
-    const pet = await screen.findByRole("img", { name: /^boba \(/ });
-    fireEvent.mouseEnter(pet.closest("div.flex") as HTMLElement);
+    await screen.findByRole("img", { name: /^boba \(/ });
+    fireEvent.mouseEnter(screen.getByRole("button", { name: /^Pluto\./ }));
     await waitFor(() => expect(screen.getByRole("img", { name: /^boba \(wave\)/ }).getAttribute("data-row")).toBe("waving"));
     // The greeting is in place: no hop, which moved the pet when the cursor came near (owner 2026-10-27).
     expect(screen.getByRole("button", { name: /^Pluto\./ }).className).not.toContain("pet-hop");
@@ -260,47 +259,33 @@ describe("desktop pet", () => {
   it("hovering shows today's card beside the pet", async () => {
     const hover = vi.spyOn(ipc, "petHover");
     renderPet();
-    fireEvent.mouseEnter(bear().closest("div.flex") as HTMLElement);
+    fireEvent.mouseEnter(bear());
     expect(await screen.findByRole("status", { name: "Today at a glance" }, { timeout: 2000 })).toBeTruthy();
     await waitFor(() => expect(hover).toHaveBeenCalledWith(true, expect.any(Number), expect.any(Number), false));
   });
 
-  it("the pet keeps its place when the cursor comes near: lay out first, then grow; shrink first, then clear (owner 2026-10-27)", async () => {
-    const order: string[] = [];
-    vi.spyOn(ipc, "petPlan").mockImplementation(async () => { order.push("plan"); return { pet: "right", card: "above" }; });
-    vi.spyOn(ipc, "petHover").mockImplementation(async (expanded) => {
-      // The page is already laid out for the grown window when it grows, and still when it shrinks.
-      order.push(`${expanded ? "grow" : "shrink"}:${document.querySelector("[data-pet-bear]")?.parentElement?.className.includes("justify-end") ? "corner" : "centre"}`);
-      return expanded ? { pet: "right", card: "above" } : null;
-    });
+  it("never resizes on hover: the window is laid out once and the card shows inside it, so nothing flickers (owner 2026-11-02)", async () => {
+    const hover = vi.spyOn(ipc, "petHover").mockResolvedValue({ pet: "right", card: "above" });
     renderPet();
-    const root = bear().closest("div.flex") as HTMLElement;
-    fireEvent.mouseEnter(root);
+    await waitFor(() => expect(hover).toHaveBeenCalledTimes(1));
+    expect(hover).toHaveBeenCalledWith(true, 300, 404, false);
+    fireEvent.mouseEnter(bear());
     await screen.findByRole("status", { name: "Today at a glance" }, { timeout: 2000 });
-    fireEvent.mouseLeave(root);
-    await waitFor(() => expect(order).toContain("shrink:corner"));
-    expect(order.slice(order.indexOf("plan"))).toEqual(["plan", "grow:corner", "shrink:corner"]);
+    fireEvent.mouseLeave(bear());
     await waitFor(() => expect(screen.queryByRole("status", { name: "Today at a glance" })).toBeNull());
+    expect(hover).toHaveBeenCalledTimes(1);
+    expect((bear().closest("div.h-screen") as HTMLElement).style.opacity).toBe("");
   });
 
-  it("the pet is invisible only while the window changes size, so no old frame shows above the card (owner 2026-10-31)", async () => {
-    const seen: string[] = [];
-    vi.spyOn(ipc, "petPlan").mockResolvedValue({ pet: "right", card: "above" });
-    vi.spyOn(ipc, "petHover").mockImplementation(async (expanded) => {
-      const root = bear().closest("div.h-screen") as HTMLElement;
-      seen.push(`${expanded ? "grow" : "shrink"}:${root.style.opacity === "0" ? "hidden" : "shown"}`);
-      return expanded ? { pet: "right", card: "above" } : null;
-    });
+  it("tells the shell which parts are drawn so clicks go through the rest, and holds the pointer while dragging", async () => {
+    const solid = vi.spyOn(ipc, "petSolid").mockResolvedValue(null);
     renderPet();
-    const root = bear().closest("div.flex") as HTMLElement;
-    fireEvent.mouseEnter(root);
-    await screen.findByRole("status", { name: "Today at a glance" }, { timeout: 2000 });
-    await waitFor(() => expect((bear().closest("div.h-screen") as HTMLElement).style.opacity).toBe(""));
-    fireEvent.mouseLeave(root);
-    await waitFor(() => expect(seen).toContain("shrink:hidden"));
-    await waitFor(() => expect(screen.queryByRole("status", { name: "Today at a glance" })).toBeNull());
-    await waitFor(() => expect((bear().closest("div.h-screen") as HTMLElement).style.opacity).toBe(""));
-    expect(seen.slice(0, 2)).toEqual(["grow:hidden", "shrink:hidden"]);
+    await waitFor(() => expect(solid).toHaveBeenCalledWith([expect.any(Array)], false));
+    fireEvent.pointerDown(bear(), { button: 0, buttons: 1, screenX: 10, screenY: 10 });
+    fireEvent.pointerMove(bear(), { buttons: 1, screenX: 40, screenY: 40 });
+    await waitFor(() => expect(solid).toHaveBeenLastCalledWith([expect.any(Array)], true));
+    fireEvent.pointerMove(bear(), { buttons: 0, screenX: 40, screenY: 40 });
+    await waitFor(() => expect(solid).toHaveBeenLastCalledWith([expect.any(Array)], false));
   });
 
   it("one click opens the dashboard, a double click hides it, a right click opens the menu", async () => {
@@ -353,14 +338,14 @@ describe("desktop pet", () => {
     expect(screen.queryByRole("img", { name: "Pluto the bear (sleep)" })).toBeNull();
     await act(async () => { await vi.advanceTimersByTimeAsync(2 * 60_000); });
     expect(screen.getByRole("img", { name: "Pluto the bear (sleep)" })).toBeTruthy();
-    fireEvent.mouseEnter(bear().closest("div.flex") as HTMLElement);
+    fireEvent.mouseEnter(bear());
     expect(screen.queryByRole("img", { name: "Pluto the bear (sleep)" })).toBeNull();
   });
 
   it("drags with the card open without shrinking the window first, then lays the card out again", async () => {
     const hover = vi.spyOn(ipc, "petHover");
     renderPet();
-    fireEvent.mouseEnter(bear().closest("div.flex") as HTMLElement);
+    fireEvent.mouseEnter(bear());
     const card = await screen.findByRole("status", { name: "Today at a glance" }, { timeout: 2000 });
     hover.mockClear();
     fireEvent.pointerDown(bear(), { button: 0, buttons: 1, screenX: 10, screenY: 10 });
@@ -376,7 +361,7 @@ describe("desktop pet", () => {
   it("a press that starts on the card, not the bear, still drags the window (0.1.3 report)", async () => {
     const hover = vi.spyOn(ipc, "petHover");
     renderPet();
-    fireEvent.mouseEnter(bear().closest("div.flex") as HTMLElement);
+    fireEvent.mouseEnter(bear());
     const card = await screen.findByRole("status", { name: "Today at a glance" }, { timeout: 2000 });
     hover.mockClear();
     fireEvent.pointerDown(card, { button: 0, buttons: 1, screenX: 10, screenY: 10 });
@@ -388,7 +373,7 @@ describe("desktop pet", () => {
 
   it("a press on a card button is a click even if the mouse wobbles, so Sleep works (owner 2026-10-27)", async () => {
     renderPet();
-    fireEvent.mouseEnter(bear().closest("div.flex") as HTMLElement);
+    fireEvent.mouseEnter(bear());
     const card = await screen.findByRole("status", { name: "Today at a glance" }, { timeout: 2000 });
     const sleep = within(card).getByRole("button", { name: "Sleep" });
     fireEvent.pointerDown(sleep, { button: 0, buttons: 1, screenX: 10, screenY: 10 });
@@ -401,7 +386,7 @@ describe("desktop pet", () => {
   it("a reaction that arrives while the pet is being dragged waits, so the window is not resized under the drag", async () => {
     const hover = vi.spyOn(ipc, "petHover");
     renderPet();
-    fireEvent.mouseEnter(bear().closest("div.flex") as HTMLElement);
+    fireEvent.mouseEnter(bear());
     const card = await screen.findByRole("status", { name: "Today at a glance" }, { timeout: 2000 });
     await waitFor(() => expect(hover).toHaveBeenCalledWith(true, expect.any(Number), expect.any(Number), false));
     fireEvent.pointerDown(card, { button: 0, buttons: 1, screenX: 10, screenY: 10 });
@@ -419,7 +404,7 @@ describe("desktop pet", () => {
     const move = vi.spyOn(ipc, "taskTransition");
     await ipc.taskQuickAdd("Send invoice");
     renderPet();
-    fireEvent.mouseEnter(bear().closest("div.flex") as HTMLElement);
+    fireEvent.mouseEnter(bear());
     const card = await screen.findByRole("status", { name: "Today at a glance" }, { timeout: 2000 });
     const circle = (await within(card).findAllByRole("button", { name: /^Complete task:/ }))[0] as HTMLElement;
     fireEvent.click(circle);
@@ -430,7 +415,7 @@ describe("desktop pet", () => {
   it("a plain click on the card (no drag) does not open or hide the dashboard", async () => {
     const click = vi.spyOn(ipc, "petClick").mockResolvedValue(null);
     renderPet();
-    fireEvent.mouseEnter(bear().closest("div.flex") as HTMLElement);
+    fireEvent.mouseEnter(bear());
     const card = await screen.findByRole("status", { name: "Today at a glance" }, { timeout: 2000 });
     fireEvent.pointerDown(card, { button: 0, buttons: 1, screenX: 10, screenY: 10 });
     fireEvent.pointerUp(card, { button: 0, screenX: 10, screenY: 10 });
@@ -445,80 +430,6 @@ describe("desktop pet", () => {
     const rows = [row("low", { priority: "LOW" }), row("high", { priority: "HIGH" }), row("doing", { status: "IN_PROGRESS" }), row("late", {}, true)];
     expect(topTasks(rows).map((r) => r.task.id)).toEqual(["late", "doing"]);
     expect(topTasks(rows, 4).map((r) => r.task.id)).toEqual(["late", "doing", "high", "low"]);
-  });
-});
-
-describe("the hover card in its own window (owner 2026-11-01)", () => {
-  const renderWithCardWindow = () =>
-    render(
-      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <PetApp cardWindow />
-      </QueryClientProvider>,
-    );
-  const fromCard = (detail: { kind: "hover" | "nap" | "napping"; value: boolean }) =>
-    act(() => { window.dispatchEvent(new CustomEvent("pluto-pet-card", { detail })); });
-
-  it("hovering opens the card window at the card's own size; the pet window never grows or hides", async () => {
-    const card = vi.spyOn(ipc, "petCard").mockResolvedValue(null);
-    const hover = vi.spyOn(ipc, "petHover");
-    const plan = vi.spyOn(ipc, "petPlan");
-    renderWithCardWindow();
-    // A resize still finishing from the test before this one (it was unmounted mid-await) is not ours.
-    await act(async () => { await new Promise((r) => setTimeout(r, 100)); });
-    hover.mockClear();
-    plan.mockClear();
-    const root = bear().closest("div.flex") as HTMLElement;
-    fireEvent.mouseEnter(root);
-    await waitFor(() => expect(card).toHaveBeenCalledWith(true, 300, 404));
-    expect(hover).not.toHaveBeenCalledWith(true, expect.any(Number), expect.any(Number), expect.anything());
-    expect(plan).not.toHaveBeenCalled();
-    expect(screen.queryByRole("status", { name: "Today at a glance" })).toBeNull();
-    expect((bear().closest("div.h-screen") as HTMLElement).style.opacity).toBe("");
-    fireEvent.mouseLeave(root);
-    await waitFor(() => expect(card).toHaveBeenLastCalledWith(false, 300, 404));
-  });
-
-  it("stays open while the pointer is on the card, and closes once it leaves the card too", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    const card = vi.spyOn(ipc, "petCard").mockResolvedValue(null);
-    renderWithCardWindow();
-    const root = bear().closest("div.flex") as HTMLElement;
-    fireEvent.mouseEnter(root);
-    await waitFor(() => expect(card).toHaveBeenCalledWith(true, 300, 404));
-    fireEvent.mouseLeave(root);
-    fromCard({ kind: "hover", value: true });
-    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
-    expect(card).not.toHaveBeenCalledWith(false, 300, 404);
-    fromCard({ kind: "hover", value: false });
-    await act(async () => { await vi.advanceTimersByTimeAsync(300); });
-    expect(card).toHaveBeenLastCalledWith(false, 300, 404);
-  });
-
-  it("Sleep on the card puts the pet to sleep, and the card is told to show Wake", async () => {
-    vi.spyOn(ipc, "petCard").mockResolvedValue(null);
-    const told: boolean[] = [];
-    const listen = (e: Event) => { const m = (e as CustomEvent<{ kind: string; value: boolean }>).detail; if (m.kind === "napping") told.push(m.value); };
-    window.addEventListener("pluto-pet-card", listen);
-    renderWithCardWindow();
-    fireEvent.mouseEnter(bear().closest("div.flex") as HTMLElement);
-    await waitFor(() => expect(told).toContain(false));
-    fromCard({ kind: "nap", value: true });
-    await waitFor(() => expect(told[told.length - 1]).toBe(true));
-    expect(await screen.findByRole("img", { name: "Pluto the bear (sleep)" })).toBeTruthy();
-    window.removeEventListener("pluto-pet-card", listen);
-  });
-
-  it("a drag puts the card window away and brings it back at the new spot", async () => {
-    const card = vi.spyOn(ipc, "petCard").mockResolvedValue(null);
-    renderWithCardWindow();
-    fireEvent.mouseEnter(bear().closest("div.flex") as HTMLElement);
-    await waitFor(() => expect(card).toHaveBeenCalledWith(true, 300, 404));
-    card.mockClear();
-    fireEvent.pointerDown(bear(), { button: 0, buttons: 1, screenX: 10, screenY: 10 });
-    fireEvent.pointerMove(bear(), { buttons: 1, screenX: 40, screenY: 40 });
-    await waitFor(() => expect(card).toHaveBeenCalledWith(false, 300, 404));
-    fireEvent.pointerMove(bear(), { buttons: 0, screenX: 40, screenY: 40 });
-    await waitFor(() => expect(card).toHaveBeenLastCalledWith(true, 300, 404));
   });
 });
 
