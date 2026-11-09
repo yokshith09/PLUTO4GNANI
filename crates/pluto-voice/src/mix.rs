@@ -233,6 +233,58 @@ mod tests {
             .collect()
     }
 
+    /// A recorder that ignores frames while paused, like `RecordingSink`.
+    #[derive(Default)]
+    struct Pausable {
+        paused: std::sync::atomic::AtomicBool,
+        kept: Mutex<Vec<AudioFrame>>,
+    }
+    impl FrameSink for Pausable {
+        fn name(&self) -> &'static str {
+            "pausable"
+        }
+        fn push(&self, f: &AudioFrame) -> VoiceResult<()> {
+            if !self.paused.load(Ordering::SeqCst) {
+                self.kept.lock().unwrap().push(f.clone());
+            }
+            Ok(())
+        }
+        fn end(&self, _: &str) -> VoiceResult<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn sound_that_plays_during_a_pause_is_dropped_and_does_not_come_back_on_resume() {
+        let rec = Arc::new(Pausable::default());
+        let mixer = Mixer::new(rec.clone(), "s");
+        mixer.push_system(&[9; FRAME_SAMPLES]);
+        mixer.tick();
+        assert_eq!(rec.kept.lock().unwrap().len(), 1);
+
+        rec.paused.store(true, Ordering::SeqCst);
+        // Ten frames of the video keep arriving while paused; the clock keeps draining them.
+        for _ in 0..10 {
+            mixer.push_system(&[9; FRAME_SAMPLES]);
+            mixer.tick();
+        }
+        assert_eq!(
+            rec.kept.lock().unwrap().len(),
+            1,
+            "nothing is written while paused"
+        );
+
+        rec.paused.store(false, Ordering::SeqCst);
+        mixer.push_system(&[5; FRAME_SAMPLES]);
+        mixer.tick();
+        let kept = rec.kept.lock().unwrap();
+        assert_eq!(kept.len(), 2);
+        assert!(
+            samples(&kept[1]).iter().all(|&v| v == 5),
+            "only new sound, no backlog"
+        );
+    }
+
     #[test]
     fn both_sources_are_added_and_a_missing_one_is_silence() {
         let mut core = MixCore::default();

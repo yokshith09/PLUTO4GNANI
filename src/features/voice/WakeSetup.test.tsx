@@ -110,6 +110,21 @@ describe("Always-on listening (T-705)", () => {
   });
 });
 
+describe("Choosing the wake word", () => {
+  it("the word typed before teaching is what the dialog asks for, and it is remembered", async () => {
+    const { getWakeWord, TeachDialog } = await import("./WakeSetup");
+    const user = userEvent.setup();
+    render(<TeachDialog record={async () => ({ ok: true, message: "", clips: 1 })} onClose={() => undefined} />);
+    const box = screen.getByLabelText(/Wake word/) as HTMLInputElement;
+    await user.clear(box);
+    await user.type(box, "Jarvis!");
+    await user.click(screen.getByRole("button", { name: "Start" }));
+    expect(await screen.findByRole("button", { name: "Say “Jarvis”" })).toBeTruthy();
+    expect(getWakeWord()).toBe("Jarvis");
+    localStorage.removeItem("pluto.wakeWord");
+  });
+});
+
 describe("Teaching Pluto your voice", () => {
   it("asks again for an unclear recording, finishes once there are enough, and keeps nothing on cancel", async () => {
     const user = userEvent.setup();

@@ -2,6 +2,7 @@
 // Pluto the user's own "Pluto". Detection runs on this computer; only what is said after "Pluto"
 // goes to Gnani, exactly like a push-to-talk turn.
 import { useState } from "react";
+import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
@@ -10,6 +11,22 @@ import type { VoiceSettings, WakeStatus } from "@/ipc/generated";
 import { notify } from "@/lib/notify";
 import { Row } from "@/features/settings/parts";
 import { useOptionalVoice } from "./VoiceProvider";
+
+const WAKE_KEY = "pluto.wakeWord";
+/** The word the person says to start a command. Pluto learns it from their own recordings, so it can be any one word. */
+export function getWakeWord(): string {
+  try {
+    return localStorage.getItem(WAKE_KEY)?.trim() || "Pluto";
+  } catch {
+    return "Pluto";
+  }
+}
+export function setWakeWord(word: string) {
+  const clean = word.replace(/[^\p{L}\p{N}]/gu, "").slice(0, 20) || "Pluto";
+  try {
+    localStorage.setItem(WAKE_KEY, clean);
+  } catch { /* the label is a convenience only */ }
+}
 
 /** How many times teaching asks for "Pluto"; the shell needs `needed` good ones. */
 export const ASK_FOR = 8;
@@ -20,10 +37,11 @@ export const ALWAYS_ON_WARNING =
   "Pluto keeps the microphone on and listens for its name on this computer; Windows shows the microphone icon while it does. Nothing is sent until you say “Pluto”. Then what you say next is sent to Gnani, just like holding the talk key.";
 
 function hintFor(s: VoiceSettings, wake: WakeStatus | null): string {
+  const w = getWakeWord();
   if (!s.cloud_voice_enabled) return "Needs cloud voice, which is off.";
-  if (!wake?.enrolled) return "Say “Pluto”, then your command. First, teach Pluto your voice.";
-  if (s.always_on_enabled) return wake.session_id ? "Listening for “Pluto”." : "Starting…";
-  return "Say “Pluto”, then your command, without pressing a key.";
+  if (!wake?.enrolled) return `Say “${w}”, then your command. First, teach Pluto your voice.`;
+  if (s.always_on_enabled) return wake.session_id ? `Listening for “${w}”.` : "Starting…";
+  return `Say “${w}”, then your command, without pressing a key.`;
 }
 
 export function AlwaysOnRow({ s, onChange }: { s: VoiceSettings; onChange: (on: boolean) => void }) {
@@ -75,9 +93,11 @@ export function TeachDialog({ record, onClose }: { record: (ms: number) => Promi
   const [clips, setClips] = useState(0);
   const [needed, setNeeded] = useState(6);
   const [busy, setBusy] = useState(false);
+  const [word, setWord] = useState(getWakeWord);
 
   const begin = async () => {
     try {
+      setWakeWord(word);
       const w = await voiceIpc.wakeTeachBegin();
       setNeeded(w.needed);
       setClips(0);
@@ -125,8 +145,13 @@ export function TeachDialog({ record, onClose }: { record: (ms: number) => Promi
         {!started ? (
           <>
             <DialogDescription className="text-[13px] leading-relaxed text-muted-foreground">
-              Say “Pluto” {ASK_FOR} times, the way you'll say it to start a command. It takes about a minute, and the recordings stay on this computer. Teaching again replaces the voice Pluto knows.
+              Say “{word}” {ASK_FOR} times, the way you'll say it to start a command. It takes about a minute, and the recordings stay on this computer. Teaching again replaces the voice Pluto knows.
             </DialogDescription>
+            <div className="mt-3 space-y-1.5">
+              <label htmlFor="wake-word" className="text-xs font-medium text-muted-foreground">Wake word (one word; Pluto learns it from your voice)</label>
+              <Input id="wake-word" value={word} maxLength={20} onChange={(e) => setWord(e.target.value)} onBlur={() => setWord((w) => w.replace(/[^\p{L}\p{N}]/gu, "") || "Pluto")} />
+              <p className="text-[12px] text-muted-foreground">Pick something 2–3 syllables long that you don't say in normal talk. A word shared with everyday speech will trigger by mistake.</p>
+            </div>
             <div className="mt-4 flex justify-end gap-2">
               <Button variant="ghost" onClick={() => void close()}>Cancel</Button>
               <Button onClick={() => void begin()}>Start</Button>
@@ -134,7 +159,7 @@ export function TeachDialog({ record, onClose }: { record: (ms: number) => Promi
           </>
         ) : step.kind === "done" ? (
           <>
-            <DialogDescription className="text-[13px] leading-relaxed">Pluto knows your voice now. Turn on always-on listening, then say “Pluto”, followed by your command.</DialogDescription>
+            <DialogDescription className="text-[13px] leading-relaxed">Pluto knows your voice now. Turn on always-on listening, then say “{word}”, followed by your command.</DialogDescription>
             <div className="mt-4 flex justify-end">
               <Button onClick={onClose}>Done</Button>
             </div>
@@ -142,7 +167,7 @@ export function TeachDialog({ record, onClose }: { record: (ms: number) => Promi
         ) : (
           <>
             <DialogDescription className="text-[13px] text-muted-foreground" aria-live="polite">
-              {step.kind === "listening" ? "Listening… say “Pluto” now." : step.kind === "said" ? step.message : "Press the button, then say “Pluto”."}
+              {step.kind === "listening" ? "Listening… say “${word}” now." : step.kind === "said" ? step.message : "Press the button, then say “${word}”."}
             </DialogDescription>
             <p className="mt-2 text-sm tabular-nums" aria-label="Recordings">
               {Math.min(clips, ASK_FOR)} of {ASK_FOR}
@@ -156,7 +181,7 @@ export function TeachDialog({ record, onClose }: { record: (ms: number) => Promi
               )}
               {!allAsked && (
                 <Button disabled={busy} onClick={() => void sayOnce()}>
-                  {step.kind === "listening" ? "Listening…" : "Say “Pluto”"}
+                  {step.kind === "listening" ? "Listening…" : `Say “${word}”`}
                 </Button>
               )}
             </div>

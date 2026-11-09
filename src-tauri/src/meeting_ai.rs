@@ -17,7 +17,7 @@ use pluto_contracts::meeting::{
     ApplyExtraction, Commitment, CommitmentStatus, ExtractedItem, ExtractionResult, RecallAnswer,
     RecordingSession, SpeakerMapping, TranscriptSegment, TranscriptionJob,
 };
-use pluto_contracts::speech::FrameSink;
+use pluto_contracts::speech::{FrameSink, TextToSpeech};
 use pluto_core::meetings::Meeting;
 use pluto_core::secrets::{KeychainSecrets, SecretStore};
 use pluto_gnani::http::OutboundLog;
@@ -29,8 +29,7 @@ use pluto_intel::meeting::recorder::{ActiveRecording, Recorder};
 use pluto_intel::meeting::service::MeetingAi;
 use pluto_voice::meeting_jobs::MeetingJobs;
 use pluto_voice::privacy::CloudGated;
-use tauri::ipc::{Channel, InvokeResponseBody, JavaScriptChannelId};
-use tauri::{AppHandle, State, Webview};
+use tauri::{AppHandle, State};
 use tauri_plugin_dialog::DialogExt;
 
 use crate::voice::VoiceShell;
@@ -379,29 +378,63 @@ pub async fn meeting_recap_text(
     shell.ai(&core).recap_text(&meeting_id, &language).await
 }
 
-/// Reading the recap aloud or exporting it needs the speech engine (T-102): until then this says so
-/// instead of silently doing nothing. Without `speak` or `export` there is nothing to do.
+/// Saves the recap as an mp3 in the recap's language (Timbre), to a place the person picks.
+/// Returns the saved path, or `None` if they cancelled the save dialog. Reading aloud is done by
+/// the page (`voice_speak`), so `speak` with nothing to export is a no-op here.
 ///
-/// `playback` is optional, which Tauri's `Channel` argument can't be, so it arrives as a channel
-/// id and becomes a `Channel` on the calling window only when it is given.
+/// The text is written first (Gemini or Groq), then spoken (Timbre): both need Cloud voice on.
 #[tauri::command]
 pub async fn meeting_recap(
     meeting_id: String,
     language: String,
-    speak: bool,
     export: bool,
-    playback: Option<JavaScriptChannelId>,
-    webview: Webview,
+    app: AppHandle,
+    core: State<'_, Core>,
+    shell: State<'_, MeetingShell>,
+    voice: State<'_, VoiceShell>,
 ) -> VoiceResult<Option<String>> {
-    let playback: Option<Channel<InvokeResponseBody>> = playback.map(|id| id.channel_on(webview));
-    let _ = (meeting_id, language, playback);
-    if speak || export {
+    if !export {
+        return Ok(None);
+    }
+    let settings = voice.settings();
+    if !settings.cloud_voice_enabled {
         return Err(VoiceError::new(
-            VoiceErrorCode::Core,
-            "Spoken recaps arrive with the voice engine. The written recap is ready now.",
+            VoiceErrorCode::CloudVoiceDisabled,
+            "Turn on Cloud voice in Settings to save the recap as audio.",
         ));
     }
-    Ok(None)
+    let text = shell.ai(&core).recap_text(&meeting_id, &language).await?;
+    let request = pluto_contracts::speech::TtsRequest {
+        text: pluto_voice::speakable::speakable(&text),
+        language: language.clone(),
+        voice: Some(settings.tts_voice.trim().to_string())
+            .filter(|v| pluto_gnani::tts::VOICES_V3.contains(&v.as_str())),
+        model: None,
+        speed: None,
+    };
+    let audio = voice
+        .tts_client()
+        .synthesize(request, pluto_contracts::speech::AudioContainer::Mp3)
+        .await?;
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .add_filter("MP3 audio", &["mp3"])
+            .set_file_name("meeting-recap.mp3")
+            .blocking_save_file()
+    })
+    .await
+    .map_err(|_| VoiceError::new(VoiceErrorCode::Core, "The save dialog could not open."))?;
+    let Some(path) = picked.and_then(|p| p.into_path().ok()) else {
+        return Ok(None);
+    };
+    std::fs::write(&path, audio).map_err(|_| {
+        VoiceError::new(
+            VoiceErrorCode::Core,
+            "Pluto couldn't save the file there. Pick another folder.",
+        )
+    })?;
+    Ok(Some(path.display().to_string()))
 }
 
 /// Real: who promised what across all meetings, and what is late (T-503).

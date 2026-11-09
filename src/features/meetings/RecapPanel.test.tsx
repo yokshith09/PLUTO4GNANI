@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { meetingAi } from "@/ipc/meetingAi";
 import { voiceIpc } from "@/ipc/voiceClient";
 import type { AudioDeps } from "@/features/voice/VoiceProvider";
 import { RecapPanel } from "./RecapPanel";
@@ -36,6 +37,17 @@ describe("Spoken recap (MA-09)", () => {
     expect(speak.mock.calls[0]?.[0]).toBe(written);
     expect(speak.mock.calls[0]?.[1]).toBe("hi-IN");
     speak.mockRestore();
+  });
+
+  it("Save as mp3 asks for the recap file in the chosen language", async () => {
+    const user = userEvent.setup();
+    const recap = vi.spyOn(meetingAi, "recap").mockResolvedValue("C:\\recap.mp3");
+    wrap(fakeAudio().audio);
+    await user.selectOptions(screen.getByLabelText("Recap language"), "ta-IN");
+    await user.click(screen.getByRole("button", { name: "Write recap" }));
+    await user.click(await screen.findByRole("button", { name: /Save as mp3/ }));
+    await waitFor(() => expect(recap).toHaveBeenCalledWith("as1", "ta-IN", false, true));
+    recap.mockRestore();
   });
 
   it("a speaking failure shows its message and leaves the recap on screen", async () => {

@@ -487,6 +487,11 @@ impl VoiceShell {
         save_settings(&self.data_dir, &lock_settings(&self.settings));
     }
 
+    /// The speech engine, for saving a whole file (the recap as mp3).
+    pub(crate) fn tts_client(&self) -> Arc<TimbreClient> {
+        self.tts.clone()
+    }
+
     /// Where fixed spoken replies are saved on this computer.
     fn reply_cache_dir(&self) -> PathBuf {
         self.data_dir.join("tts-cache")
@@ -648,7 +653,7 @@ impl VoiceShell {
         self.secrets.has(account).unwrap_or(false)
     }
 
-    fn settings(&self) -> VoiceSettings {
+    pub(crate) fn settings(&self) -> VoiceSettings {
         let mut s = lock_settings(&self.settings).clone();
         s.has_gnani_key = self.has_key(Account::Gnani);
         s.has_gemini_key = self.has_key(Account::Gemini);

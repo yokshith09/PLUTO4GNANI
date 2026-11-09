@@ -3,13 +3,13 @@ use thiserror::Error;
 /// Why system audio could not be captured. The recording carries on with the microphone alone.
 #[derive(Debug, Error)]
 pub enum LoopbackError {
-    #[error("Capturing the computer's sound is only available on Windows.")]
+    #[error("Capturing the computer's sound is only available on Windows and Mac.")]
     Unsupported,
-    #[error("Windows would not let Pluto listen to the computer's sound ({0}).")]
-    Windows(String),
+    #[error("Pluto could not listen to the computer's sound ({0}).")]
+    System(String),
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "macos")))]
 mod imp {
     use super::LoopbackError;
 
@@ -24,6 +24,108 @@ mod imp {
     /// Starts capturing the computer's sound; `on_pcm` gets 16 kHz mono PCM16 as it arrives.
     pub fn start(_on_pcm: impl FnMut(&[i16]) + Send + 'static) -> Result<Loopback, LoopbackError> {
         Err(LoopbackError::Unsupported)
+    }
+}
+
+#[cfg(target_os = "macos")]
+mod imp {
+    use std::sync::Mutex;
+
+    use screencapturekit::cm::CMSampleBuffer;
+    use screencapturekit::prelude::*;
+
+    use super::LoopbackError;
+    use crate::convert::{To16kMono, TARGET_RATE};
+
+    /// A running capture. Dropping it stops it.
+    pub struct Loopback {
+        stream: SCStream,
+    }
+
+    impl Drop for Loopback {
+        fn drop(&mut self) {
+            let _ = self.stream.stop_capture();
+        }
+    }
+
+    fn err(what: &str, e: impl std::fmt::Display) -> LoopbackError {
+        LoopbackError::System(format!("{what}: {e}"))
+    }
+
+    /// Starts capturing the computer's sound with ScreenCaptureKit (macOS 13 or newer). The first
+    /// use makes macOS ask for Screen Recording permission, which is how Apple gates system audio;
+    /// no screen picture is kept, the 2x2 video is thrown away. `on_pcm` gets 16 kHz mono PCM16.
+    pub fn start(on_pcm: impl FnMut(&[i16]) + Send + 'static) -> Result<Loopback, LoopbackError> {
+        let content = SCShareableContent::get().map_err(|e| {
+            err(
+                "allow Pluto under System Settings > Privacy & Security > Screen Recording",
+                e,
+            )
+        })?;
+        let display = content
+            .displays()
+            .into_iter()
+            .next()
+            .ok_or_else(|| LoopbackError::System("no display found".into()))?;
+        let filter = SCContentFilter::create()
+            .with_display(&display)
+            .with_excluding_windows(&[])
+            .build();
+        let rate = i32::try_from(TARGET_RATE).unwrap_or(16_000);
+        let config = SCStreamConfiguration::new()
+            .with_width(2)
+            .with_height(2)
+            .with_captures_audio(true)
+            .with_excludes_current_process_audio(true)
+            .with_sample_rate(rate)
+            .with_channel_count(1);
+        let mut stream = SCStream::new(&filter, &config);
+        let sink = Mutex::new(on_pcm);
+        stream.add_output_handler(
+            move |sample: CMSampleBuffer, kind: SCStreamOutputType| {
+                if !matches!(kind, SCStreamOutputType::Audio) {
+                    return;
+                }
+                let Some(list) = sample.audio_buffer_list() else {
+                    return;
+                };
+                // One buffer per channel (planar) or one interleaved buffer; both are brought to
+                // mono and averaged.
+                let mut mixed: Vec<i32> = Vec::new();
+                let mut count = 0_i32;
+                for buffer in list.iter() {
+                    let floats: Vec<f32> = buffer
+                        .data()
+                        .chunks_exact(4)
+                        .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+                        .collect();
+                    let channels = (buffer.number_channels as usize).max(1);
+                    let pcm = To16kMono::new(TARGET_RATE, channels).push_f32(&floats);
+                    if mixed.len() < pcm.len() {
+                        mixed.resize(pcm.len(), 0);
+                    }
+                    for (m, v) in mixed.iter_mut().zip(&pcm) {
+                        *m += i32::from(*v);
+                    }
+                    count += 1;
+                }
+                if count == 0 || mixed.is_empty() {
+                    return;
+                }
+                let out: Vec<i16> = mixed
+                    .iter()
+                    .map(|&m| i16::try_from(m / count).unwrap_or(0))
+                    .collect();
+                if let Ok(mut f) = sink.lock() {
+                    f(&out);
+                }
+            },
+            SCStreamOutputType::Audio,
+        );
+        stream
+            .start_capture()
+            .map_err(|e| err("could not start", e))?;
+        Ok(Loopback { stream })
     }
 }
 
@@ -71,7 +173,7 @@ mod imp {
     }
 
     fn fail(e: windows::core::Error) -> LoopbackError {
-        LoopbackError::Windows(e.message())
+        LoopbackError::System(e.message())
     }
 
     /// Starts capturing the computer's sound; `on_pcm` gets 16 kHz mono PCM16 as it arrives.
@@ -85,7 +187,7 @@ mod imp {
         let thread = std::thread::Builder::new()
             .name("pluto-loopback".into())
             .spawn(move || run(flag, ready_tx, on_pcm))
-            .map_err(|e| LoopbackError::Windows(e.to_string()))?;
+            .map_err(|e| LoopbackError::System(e.to_string()))?;
         match ready_rx.recv() {
             Ok(Ok(())) => Ok(Loopback {
                 stop,
@@ -95,7 +197,7 @@ mod imp {
                 let _ = thread.join();
                 Err(e)
             }
-            Err(_) => Err(LoopbackError::Windows(
+            Err(_) => Err(LoopbackError::System(
                 "the capture thread ended early".into(),
             )),
         }
@@ -134,13 +236,13 @@ mod imp {
             (TAG_FLOAT, 32) => Kind::Float32,
             (TAG_PCM, 16) => Kind::Int16,
             _ => {
-                return Err(LoopbackError::Windows(format!(
+                return Err(LoopbackError::System(format!(
                     "an audio format Pluto does not read ({bits}-bit, type {effective})"
                 )))
             }
         };
         if channels == 0 || rate == 0 || align == 0 {
-            return Err(LoopbackError::Windows("an empty audio format".into()));
+            return Err(LoopbackError::System("an empty audio format".into()));
         }
         Ok(Format {
             rate,

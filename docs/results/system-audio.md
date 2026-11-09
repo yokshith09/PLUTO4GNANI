@@ -16,8 +16,7 @@
 2. Speak while the video plays; both should be transcribed.
 3. Headphones: the video should still be captured (loopback reads what is sent to the device).
 4. Change the default output device mid-recording: capture keeps the old device (known limit).
-5. Pause/Resume: the computer's sound keeps being mixed while paused only if the recorder accepts it;
-   check there is no long silent gap.
+5. Pause/Resume: sound that plays while paused is dropped (a unit test proves no backlog comes back on resume); check there is no long gap or doubled audio after Resume.
 
 ## Known limits
 - Only the default output device, at the time recording starts.

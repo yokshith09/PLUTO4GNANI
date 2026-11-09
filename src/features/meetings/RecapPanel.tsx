@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Copy, ScrollText, Square, Volume2 } from "lucide-react";
+import { Copy, Download, ScrollText, Square, Volume2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { realAudio, type AudioDeps } from "@/features/voice/VoiceProvider";
 import { useSpeakText } from "@/features/voice/useSpeakText";
@@ -20,6 +20,7 @@ export function RecapPanel({ meetingId, audio = realAudio }: { meetingId: string
   const [language, setLanguage] = useState("en-IN");
   const [text, setText] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const voice = useSpeakText(audio);
 
@@ -33,6 +34,18 @@ export function RecapPanel({ meetingId, audio = realAudio }: { meetingId: string
       setError(voiceErrorMessage(e));
     } finally {
       setBusy(false);
+    }
+  };
+  const saveMp3 = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      const path = await meetingAi.recap(meetingId, language, false, true);
+      if (path) notify.info(`Saved ${path}`);
+    } catch (e) {
+      setError(voiceErrorMessage(e));
+    } finally {
+      setSaving(false);
     }
   };
   const copy = async () => {
@@ -63,6 +76,7 @@ export function RecapPanel({ meetingId, audio = realAudio }: { meetingId: string
               ? <Button size="sm" variant="ghost" onClick={voice.stop}><Square />Stop</Button>
               : <Button size="sm" variant="ghost" onClick={() => void voice.speak(text, language)}><Volume2 />Read aloud</Button>}
             <Button size="sm" variant="ghost" onClick={() => void copy()}><Copy />Copy</Button>
+            <Button size="sm" variant="ghost" disabled={saving} onClick={() => void saveMp3()}><Download />{saving ? "Saving…" : "Save as mp3"}</Button>
           </div>
         </div>
       )}

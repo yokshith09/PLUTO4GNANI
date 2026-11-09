@@ -1,3 +1,4 @@
+import { getWakeWord } from "./WakeSetup";
 import { Mic, MicOff, Square, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -26,7 +27,7 @@ export function VoiceBar({ onOpenSettings }: { onOpenSettings: () => void }) {
   const off = v.status?.state === "disabled";
   const recording = v.status?.state === "recording";
   // Always-on (T-705): when idle, say that Pluto is waiting for its name.
-  const idleLabel = state === "idle" && v.wake?.session_id ? "Say “Pluto” to start" : STATE_LABEL[state];
+  const idleLabel = state === "idle" && v.wake?.session_id ? `Say “${getWakeWord()}” to start` : STATE_LABEL[state];
   const label = v.error ?? (v.status?.detail && state !== "listening" ? v.status.detail : idleLabel);
 
   return (

@@ -1,6 +1,5 @@
 // Typed client for the meeting-AI commands (API_CONTRACTS §4.3). Errors are `VoiceError`
 // (see `voiceErrorMessage`). Glossary commands arrive with the P1 glossary task.
-import type { Channel } from "@tauri-apps/api/core";
 import { call } from "./transport";
 import type {
   ApplyExtraction, Commitment, CommitmentStatus, ExtractedItem, ExtractionResult, RecallAnswer, RecordingSession, SpeakerMapping,
@@ -31,8 +30,8 @@ export const meetingAi = {
   /** A short written recap in `language` (for example `hi-IN`), from the applied items only. */
   recapText: (meetingId: string, language: string) => call<string>("meeting_recap_text", { meetingId, language }),
   /** Returns the mp3 path when `export` is true. */
-  recap: (meetingId: string, language: string, speak: boolean, exportMp3: boolean, playback: Channel<ArrayBuffer> | null = null) =>
-    call<string | null>("meeting_recap", { meetingId, language, speak, export: exportMp3, playback }),
+  recap: (meetingId: string, language: string, speak: boolean, exportMp3: boolean) =>
+    call<string | null>("meeting_recap", { meetingId, language, speak, export: exportMp3 }),
   commitmentsList: (owner: string | null = null, status: CommitmentStatus | null = null) =>
     call<Commitment[]>("commitments_list", { owner, status }),
 } as const;

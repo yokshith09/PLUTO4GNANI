@@ -5,7 +5,6 @@
 // Starts `tauri-driver` (port 4444), points Pluto at a fresh temporary data folder through
 // PLUTO_DATA_DIR (never your real data), runs e2e/*.e2e.mjs, then cleans up.
 // Windows needs Microsoft Edge Driver: set NATIVE_DRIVER to msedgedriver.exe (CI does).
-// Linux needs WebKitWebDriver (package webkit2gtk-driver) and a display (xvfb-run).
 // macOS has no WebDriver for WKWebView, so CI runs `e2e/smoke.mjs` there instead.
 import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
