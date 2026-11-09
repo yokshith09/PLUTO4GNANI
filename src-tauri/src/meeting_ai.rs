@@ -39,6 +39,8 @@ use crate::Core;
 /// Recordings in progress, and the lazily built meeting-AI service.
 pub(crate) struct MeetingShell {
     sessions: Mutex<HashMap<String, Arc<ActiveRecording>>>,
+    /// Recordings that also capture the computer's sound; dropping one stops that capture.
+    system: Mutex<HashMap<String, pluto_loopback::Loopback>>,
     recorder: Arc<Recorder>,
     /// The real transcript/extraction service, built on first use (keys come from the keychain).
     ai: OnceLock<Arc<MeetingAi>>,
@@ -48,9 +50,16 @@ impl MeetingShell {
     pub(crate) fn new(recorder: Arc<Recorder>) -> Self {
         Self {
             sessions: Mutex::new(HashMap::new()),
+            system: Mutex::new(HashMap::new()),
             recorder,
             ai: OnceLock::new(),
         }
+    }
+
+    fn system_lock(&self) -> MutexGuard<'_, HashMap<String, pluto_loopback::Loopback>> {
+        self.system
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     fn lock(&self) -> MutexGuard<'_, HashMap<String, Arc<ActiveRecording>>> {
@@ -87,6 +96,16 @@ impl MeetingShell {
 
 // ---- recording -----------------------------------------------------------------------------
 
+/// Whether a recording also captures the computer's sound (other people on a call).
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SystemAudio {
+    Off,
+    /// Refuse to start if it cannot be captured (the person asked for it).
+    Required,
+    /// Record the microphone alone if it cannot be captured (auto mode).
+    BestEffort,
+}
+
 /// Starts a recording: needs consent, creates the meeting, and opens the audio session the UI
 /// streams microphone frames into (`audio_push`) so they land in chunked WAV files (T-207).
 /// Shared by the Record button and by auto mode (Google Meet).
@@ -97,7 +116,8 @@ pub(crate) async fn begin_recording(
     participants: Vec<String>,
     live_captions: bool,
     consent: bool,
-) -> VoiceResult<RecordingSession> {
+    system_audio: SystemAudio,
+) -> VoiceResult<(RecordingSession, bool)> {
     // Push-to-talk answers Busy while a meeting records; refused if Pluto is mid-turn.
     voice.runtime.try_recording_started()?;
     let rec = match shell
@@ -111,16 +131,44 @@ pub(crate) async fn begin_recording(
             return Err(e);
         }
     };
-    let sink: Arc<dyn FrameSink> = rec.sink.clone();
+    let out: Arc<dyn FrameSink> = rec.sink.clone();
+    // The computer's sound is added to the microphone's in time by a mixer (pluto_voice::mix).
+    let mut sink = out.clone();
+    let mut capture = None;
+    if system_audio != SystemAudio::Off {
+        let mixer = pluto_voice::mix::Mixer::new(out, &rec.session.id);
+        let feed = mixer.clone();
+        match pluto_loopback::start(move |pcm| feed.push_system(pcm)) {
+            Ok(handle) => {
+                mixer.spawn_ticker();
+                sink = mixer.mic_sink();
+                capture = Some(handle);
+            }
+            Err(e) if system_audio == SystemAudio::Required => {
+                let _ = shell.recorder.stop(&rec).await;
+                voice.runtime.recording_stopped();
+                return Err(VoiceError::new(
+                    VoiceErrorCode::Core,
+                    format!("{e} Untick \"Include the computer's sound\" to record the microphone alone."),
+                ));
+            }
+            Err(e) => tracing::warn!(error = %e, "recording the microphone alone"),
+        }
+    }
     if let Err(e) = voice.router.open(&rec.session.id, vec![sink]) {
         // Nothing is being captured: don't leave a meeting stuck in "recording".
+        drop(capture);
         let _ = shell.recorder.stop(&rec).await;
         voice.runtime.recording_stopped();
         return Err(e);
     }
     let session = rec.session.clone();
+    let with_system = capture.is_some();
+    if let Some(c) = capture {
+        shell.system_lock().insert(session.id.clone(), c);
+    }
     shell.lock().insert(session.id.clone(), Arc::new(rec));
-    Ok(session)
+    Ok((session, with_system))
 }
 
 /// Ends the recording, saves the last chunk and queues the transcription job (T-201).
@@ -131,6 +179,8 @@ pub(crate) async fn finish_recording(
     session_id: &str,
 ) -> VoiceResult<RecordingSession> {
     let rec = shell.get(session_id)?;
+    // The computer's sound stops first, then the audio session closes and the mixer writes the rest.
+    shell.system_lock().remove(session_id);
     // Closing the audio session ends the sink, which closes the last chunk.
     voice.router.close(session_id);
     // Voice is released first, so a failure while saving can't leave push-to-talk stuck on Busy.
@@ -147,10 +197,26 @@ pub async fn meeting_rec_start(
     participants: Vec<String>,
     live_captions: bool,
     consent: bool,
+    system_audio: Option<bool>,
     voice: State<'_, VoiceShell>,
     shell: State<'_, MeetingShell>,
 ) -> VoiceResult<RecordingSession> {
-    begin_recording(&voice, &shell, &title, participants, live_captions, consent).await
+    let system = if system_audio.unwrap_or(false) {
+        SystemAudio::Required
+    } else {
+        SystemAudio::Off
+    };
+    begin_recording(
+        &voice,
+        &shell,
+        &title,
+        participants,
+        live_captions,
+        consent,
+        system,
+    )
+    .await
+    .map(|(session, _)| session)
 }
 
 #[tauri::command]

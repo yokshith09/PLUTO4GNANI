@@ -9,8 +9,8 @@ import type {
 import type { Meeting } from "./types";
 
 export const meetingAi = {
-  recStart: (title: string, participants: string[], liveCaptions: boolean, consent: boolean) =>
-    call<RecordingSession>("meeting_rec_start", { title, participants, liveCaptions, consent }),
+  recStart: (title: string, participants: string[], liveCaptions: boolean, consent: boolean, systemAudio = false) =>
+    call<RecordingSession>("meeting_rec_start", { title, participants, liveCaptions, consent, systemAudio }),
   recPause: (sessionId: string) => call<RecordingSession>("meeting_rec_pause", { sessionId }),
   recResume: (sessionId: string) => call<RecordingSession>("meeting_rec_resume", { sessionId }),
   /** Also queues the batch transcription job. */

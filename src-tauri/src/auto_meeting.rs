@@ -23,7 +23,7 @@ use serde::Serialize;
 use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, Manager, State};
 
-use crate::meeting_ai::{begin_recording, finish_recording, MeetingShell};
+use crate::meeting_ai::{begin_recording, finish_recording, MeetingShell, SystemAudio};
 use crate::voice::VoiceShell;
 use crate::Core;
 
@@ -200,11 +200,12 @@ async fn start_recording(app: &AppHandle, code: &str) {
         vec![],
         false,
         true,
+        SystemAudio::BestEffort,
     )
     .await;
     let shell = app.state::<AutoMeetShell>();
     match started {
-        Ok(session) => {
+        Ok((session, with_system)) => {
             let rec = AutoRec {
                 session_id: session.id.clone(),
                 meeting_id: session.meeting_id.clone(),
@@ -222,6 +223,13 @@ async fn start_recording(app: &AppHandle, code: &str) {
                 json!({"session_id": rec.session_id, "on": true}),
             );
             let _ = app.emit("pet://recording", Some(&rec));
+            if !with_system {
+                say(
+                    app,
+                    "Recording your microphone only. Other people are heard only if your mic picks them up.",
+                    7000,
+                );
+            }
         }
         Err(e) => {
             let _ = shell.lock().machine.on(Event::StartFailed);

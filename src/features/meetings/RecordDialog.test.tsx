@@ -65,6 +65,20 @@ describe("clock", () => {
 });
 
 describe("Record a meeting (T-207), against the in-memory shell", () => {
+  it("asks for the computer's sound only when ticked, and passes that on", async () => {
+    const user = userEvent.setup();
+    const { meetingAi: ai } = await import("@/ipc/meetingAi");
+    const start = vi.spyOn(ai, "recStart");
+    await mount(fakeAudio());
+    const box = dialog().getByLabelText(/Include the computer's sound/) as HTMLInputElement;
+    expect(box.checked).toBe(false);
+    await user.click(dialog().getByLabelText(/Everyone in this meeting/));
+    await user.click(box);
+    await user.click(dialog().getByRole("button", { name: /Start recording/ }));
+    await statusIs("Recording");
+    expect(start).toHaveBeenCalledWith("", [], false, true, true);
+  });
+
   it("cannot start without consent, here or in the shell", async () => {
     const user = userEvent.setup();
     await mount(fakeAudio());
@@ -81,7 +95,7 @@ describe("Record a meeting (T-207), against the in-memory shell", () => {
     const { onRecorded } = await mount(audio);
     await user.type(dialog().getByLabelText("Meeting title"), "Launch sync");
     await user.type(dialog().getByLabelText(/Participants/), "Asha, Ravi");
-    await user.click(dialog().getByRole("checkbox"));
+    await user.click(dialog().getByLabelText(/Everyone in this meeting/));
     await user.click(dialog().getByRole("button", { name: /Start recording/ }));
 
     await statusIs("Recording");
@@ -112,7 +126,7 @@ describe("Record a meeting (T-207), against the in-memory shell", () => {
     const { onRecorded } = await mount(fakeAudio({
       startCapture: (async () => { throw new CaptureError("mic_permission_denied", "Pluto isn't allowed to use the microphone."); }) as never,
     }));
-    await user.click(dialog().getByRole("checkbox"));
+    await user.click(dialog().getByLabelText(/Everyone in this meeting/));
     await user.click(dialog().getByRole("button", { name: /Start recording/ }));
     expect(await dialog().findByRole("alert")).toBeTruthy();
     expect(dialog().getByRole("alert").textContent).toMatch(/isn't allowed to use the microphone/);
@@ -125,7 +139,7 @@ describe("Record a meeting (T-207), against the in-memory shell", () => {
     const user = userEvent.setup();
     const audio = fakeAudio();
     await mount(audio);
-    await user.click(dialog().getByRole("checkbox"));
+    await user.click(dialog().getByLabelText(/Everyone in this meeting/));
     await user.click(dialog().getByRole("button", { name: /Start recording/ }));
     await statusIs("Recording");
     audio.captures[0]?.onEnded?.();
@@ -137,7 +151,7 @@ describe("Record a meeting (T-207), against the in-memory shell", () => {
   it("cannot be dismissed with Escape while a recording is running", async () => {
     const user = userEvent.setup();
     const { onClose } = await mount(fakeAudio());
-    await user.click(dialog().getByRole("checkbox"));
+    await user.click(dialog().getByLabelText(/Everyone in this meeting/));
     await user.click(dialog().getByRole("button", { name: /Start recording/ }));
     await statusIs("Recording");
     await user.keyboard("{Escape}");

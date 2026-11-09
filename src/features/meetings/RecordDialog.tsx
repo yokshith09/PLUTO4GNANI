@@ -30,6 +30,7 @@ export function RecordDialog({ open, onClose, onRecorded, audio = realAudio }: {
   const [title, setTitle] = useState("");
   const [people, setPeople] = useState("");
   const [consent, setConsent] = useState(false);
+  const [system, setSystem] = useState(false);
   const [phase, setPhase] = useState<Phase>("form");
   const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -79,7 +80,7 @@ export function RecordDialog({ open, onClose, onRecorded, audio = realAudio }: {
     setError(null);
     setPhase("starting");
     try {
-      const s = await meetingAi.recStart(title.trim(), people.split(",").map((p) => p.trim()).filter(Boolean), false, consent);
+      const s = await meetingAi.recStart(title.trim(), people.split(",").map((p) => p.trim()).filter(Boolean), false, consent, system);
       session.current = s;
       try {
         await openMic(s.id);
@@ -140,7 +141,7 @@ export function RecordDialog({ open, onClose, onRecorded, audio = realAudio }: {
     }
   };
 
-  const reset = () => { setTitle(""); setPeople(""); setConsent(false); setElapsed(0); setPhase("form"); setError(null); };
+  const reset = () => { setTitle(""); setPeople(""); setConsent(false); setSystem(false); setElapsed(0); setPhase("form"); setError(null); };
   const busy = phase !== "form";
 
   return (
@@ -165,6 +166,10 @@ export function RecordDialog({ open, onClose, onRecorded, audio = realAudio }: {
               <label className="flex items-start gap-2 text-[13px]">
                 <input type="checkbox" className="mt-0.5 size-4 accent-primary" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
                 <span>Everyone in this meeting knows it is being recorded.</span>
+              </label>
+              <label className="flex items-start gap-2 text-[13px]">
+                <input type="checkbox" className="mt-0.5 size-4 accent-primary" checked={system} onChange={(e) => setSystem(e.target.checked)} />
+                <span>Include the computer's sound, so other people on a call are recorded (Windows).</span>
               </label>
               {error && <p role="alert" className="text-[13px] text-destructive">{error}</p>}
             </div>
