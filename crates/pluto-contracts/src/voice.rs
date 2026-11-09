@@ -200,7 +200,6 @@ pub mod pages {
         "time",
         "notes",
         "projects",
-        "study",
         "meetings",
         "voice",
         "archive",
@@ -210,7 +209,7 @@ pub mod pages {
         "settings",
     ];
     /// Hidden by the demo view (`advanced.demo_pages_only`; `DEMO_HIDDEN` in `pages.ts`).
-    pub const DEMO_HIDDEN: &[&str] = &["time", "study", "character", "mcp", "archive"];
+    pub const DEMO_HIDDEN: &[&str] = &["time", "character", "mcp", "archive"];
 
     /// The page a spoken word means: "home" → `today`, "reminders" → `tasks` (they live there),
     /// "trash" → `bin`, "history" → `voice`. `None` when it names no page.
@@ -232,7 +231,6 @@ pub mod pages {
             "bin" | "trash" | "recycle bin" | "deleted" => "bin",
             "setting" | "settings" | "preferences" | "options" => "settings",
             "time" | "screen time" | "usage" => "time",
-            "study" | "student" => "study",
             "archive" | "archived" => "archive",
             "character" | "pet" => "character",
             "mcp" => "mcp",

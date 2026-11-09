@@ -1,4 +1,3 @@
-import { CourseTag } from "@/features/student/CoursePicker";
 import { forwardRef, type ComponentPropsWithoutRef, type MouseEvent } from "react";
 import { ConfirmAction } from "@/components/ConfirmAction";
 import { Archive, ArchiveRestore, Pin, PinOff, Trash2 } from "lucide-react";
@@ -97,7 +96,7 @@ export function NoteCard({ note, ...h }: { note: NoteSummary } & NoteHandlers) {
       {note.excerpt && <p className="line-clamp-6 whitespace-pre-line text-[13px] leading-relaxed text-foreground/75">{withBoxes(note.excerpt)}</p>}
       {!note.title && !note.excerpt && <p className="text-[13px] italic text-muted-foreground">Empty note</p>}
       <div className="mt-4 flex items-center gap-1.5">
-        <CourseTag kind="note" id={note.id} />{note.project && <Badge>{note.project}</Badge>}
+        {note.project && <Badge>{note.project}</Badge>}
         {note.labels.slice(0, 3).map((l) => (
           <Badge key={l.id}>{l.name}</Badge>
         ))}
@@ -151,7 +150,7 @@ export function PinnedCard({ note, ...h }: { note: NoteSummary } & NoteHandlers)
       <h3 className="mb-2 pr-6 text-[15px] font-semibold leading-snug tracking-tight">{note.title || "Untitled"}</h3>
       <p className="line-clamp-3 whitespace-pre-line text-[13px] leading-relaxed text-foreground/75">{withBoxes(note.excerpt)}</p>
       <div className="mt-auto flex items-center gap-1.5 pt-4">
-        <CourseTag kind="note" id={note.id} />{note.project && <Badge>{note.project}</Badge>}
+        {note.project && <Badge>{note.project}</Badge>}
         {note.labels.slice(0, 2).map((l) => <Badge key={l.id}>{l.name}</Badge>)}
         <span className="ml-auto text-[11px] text-muted-foreground">{timeAgo(note.edited_at)}</span>
       </div>

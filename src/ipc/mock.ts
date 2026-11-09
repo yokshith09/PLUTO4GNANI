@@ -29,10 +29,6 @@ export function createMock() {
     { id: "l4", name: "home" }, { id: "l5", name: "pet" },
   ];
   const diary = { password: null as string | null, recovery: "ABCD-EFGH-JKLM-NPQR-STUV-WXYZ-2345-6789", open: false, entries: new Map<string, string>() };
-  const courses: { id: string; name: string }[] = [];
-  const exams: { id: string; course_id: string | null; title: string; on_date: string }[] = [];
-  const taskCourse = new Map<string, string>();
-  const noteCourse = new Map<string, string>();
   const L = (...ids: string[]) => labels.filter((l) => ids.includes(l.id));
   const n = (
     id: string, title: string, body: string, color: NoteColor, hoursAgo: number,
@@ -452,48 +448,6 @@ export function createMock() {
       return null;
     },
     diary_erase: () => { diary.password = null; diary.open = false; diary.entries.clear(); return null; },
-    courses_list: () => [...courses].sort((x, y) => x.name.localeCompare(y.name)),
-    course_create: (a) => {
-      const name = String(a.name).trim();
-      if (!name) fail("VALIDATION", "Give the course a name.");
-      return courses.find((c) => c.name.toLowerCase() === name.toLowerCase()) ?? (() => { const c = { id: `c${++seq}`, name }; courses.push(c); return c; })();
-    },
-    course_rename: (a) => {
-      const c = courses.find((x) => x.id === a.id) ?? fail("NOT_FOUND", "That course no longer exists.");
-      const name = String(a.name).trim();
-      if (!name) fail("VALIDATION", "Give the course a name.");
-      if (courses.some((x) => x.id !== c.id && x.name.toLowerCase() === name.toLowerCase())) fail("CONFLICT", "A course with that name already exists.");
-      c.name = name; return c;
-    },
-    course_delete: (a) => {
-      const i = courses.findIndex((x) => x.id === a.id);
-      if (i < 0) fail("NOT_FOUND", "That course no longer exists.");
-      courses.splice(i, 1);
-      for (const m of [taskCourse, noteCourse]) for (const [k, v] of m) if (v === a.id) m.delete(k);
-      for (let j = exams.length - 1; j >= 0; j--) if (exams[j]?.course_id === a.id) exams.splice(j, 1);
-      return null;
-    },
-    exams_from: (a) => exams.filter((e) => e.on_date >= String(a.from)).sort((x, y) => x.on_date.localeCompare(y.on_date) || x.title.localeCompare(y.title)),
-    exam_add: (a) => {
-      const title = String(a.title).trim();
-      if (!title) fail("VALIDATION", "Give the exam a name.");
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(a.onDate))) fail("VALIDATION", "Pick a date.");
-      const e = { id: `e${++seq}`, course_id: (a.courseId as string | null) ?? null, title, on_date: String(a.onDate) };
-      exams.push(e); return e;
-    },
-    exam_delete: (a) => { const i = exams.findIndex((x) => x.id === a.id); if (i >= 0) exams.splice(i, 1); return null; },
-    task_set_course: (a) => { if (a.courseId) taskCourse.set(String(a.taskId), String(a.courseId)); else taskCourse.delete(String(a.taskId)); return null; },
-    note_set_course: (a) => { if (a.courseId) noteCourse.set(String(a.noteId), String(a.courseId)); else noteCourse.delete(String(a.noteId)); return null; },
-    course_links: () => ({
-      tasks: [...taskCourse].map(([item_id, course_id]) => ({ item_id, course_id })),
-      notes: [...noteCourse].map(([item_id, course_id]) => ({ item_id, course_id })),
-    }),
-    weekly_report: (a) => {
-      const from = String(a.from);
-      const to = new Date(Date.parse(`${from}T00:00:00Z`) + 6 * 86_400_000).toISOString().slice(0, 10);
-      const rows = courses.map((course) => ({ course, focus_ms: 0, tasks_done: 0 }));
-      return { from, to, courses: rows, total_focus_ms: 0, total_tasks_done: 0 };
-    },
     labels_list: () => labels.map((label) => ({ label, count: notes.filter((x) => !x.archived && x.labels.some((l) => l.id === label.id)).length })),
     label_create: (a) => {
       const name = String(a.name).trim();

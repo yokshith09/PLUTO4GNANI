@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowDownUp, LayoutGrid, List, Plus, Search, Tag, X } from "lucide-react";
-import { useCourseData, useStudentPack } from "@/features/student/useStudent";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger,
@@ -68,11 +67,7 @@ export function NotesPage({ archived, labelId, labelName, labels, onLabel, sort,
   const searching = debounced.trim().length > 0;
   const list = useNotes(archived, labelId, sort);
   const found = useSearch(debounced, archived);
-  const studentPack = useStudentPack();
-  const courseData = useCourseData();
-  const [course, setCourse] = useState("");
-  const inCourse = (searching ? found.data : list.data) ?? [];
-  const notes = studentPack && course ? inCourse.filter((n) => courseData.noteCourse(n.id)?.id === course) : inCourse;
+  const notes = (searching ? found.data : list.data) ?? [];
   const mode = searching ? "search" : archived ? "archive" : labelId ? "label" : "notes";
   const title = searching ? `Results for “${debounced.trim()}”` : archived ? "Archive" : (labelName ?? "Notes");
   const description = searching ? `${notes.length} ${notes.length === 1 ? "match" : "matches"}${archived ? " in the Archive" : ""}` : undefined;
@@ -108,12 +103,6 @@ export function NotesPage({ archived, labelId, labelName, labels, onLabel, sort,
                   <span className="pointer-events-none absolute right-2 flex gap-0.5"><Kbd>{mod}</Kbd><Kbd>K</Kbd></span>
                 )}
               </label>
-              {studentPack && courseData.courses.length > 0 && (
-                <select aria-label="Filter by course" value={course} onChange={(e) => setCourse(e.target.value)} className="h-8 rounded-md border border-input bg-card px-2 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                  <option value="">All courses</option>
-                  {courseData.courses.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-              )}
               {!searching && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>

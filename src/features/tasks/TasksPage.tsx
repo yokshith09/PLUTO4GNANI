@@ -20,8 +20,6 @@ import { LinkChips, PlanBadge, StarButton } from "./TaskBits";
 import { ymd } from "@/lib/dates";
 import { taskOccurs } from "@/lib/repeat";
 import { TaskDetail } from "./TaskDetail";
-import { CourseTag } from "@/features/student/CoursePicker";
-import { useCourses, useStudentPack } from "@/features/student/useStudent";
 import { WeekCalendar } from "@/features/calendar/WeekCalendar";
 import { ShowMore, useProgressive } from "@/lib/progressive";
 
@@ -69,7 +67,6 @@ export function Row({ row, onOpen, n, inProject = false }: { row: TaskRow; onOpe
       <LinkChips links={task.links} />
       <span className="flex-1" />
       <PlanBadge task={task} />
-      <CourseTag kind="task" id={task.id} />
       {task.project && !inProject && <Badge>{task.project}</Badge>}
       {task.status !== "PLANNED" && task.status !== "COMPLETED" && <Badge variant={task.status === "IN_PROGRESS" ? "primary" : "default"}>{STATUS_LABEL[task.status]}</Badge>}
       {overdue && <Badge variant="destructive">Overdue</Badge>}
@@ -113,9 +110,6 @@ export function TasksPage({ focus = null, onClearFocus = () => {} }: { focus?: T
   const [priority, setPriority] = useState("");
   const [status, setStatus] = useState("");
   const [project, setProject] = useState("");
-  const [course, setCourse] = useState("");
-  const studentPack = useStudentPack();
-  const courseInfo = useCourses();
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [query, setQuery] = useState("");
@@ -140,10 +134,9 @@ export function TasksPage({ focus = null, onClearFocus = () => {} }: { focus?: T
   const base = focus
     ? everything.filter(({ task }) => focus.ids.includes(task.id) && task.status !== "COMPLETED" && task.status !== "CANCELLED")
     : rows;
-  const inCourse = course ? base.filter(({ task }) => courseInfo.taskCourse(task.id)?.id === course) : base;
-  const shown = q ? inCourse.filter(({ task }) => `${task.title} ${task.description} ${task.project ?? ""}`.toLowerCase().includes(q)) : base;
+  const shown = q ? base.filter(({ task }) => `${task.title} ${task.description} ${task.project ?? ""}`.toLowerCase().includes(q)) : base;
   const page = useProgressive(shown);
-  const filtered = !!(priority || project || course || status || from || to);
+  const filtered = !!(priority || project || status || from || to);
   const meta = VIEWS.find((v) => v.key === view);
 
   const add = async () => {
@@ -152,7 +145,7 @@ export function TasksPage({ focus = null, onClearFocus = () => {} }: { focus?: T
     setDraft("");
     await quickAdd(title);
   };
-  const reset = () => { setPriority(""); setStatus(""); setProject(""); setCourse(""); setFrom(""); setTo(""); };
+  const reset = () => { setPriority(""); setStatus(""); setProject(""); setFrom(""); setTo(""); };
 
   return (
     <div className="space-y-4">
@@ -176,7 +169,6 @@ export function TasksPage({ focus = null, onClearFocus = () => {} }: { focus?: T
           {VIEWS.map((v) => <ToggleGroupItem key={v.key} value={v.key}>{v.label}</ToggleGroupItem>)}
         </ToggleGroup>
         <Pick label="Priority" value={priority} onChange={setPriority} options={(["HIGH", "MEDIUM", "LOW"] as Priority[]).map((p) => ({ value: p, label: PRIORITY[p].label }))} />
-        {studentPack && courseInfo.courses.length > 0 && <Pick label="Course" value={course} onChange={setCourse} options={courseInfo.courses.map((c) => ({ value: c.id, label: c.name }))} />}
         {projects.length > 0 && <Pick label="Project" value={project} onChange={setProject} options={projects.map((p) => ({ value: p, label: p }))} />}
         {view === "all" && <Pick label="Status" value={status} onChange={setStatus} options={STATUSES.map((s) => ({ value: s, label: STATUS_LABEL[s] }))} />}
         {(view === "all" || view === "completed") && (

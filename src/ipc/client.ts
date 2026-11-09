@@ -3,7 +3,7 @@ import { call } from "./transport";
 import type {
   UsageSummary, TimeRange, TrackingStatus, OpenTab, PetPack, BinNote, DailyLog, Reminder, ReminderInput, ReminderPatch, Label, LabelCount, Note, NoteInput, NotePatch, NoteSort, NoteSummary, Task, TaskEdit, TaskEvent, TaskFilters, TaskRow,
   TaskStatus, TaskView, WorkUpdate, LinkInput, TaskPlan, RepeatDay, FocusSession, FocusStart, RetentionRules, RetentionCounts, Meeting, MeetingFilters, MeetingInput, MeetingSummary,
-  Course, CourseLinks, DiaryHit, DiaryStatus, Exam, WeeklyReport,
+  DiaryHit, DiaryStatus,
 } from "./types";
 import type { Settings, SettingsKey } from "./settings";
 
@@ -49,17 +49,6 @@ export const ipc = {
   diarySearch: (query: string) => call<DiaryHit[]>("diary_search", { query }),
   diarySave: (day: string, text: string) => call<unknown>("diary_save", { day, text }),
   diaryErase: () => call<unknown>("diary_erase"),
-  coursesList: () => call<Course[]>("courses_list"),
-  courseCreate: (name: string) => call<Course>("course_create", { name }),
-  courseRename: (id: string, name: string) => call<Course>("course_rename", { id, name }),
-  courseDelete: (id: string) => call<unknown>("course_delete", { id }),
-  examsFrom: (from: string) => call<Exam[]>("exams_from", { from }),
-  examAdd: (courseId: string | null, title: string, onDate: string) => call<Exam>("exam_add", { courseId, title, onDate }),
-  examDelete: (id: string) => call<unknown>("exam_delete", { id }),
-  taskSetCourse: (taskId: string, courseId: string | null) => call<unknown>("task_set_course", { taskId, courseId }),
-  noteSetCourse: (noteId: string, courseId: string | null) => call<unknown>("note_set_course", { noteId, courseId }),
-  courseLinks: () => call<CourseLinks>("course_links"),
-  weeklyReport: (from: string) => call<WeeklyReport>("weekly_report", { from }),
   labelsList: () => call<LabelCount[]>("labels_list"),
   labelCreate: (name: string) => call<Label>("label_create", { name }),
   labelRename: (id: string, name: string) => call<Label>("label_rename", { id, name }),

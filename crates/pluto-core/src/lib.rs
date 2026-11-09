@@ -5,7 +5,6 @@
 
 pub mod bus;
 pub mod clock;
-pub mod courses;
 pub mod daily_log;
 pub mod data;
 pub mod db;

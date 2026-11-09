@@ -29,7 +29,6 @@ import { VoicePage } from "@/features/voice/VoicePage";
 import { VoiceBar } from "@/features/voice/VoiceBar";
 import { VoiceProvider } from "@/features/voice/VoiceProvider";
 import { ProjectsPage } from "@/features/projects/ProjectsPage";
-import { StudyPage } from "@/features/student/StudyPage";
 import type { TaskFocus } from "@/features/overview/YesterdayLine";
 import { Welcome, useFirstRun, type WelcomeNext } from "@/features/welcome/Welcome";
 import { Tour } from "@/features/guide/Tour";
@@ -39,7 +38,7 @@ import { usePref } from "@/features/guide/usePref";
 import { isPageVisible } from "@/features/shell/pages";
 import { useSetting } from "@/hooks/useTheme";
 
-const PAGES: readonly Page[] = ["today", "tasks", "time", "notes", "projects", "study", "meetings", "voice", "archive", "bin", "character", "mcp", "settings"];
+const PAGES: readonly Page[] = ["today", "tasks", "time", "notes", "projects", "meetings", "voice", "archive", "bin", "character", "mcp", "settings"];
 
 function Screen() {
   const [page, setPageState] = useState<Page>("today");
@@ -193,7 +192,6 @@ function Screen() {
             {page === "meetings" && <MeetingsPage newTick={newMeeting} />}
             {page === "voice" && <VoicePage />}
             {page === "projects" && <ProjectsPage />}
-            {page === "study" && <StudyPage />}
             {page === "time" && <TimePage />}
             {page === "mcp" && <ComingSoon icon={<Plug />} title="MCP" description="Connect external tools and services to Pluto through the Model Context Protocol. This arrives in a later release." />}
           </div>

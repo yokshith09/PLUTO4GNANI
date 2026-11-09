@@ -22,7 +22,6 @@ import { useFocus, useFocusLength } from "@/hooks/useFocus";
 import { FocusLength } from "@/features/focus/FocusTile";
 import { TaskReminders } from "./TaskReminders";
 import { StarButton } from "./TaskBits";
-import { CoursePicker } from "@/features/student/CoursePicker";
 import { STEPS, dueLine, stepIndex, taskHints } from "./hints";
 import { LinksEditor, PlanEditor, RepeatHistory, planOf, planStateOf, samePlan } from "./TaskPlanEditor";
 
@@ -277,7 +276,6 @@ function Body({ task, onClose }: { task: Task; onClose: () => void }) {
                 <Input id="td-project" value={project} maxLength={100} onChange={(e) => setProject(e.target.value)} placeholder="No project" aria-label="Project name" list="td-projects" />
                 <datalist id="td-projects">{projects.map((p) => <option key={p} value={p} />)}</datalist>
               </div>
-              <CoursePicker kind="task" id={task.id} />
               <div className="space-y-1.5">
                 <label htmlFor="td-note" className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><Link2 aria-hidden className="size-3.5" />Note</label>
                 <div className="flex gap-2">

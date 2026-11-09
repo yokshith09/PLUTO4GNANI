@@ -5,7 +5,7 @@ export type {
   AppError, BinNote, DailyLog, ErrorCode, Label, LogEntry, LabelCount, Note, NoteColor, NoteSort, NoteSummary, Priority,
   ActionItem, ActionItemInput, Decision, DecisionInput, Meeting, MeetingFilters, MeetingInput, MeetingSummary,
   Reminder, Snapshot, Stats, Task, TaskEdit, TaskLink, LinkInput, Repeat, RepeatDay, TaskPlan, FocusSession, FocusStart, FocusKind, FocusOutcome, RetentionRules, RetentionCounts, TaskEvent, TaskFilters, TaskRow, TaskStatus, TaskView, WorkUpdate, AppUsage, DomainUsage, DomainSetting, TimeRange, TrackingStatus, UsageSummary, OpenTab, PetPack, PetSource, PetSpecial,
-  DiaryHit, DiaryStatus, Course, CourseLinks, CourseWeek, Exam, ItemCourse, WeeklyReport,
+  DiaryHit, DiaryStatus,
 } from "./generated";
 
 export const NOTE_COLORS: readonly NoteColor[] = [
