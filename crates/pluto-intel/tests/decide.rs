@@ -301,3 +301,42 @@ async fn a_single_word_task_title_becomes_what_was_said() {
     .await;
     assert_eq!(d.args["title"], "Call the dentist on Friday");
 }
+
+#[tokio::test]
+async fn changing_or_deleting_a_reminder_names_it_and_keeps_the_time_as_said() {
+    let d = decide_with(
+        json!({"intent":"reminder","tool":"reminder_update","args":{"match":"dentist","time":"20:55"}}),
+        "change the dentist reminder to 8:55 pm",
+    )
+    .await;
+    assert_eq!(d.tool.as_deref(), Some("reminder_update"));
+    assert_eq!(d.args["match"], "dentist");
+    assert_eq!(d.args["time"], "20:55");
+    assert!(
+        d.args.get("date").is_none(),
+        "no day said: the reminder keeps its own"
+    );
+
+    let d = decide_with(
+        json!({"intent":"reminder","tool":"reminder_update","args":{"match":"dentist","when_phrase":"tomorrow"}}),
+        "move the dentist reminder to tomorrow",
+    )
+    .await;
+    assert_eq!(d.args["date"], "2026-11-05");
+
+    // Nothing to change is not an update.
+    let d = decide_with(
+        json!({"intent":"reminder","tool":"reminder_update","args":{"match":"dentist"}}),
+        "change the dentist reminder",
+    )
+    .await;
+    assert_eq!((d.intent, d.tool), (Intent::Noise, None));
+
+    let d = decide_with(
+        json!({"intent":"reminder","tool":"reminder_delete","args":{"match":"dentist","at":"21:00"}}),
+        "delete the 9 pm dentist reminder",
+    )
+    .await;
+    assert_eq!(d.tool.as_deref(), Some("reminder_delete"));
+    assert_eq!(d.args["at"], "21:00");
+}

@@ -13,6 +13,8 @@ export interface NamedEvents {
   "voice://error": VoiceError;
   /** Always-on listening changed: open the always-on microphone for `session_id`, or close it. */
   "voice://wake": WakeStatus;
+  /** Dictation (typing what you say into the focused app) started (true) or ended (false). */
+  "voice://dictation": boolean;
   "meeting://caption": TranscriptSegment;
   "meeting://ticker": ExtractedItem;
   "meeting://job": TranscriptionJob;

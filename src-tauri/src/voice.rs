@@ -183,6 +183,10 @@ struct AppRuntimeEvents(AppHandle);
 impl RuntimeEvents for AppRuntimeEvents {
     fn status(&self, status: &VoiceStatus) {
         emit(&self.0, events::STATUS, status);
+        // Dictation is over as soon as the turn is no longer listening (second press, error, off).
+        if status.state != VoiceState::Listening {
+            emit(&self.0, "voice://dictation", &false);
+        }
     }
 
     fn transcript(&self, _session_id: &str, t: &RtTranscript) {
@@ -417,7 +421,8 @@ impl VoiceShell {
                 enabled,
             )
             .with_config(move || rt_config(&lock_settings(&for_config)))
-            .with_extra_sinks(check_sinks(data_dir.clone())),
+            .with_extra_sinks(check_sinks(data_dir.clone()))
+            .with_typer(Arc::new(crate::dictation::OsTyper)),
         );
         assistant.attach(&runtime);
         // Replies saved by an older version may hold the user's own words: cleared once.
@@ -895,6 +900,45 @@ pub(crate) fn hotkey(app: &AppHandle, pressed: bool) {
         }
     } else {
         shell.ptt_up();
+    }
+}
+
+/// Where the hands-free key and the dictation key are, until they become settings: the first
+/// press starts, a pause (hands-free) or the second press (dictation) ends.
+pub(crate) const HANDS_FREE_HOTKEY: &str = "Ctrl+Alt+Space";
+pub(crate) const DICTATION_HOTKEY: &str = "Ctrl+Alt+D";
+
+/// The hands-free hotkey: press once and talk; the command ends after a pause.
+pub(crate) fn hotkey_hands_free(app: &AppHandle) {
+    toggle_turn(app, false);
+}
+
+/// The dictation hotkey: press to start typing what you say, press again to stop.
+pub(crate) fn hotkey_dictation(app: &AppHandle) {
+    toggle_turn(app, true);
+}
+
+fn toggle_turn(app: &AppHandle, dictation: bool) {
+    use tauri::Manager;
+    let Some(shell) = app.try_state::<VoiceShell>() else {
+        return;
+    };
+    let result = if dictation {
+        shell.runtime.dictation_toggle()
+    } else {
+        shell.runtime.hands_free_toggle()
+    };
+    match result {
+        Ok(started) => {
+            if dictation {
+                emit(app, "voice://dictation", &started.is_some());
+            }
+        }
+        Err(e) => {
+            if e.code != VoiceErrorCode::Busy {
+                emit(app, events::ERROR, &e);
+            }
+        }
     }
 }
 

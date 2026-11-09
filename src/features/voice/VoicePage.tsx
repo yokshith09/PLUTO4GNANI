@@ -90,6 +90,16 @@ export function VoicePage() {
     <div>
       <PageHeader title="Voice" description="Say “Pluto” or press Talk at the bottom of the window, or type a command here. Pluto asks before it changes anything." />
 
+      <section aria-label="Ways to talk" className="mb-4 rounded-xl border bg-card p-4">
+        <h2 className="text-sm font-semibold">Ways to talk</h2>
+        <ul className="mt-2 grid gap-x-6 gap-y-1.5 text-[13px] sm:grid-cols-2">
+          <li><kbd className="rounded border bg-muted px-1.5 py-0.5 text-[11px]">Ctrl</kbd> <kbd className="rounded border bg-muted px-1.5 py-0.5 text-[11px]">Alt</kbd> <kbd className="rounded border bg-muted px-1.5 py-0.5 text-[11px]">Space</kbd> <span className="text-muted-foreground">Press once, say your command, stop talking. It ends by itself.</span></li>
+          <li><kbd className="rounded border bg-muted px-1.5 py-0.5 text-[11px]">Ctrl</kbd> <kbd className="rounded border bg-muted px-1.5 py-0.5 text-[11px]">Alt</kbd> <kbd className="rounded border bg-muted px-1.5 py-0.5 text-[11px]">D</kbd> <span className="text-muted-foreground">Dictation: what you say is typed where your cursor is. Press again to stop.</span></li>
+          <li><span className="font-medium">Hold the talk key</span> <span className="text-muted-foreground">(Settings → Voice &amp; privacy) and release to send.</span></li>
+          <li><span className="font-medium">Say “Pluto…”</span> <span className="text-muted-foreground">with always-on listening turned on and taught.</span></li>
+        </ul>
+      </section>
+
       <section aria-label="Commands" className="mb-4 rounded-xl border bg-card p-4">
         <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); void run(text); }}>
           <label htmlFor="voice-command" className="sr-only">Type a command</label>

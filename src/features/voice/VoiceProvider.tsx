@@ -25,6 +25,8 @@ export interface VoiceApi {
   error: string | null;
   /** The microphone is open for a push-to-talk turn. */
   talking: boolean;
+  /** Dictation is on: what you say is typed into the app that has the focus. */
+  dictating: boolean;
   toggleTalk: () => Promise<void>;
   respond: (response: ProposalResponse) => Promise<ToolResult | null>;
   /** The proposal ran out of time (its card closes). */
@@ -60,6 +62,7 @@ export function VoiceProvider({ children, audio = realAudio }: { children: React
   const [proposal, setProposal] = useState<Proposal | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [talking, setTalking] = useState(false);
+  const [dictating, setDictating] = useState(false);
   const mic = useRef<{ handle: CaptureHandle; sender: FrameSender; session: string } | null>(null);
   // Set while a session is being opened here, so its own Listening status isn't taken for a
   // hotkey press.
@@ -111,6 +114,7 @@ export function VoiceProvider({ children, audio = realAudio }: { children: React
         if (turn.reply_text && !(turn.proposal && turn.result)) speak(turn.reply_text, turn.language, turn.interaction_id);
       }),
       onNamed("voice://proposal", (p) => setProposal(p)),
+      onNamed("voice://dictation", setDictating),
       onNamed("voice://error", (e) => setError(e.message)),
     ];
     return () => {
@@ -298,8 +302,8 @@ export function VoiceProvider({ children, audio = realAudio }: { children: React
   }, [proposal, speak]);
 
   const api = useMemo<VoiceApi>(
-    () => ({ status, heard, reply, proposal, error, talking, toggleTalk, respond, expireProposal: () => setProposal(null), clearError: () => setError(null), wake, recordClip }),
-    [status, heard, reply, proposal, error, talking, toggleTalk, respond, wake, recordClip],
+    () => ({ status, heard, reply, proposal, error, talking, dictating, toggleTalk, respond, expireProposal: () => setProposal(null), clearError: () => setError(null), wake, recordClip }),
+    [status, heard, reply, proposal, error, talking, dictating, toggleTalk, respond, wake, recordClip],
   );
   return <VoiceContext.Provider value={api}>{children}</VoiceContext.Provider>;
 }

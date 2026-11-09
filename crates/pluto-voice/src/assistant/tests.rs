@@ -679,6 +679,18 @@ async fn t_as_05_no_write_tool_changes_anything_without_an_approved_proposal() {
             json!({"match": "call ravi"}),
         ),
         (
+            "w reminder_update",
+            Intent::Reminder,
+            Some("reminder_update"),
+            json!({"match": "call ravi", "remind_at": later + 3_600_000}),
+        ),
+        (
+            "w reminder_delete",
+            Intent::Reminder,
+            Some("reminder_delete"),
+            json!({"match": "call ravi"}),
+        ),
+        (
             "w note_create",
             Intent::Note,
             Some("note_create"),
@@ -788,6 +800,18 @@ fn write_tools(later: i64) -> Vec<(&'static str, Intent, &'static str, Value)> {
             "",
             Intent::Reminder,
             "reminder_done",
+            json!({"match": "call ravi"}),
+        ),
+        (
+            "",
+            Intent::Reminder,
+            "reminder_update",
+            json!({"match": "call ravi", "remind_at": later + 3_600_000}),
+        ),
+        (
+            "",
+            Intent::Reminder,
+            "reminder_delete",
             json!({"match": "call ravi"}),
         ),
         ("", Intent::Note, "note_create", json!({"body": "Buy milk"})),
@@ -1091,4 +1115,121 @@ async fn asking_when_a_task_is_due_finds_it_by_its_words_and_says_the_date() {
         "{}",
         all.message
     );
+}
+
+// ---- reminders: change and delete the one that exists, say its time ---------------------------
+
+async fn add_reminder(r: &Rig, title: &str, at: i64) -> Reminder {
+    reminders::create(
+        &r.db,
+        &*r.clock,
+        ReminderInput {
+            title: title.into(),
+            remind_at: at,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap()
+}
+
+fn hours(n: i64) -> i64 {
+    n * 3_600_000
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn changing_a_reminders_time_moves_it_instead_of_adding_another() {
+    let now = START;
+    let r = rig(
+        Script(vec![(
+            "change it",
+            Intent::Reminder,
+            Some("reminder_update"),
+            json!({"match": "dentist", "remind_at": now + hours(5)}),
+        )]),
+        PROPOSAL_WINDOW,
+    );
+    let old = add_reminder(&r, "Call the dentist", now + hours(4)).await;
+    r.a.turn(heard("change it", "en-IN")).await.unwrap();
+    let p = r.a.pending().expect("a proposal waits");
+    assert!(
+        p.summary_text.starts_with("Move “Call the dentist” from "),
+        "{}",
+        p.summary_text
+    );
+    r.a.turn(heard("haan", "en-IN")).await.unwrap();
+    let open = r.a.open_reminders().await.unwrap();
+    assert_eq!(open.len(), 1, "one reminder, not two");
+    assert_eq!(open[0].id, old.id);
+    assert_eq!(open[0].remind_at, now + hours(5));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn deleting_with_two_reminders_of_one_name_asks_which_by_time() {
+    let now = START;
+    let r = rig(
+        Script(vec![(
+            "delete it",
+            Intent::Reminder,
+            Some("reminder_delete"),
+            json!({"match": "dentist"}),
+        )]),
+        PROPOSAL_WINDOW,
+    );
+    let first = add_reminder(&r, "Call the dentist", now + hours(4)).await;
+    add_reminder(&r, "Call the dentist", now + hours(5)).await;
+    r.a.turn(heard("delete it", "en-IN")).await.unwrap();
+    let said = r.a.pending().unwrap().summary_text;
+    assert!(
+        said.starts_with("Which one? 1) Call the dentist at "),
+        "{said}"
+    );
+    assert!(said.contains("2) Call the dentist at "), "{said}");
+    // The earlier one is first; choosing it asks nothing more and removes only that one.
+    r.a.turn(heard("pehla", "en-IN")).await.unwrap();
+    let open = r.a.open_reminders().await.unwrap();
+    assert_eq!(open.len(), 1);
+    assert_ne!(open[0].id, first.id);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_delete_names_the_reminder_and_its_time() {
+    let now = START;
+    let r = rig(
+        Script(vec![(
+            "remove it",
+            Intent::Reminder,
+            Some("reminder_delete"),
+            json!({"match": "dentist"}),
+        )]),
+        PROPOSAL_WINDOW,
+    );
+    add_reminder(&r, "Call the dentist", now + hours(4)).await;
+    r.a.turn(heard("remove it", "en-IN")).await.unwrap();
+    let said = r.a.pending().unwrap().summary_text;
+    assert!(
+        said.starts_with("Delete the reminder “Call the dentist” ("),
+        "{said}"
+    );
+    assert!(said.contains("PM") || said.contains("AM"), "{said}");
+    r.a.turn(heard("haan", "en-IN")).await.unwrap();
+    assert!(r.a.open_reminders().await.unwrap().is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn adding_the_same_reminder_again_says_it_already_exists() {
+    let now = START;
+    let r = rig(
+        Script(vec![(
+            "again",
+            Intent::Reminder,
+            Some("reminder_create"),
+            json!({"title": "Call the dentist", "remind_at": now + hours(6)}),
+        )]),
+        PROPOSAL_WINDOW,
+    );
+    add_reminder(&r, "Call the dentist", now + hours(4)).await;
+    r.a.turn(heard("again", "en-IN")).await.unwrap();
+    let said = r.a.pending().unwrap().summary_text;
+    assert!(said.contains("You already have it at"), "{said}");
 }

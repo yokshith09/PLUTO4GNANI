@@ -157,6 +157,8 @@ pub mod tools {
     pub const REMINDERS_LIST: &str = "reminders_list";
     pub const REMINDER_CREATE: &str = "reminder_create";
     pub const REMINDER_DONE: &str = "reminder_done";
+    pub const REMINDER_UPDATE: &str = "reminder_update";
+    pub const REMINDER_DELETE: &str = "reminder_delete";
     pub const MEETING_SEARCH: &str = "meeting_search";
     pub const COMMITMENTS_LIST: &str = "commitments_list";
     pub const NOTES_SEARCH: &str = "notes_search";
@@ -174,6 +176,8 @@ pub mod tools {
         TASK_UPDATE,
         REMINDER_CREATE,
         REMINDER_DONE,
+        REMINDER_UPDATE,
+        REMINDER_DELETE,
         NOTE_CREATE,
         FOCUS_START,
         FOCUS_STOP,
@@ -481,7 +485,7 @@ mod tests {
         for t in tools::WRITE {
             assert!(!tools::READ.contains(t), "{t} is listed as both");
         }
-        assert_eq!(tools::WRITE.len() + tools::READ.len(), 15);
+        assert_eq!(tools::WRITE.len() + tools::READ.len(), 17);
     }
 
     #[test]

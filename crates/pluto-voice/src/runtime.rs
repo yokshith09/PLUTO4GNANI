@@ -31,6 +31,7 @@ use tokio::task::AbortHandle;
 use tokio::time::Instant;
 
 use crate::audio::AudioRouter;
+use crate::endpoint::{EndpointPolicy, Endpointer};
 
 // ---- policy --------------------------------------------------------------------------------
 
@@ -246,9 +247,31 @@ impl TurnHandler for NoAssistant {
     }
 }
 
+/// Types text into whatever window has the focus (dictation). Implemented by the shell for the
+/// operating system; a test records what it was asked to type.
+pub trait Typer: Send + Sync {
+    fn type_text(&self, text: &str) -> VoiceResult<()>;
+}
+
+/// How the next turn starts.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum TurnKind {
+    /// Hold the key (or the Talk button); release sends.
+    #[default]
+    Held,
+    /// One press starts, a pause ends it (hands-free).
+    HandsFree,
+    /// One press starts, the next press ends it; each phrase is typed where the cursor is.
+    Dictation,
+}
+
 /// Sends captured frames toward Realtime. Never blocks: when the buffer is full (Realtime far
 /// behind), the frame is refused and the router reports it once.
-struct RealtimeSink(mpsc::Sender<RtInput>, Arc<CaptureStats>);
+struct RealtimeSink(
+    mpsc::Sender<RtInput>,
+    Arc<CaptureStats>,
+    Option<Arc<AutoEnd>>,
+);
 
 /// What reached Rust during one press: how many frames, and the loudest sample. Tells "no audio
 /// arrived" and "only silence arrived" apart from "Gnani heard nothing it could transcribe".
@@ -303,6 +326,9 @@ impl FrameSink for RealtimeSink {
 
     fn push(&self, frame: &AudioFrame) -> VoiceResult<()> {
         self.1.add(&frame.pcm);
+        if let Some(auto) = &self.2 {
+            auto.feed(&frame.pcm);
+        }
         self.0
             .try_send(RtInput::Frame(frame.pcm.clone()))
             .map_err(|_| {
@@ -311,6 +337,47 @@ impl FrameSink for RealtimeSink {
                     "Gnani isn't keeping up; some of what you said may be missed.",
                 )
             })
+    }
+}
+
+/// A hands-free turn: watches its own frames and presses "release" after the person stops talking.
+struct AutoEnd {
+    endpointer: Mutex<Endpointer>,
+    runtime: std::sync::Weak<VoiceRuntime>,
+    session_id: String,
+    fired: std::sync::atomic::AtomicBool,
+}
+
+impl AutoEnd {
+    fn feed(&self, pcm: &[u8]) {
+        use std::sync::atomic::Ordering;
+        if self.fired.load(Ordering::Relaxed) {
+            return;
+        }
+        let over = self
+            .endpointer
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .feed(pcm);
+        if over && !self.fired.swap(true, Ordering::SeqCst) {
+            // Off this call: ending the turn closes the very route this frame is travelling on.
+            let (runtime, session) = (self.runtime.clone(), self.session_id.clone());
+            let end = move || {
+                if let Some(rt) = runtime.upgrade() {
+                    if rt.is_listening(&session) {
+                        rt.ptt_up();
+                    }
+                }
+            };
+            match tokio::runtime::Handle::try_current() {
+                Ok(handle) => {
+                    handle.spawn(async move { end() });
+                }
+                Err(_) => {
+                    std::thread::spawn(end);
+                }
+            }
+        }
     }
 }
 
@@ -325,6 +392,7 @@ struct Listen {
     /// Into the session's buffer (frames, then commit / close).
     tx: mpsc::Sender<RtInput>,
     stats: Arc<CaptureStats>,
+    kind: TurnKind,
 }
 
 struct Inner {
@@ -336,6 +404,10 @@ struct Inner {
     /// newer one).
     speaking: Option<(u64, AbortHandle)>,
     speak_seq: u64,
+    /// How the next press starts (set just before `ptt_down`, read when the route opens).
+    next_kind: TurnKind,
+    /// How the turn whose words are being waited for or thought about started.
+    turn_kind: TurnKind,
 }
 
 pub struct VoiceRuntime {
@@ -346,6 +418,7 @@ pub struct VoiceRuntime {
     policy: RuntimePolicy,
     config: Box<ConfigSource>,
     extra_sinks: Box<SinkFactory>,
+    typer: std::sync::OnceLock<Arc<dyn Typer>>,
     inner: Mutex<Inner>,
 }
 
@@ -371,12 +444,15 @@ impl VoiceRuntime {
             policy: RuntimePolicy::default(),
             config: Box::new(RtConfig::default),
             extra_sinks: Box::new(|_| Vec::new()),
+            typer: std::sync::OnceLock::new(),
             inner: Mutex::new(Inner {
                 status: VoiceStatus::new(state),
                 listen: None,
                 turn_session: None,
                 speaking: None,
                 speak_seq: 0,
+                next_kind: TurnKind::Held,
+                turn_kind: TurnKind::Held,
             }),
         }
     }
@@ -399,6 +475,62 @@ impl VoiceRuntime {
     ) -> Self {
         self.extra_sinks = Box::new(sinks);
         self
+    }
+
+    /// Where dictated text goes.
+    pub fn with_typer(self, typer: Arc<dyn Typer>) -> Self {
+        let _ = self.typer.set(typer);
+        self
+    }
+
+    /// Hands-free: a press starts listening and a pause in your speech ends the command. A press
+    /// while it is listening ends it at once. Returns the session to capture for, as `ptt_down`.
+    pub fn hands_free_toggle(self: &Arc<Self>) -> VoiceResult<Option<String>> {
+        self.toggle(TurnKind::HandsFree)
+    }
+
+    /// Dictation: a press starts it, the next press ends it. Each phrase Gnani returns is typed
+    /// where the cursor is, in whatever app has the focus.
+    pub fn dictation_toggle(self: &Arc<Self>) -> VoiceResult<Option<String>> {
+        if self.typer.get().is_none() {
+            return Err(VoiceError::new(
+                VoiceErrorCode::Core,
+                "Dictation isn't available on this computer.",
+            ));
+        }
+        self.toggle(TurnKind::Dictation)
+    }
+
+    /// `Some(session)` when a turn started, `None` when a running one was ended.
+    fn toggle(self: &Arc<Self>, kind: TurnKind) -> VoiceResult<Option<String>> {
+        let running = {
+            let inner = self.lock();
+            inner
+                .listen
+                .as_ref()
+                .filter(|_| inner.status.state == VoiceState::Listening)
+                .map(|l| l.kind)
+        };
+        if running.is_some() {
+            self.ptt_up();
+            return Ok(None);
+        }
+        self.lock().next_kind = kind;
+        let started = self.ptt_down();
+        if started.is_err() {
+            self.lock().next_kind = TurnKind::Held;
+        }
+        started.map(Some)
+    }
+
+    /// Whether the turn listening now is dictation (the UI shows "Dictating").
+    pub fn dictating(&self) -> bool {
+        let inner = self.lock();
+        inner.status.state == VoiceState::Listening
+            && inner
+                .listen
+                .as_ref()
+                .is_some_and(|l| l.kind == TurnKind::Dictation)
     }
 
     fn lock(&self) -> MutexGuard<'_, Inner> {
@@ -552,8 +684,18 @@ impl VoiceRuntime {
                         let session_id = pluto_core::ids::new_id();
                         let (tx, rx) = mpsc::channel(self.policy.buffer_frames + 2);
                         let stats = Arc::new(CaptureStats::default());
+                        let kind = std::mem::take(&mut inner.next_kind);
+                        inner.turn_kind = kind;
+                        let auto = (kind == TurnKind::HandsFree).then(|| {
+                            Arc::new(AutoEnd {
+                                endpointer: Mutex::new(Endpointer::new(EndpointPolicy::default())),
+                                runtime: Arc::downgrade(self),
+                                session_id: session_id.clone(),
+                                fired: std::sync::atomic::AtomicBool::new(false),
+                            })
+                        });
                         let mut sinks: Vec<Arc<dyn FrameSink>> =
-                            vec![Arc::new(RealtimeSink(tx.clone(), stats.clone()))];
+                            vec![Arc::new(RealtimeSink(tx.clone(), stats.clone(), auto))];
                         sinks.extend((self.extra_sinks)(&session_id));
                         if let Err(e) = self.router.open(&session_id, sinks) {
                             // Only a duplicate id fails here, which new_id() rules out.
@@ -564,6 +706,7 @@ impl VoiceRuntime {
                             pressed: Instant::now(),
                             tx,
                             stats: stats.clone(),
+                            kind,
                         });
                         inner.turn_session = Some(session_id.clone());
                         work.push(Work::Listen(session_id, rx, stats));
@@ -653,7 +796,14 @@ impl VoiceRuntime {
         // Held too long: commit for the person.
         let me = Arc::clone(&self);
         let sid = session_id.clone();
-        let max = self.policy.max_press;
+        let kind = self.lock().turn_kind;
+        let dictating = kind == TurnKind::Dictation;
+        // Dictation can run for minutes; a spoken command is short.
+        let max = if dictating {
+            Duration::from_secs(15 * 60)
+        } else {
+            self.policy.max_press
+        };
         let timer = tokio::spawn(async move {
             tokio::time::sleep(max).await;
             if me.is_listening(&sid) {
@@ -661,7 +811,12 @@ impl VoiceRuntime {
             }
         });
 
-        let mut session = match self.stt.open((self.config)()).await {
+        let mut config = (self.config)();
+        if dictating {
+            // Pauses to think are normal while dictating: don't let Gnani hang up on them.
+            config.idle_timeout_sec = Some(300);
+        }
+        let mut session = match self.stt.open(config).await {
             Ok(s) => s,
             Err(e) => {
                 timer.abort();
@@ -708,6 +863,9 @@ impl VoiceRuntime {
                 event = session.events.recv() => match event {
                     Some(RtEvent::Transcript(t)) => {
                         self.events.transcript(&session_id, &t);
+                        if dictating {
+                            self.type_phrase(&t.text, words.is_empty()).await;
+                        }
                         words.push(t);
                         if deadline.is_some() {
                             break; // the words after the commit: that's the end of the turn
@@ -746,6 +904,11 @@ impl VoiceRuntime {
         timer.abort();
         let _ = session.input.send(RtInput::Close).await;
         if !self.owns_turn(&session_id) || self.state() != VoiceState::Thinking {
+            return;
+        }
+        if dictating {
+            // Everything was typed as it came; there is nothing to think about.
+            let _ = self.apply(Input::TurnDone, None);
             return;
         }
 
@@ -805,6 +968,27 @@ impl VoiceRuntime {
                 let _ = self.apply(Input::TurnProposal, None);
             }
             Err(e) => self.fail(&e),
+        }
+    }
+
+    /// Types one dictated phrase, after a space unless it is the first. A typing failure is shown
+    /// once and dictation carries on (the next phrase may work, for example in another window).
+    async fn type_phrase(self: &Arc<Self>, text: &str, first: bool) {
+        let phrase = text.trim();
+        if phrase.is_empty() {
+            return;
+        }
+        let Some(typer) = self.typer.get().cloned() else {
+            return;
+        };
+        let out = if first {
+            phrase.to_owned()
+        } else {
+            format!(" {phrase}")
+        };
+        let result = tokio::task::spawn_blocking(move || typer.type_text(&out)).await;
+        if let Ok(Err(e)) = result {
+            self.events.error(&e);
         }
     }
 

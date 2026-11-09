@@ -24,7 +24,7 @@ use std::sync::{Arc, Mutex, MutexGuard, OnceLock, Weak};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use chrono::{NaiveDate, TimeZone};
+use chrono::{NaiveDate, TimeZone, Timelike};
 use pluto_contracts::decide::{AssistantDecision, DecideContext, Decider, DecisionSource, Intent};
 use pluto_contracts::error::{VoiceError, VoiceErrorCode, VoiceResult};
 use pluto_contracts::meeting::MeetingKnowledge;
@@ -547,6 +547,87 @@ impl Assistant {
             .map(|d| d.timestamp_millis())
     }
 
+    /// Like [`time_text`](Self::time_text), but today's reminders say "today", so two reminders
+    /// with the same title can be told apart by their time.
+    fn time_text_dated(&self, ms: i64) -> String {
+        let tz = self.clock.tz();
+        let Some(at) = tz.timestamp_millis_opt(ms).single() else {
+            return String::new();
+        };
+        if at.date_naive() == self.clock.local_date(self.clock.now_ms()) {
+            format!("today {}", at.format("%-I:%M %p"))
+        } else {
+            at.format("%a, %-d %b, %-I:%M %p").to_string()
+        }
+    }
+
+    /// The open reminders `m` refers to ("it" means the last one talked about, else the best title
+    /// matches), narrowed to the one at `at` ("HH:MM") when several share a title.
+    async fn pick_reminders(&self, m: &str, at: Option<&str>) -> VoiceResult<Vec<Reminder>> {
+        let list = self.open_reminders().await?;
+        let mut found: Vec<Reminder> = if is_reference(m) {
+            self.last_item(true)
+                .into_iter()
+                .filter_map(|(id, _)| list.iter().find(|r| r.id == id).cloned())
+                .collect()
+        } else {
+            let items: Vec<(String, String)> = list
+                .iter()
+                .map(|r| (r.id.clone(), r.title.clone()))
+                .collect();
+            best_matches(m, &items)
+                .into_iter()
+                .filter_map(|(id, _)| list.iter().find(|r| r.id == id).cloned())
+                .collect()
+        };
+        if let Some((h, min)) = at.and_then(|a| {
+            let (h, m) = a.split_once(':')?;
+            Some((h.trim().parse::<u32>().ok()?, m.trim().parse::<u32>().ok()?))
+        }) {
+            let tz = self.clock.tz();
+            let narrowed: Vec<Reminder> = found
+                .iter()
+                .filter(|r| {
+                    tz.timestamp_millis_opt(r.remind_at)
+                        .single()
+                        .is_some_and(|t| t.hour() == h && t.minute() == min)
+                })
+                .cloned()
+                .collect();
+            if !narrowed.is_empty() {
+                found = narrowed;
+            }
+        }
+        found.sort_by_key(|r| r.remind_at);
+        Ok(found)
+    }
+
+    /// When `r` moves to: an exact time if the decider resolved one, else the asked-for time on the
+    /// asked-for day, each defaulting to what the reminder has now ("change it to 8:55" keeps the day).
+    fn new_reminder_time(&self, r: &Reminder, args: &Value) -> Option<i64> {
+        if let Some(at) = args.get("remind_at").and_then(Value::as_i64) {
+            return Some(at);
+        }
+        let tz = self.clock.tz();
+        let old = tz.timestamp_millis_opt(r.remind_at).single()?;
+        let (h, m) = match args.get("time").and_then(Value::as_str) {
+            Some(t) => {
+                let (h, m) = t.split_once(':')?;
+                (h.trim().parse().ok()?, m.trim().parse().ok()?)
+            }
+            None => {
+                // A new day with no time keeps the time; nothing new at all is not a change.
+                args.get("date")?;
+                (old.hour(), old.minute())
+            }
+        };
+        let day = match args.get("date").and_then(Value::as_str) {
+            Some(d) => NaiveDate::parse_from_str(d, "%Y-%m-%d").ok()?,
+            None => old.date_naive(),
+        };
+        self.local_ms(day, h, m)
+    }
+
     /// The demo view (T-402) hides some pages; voice doesn't open them either.
     async fn demo_pages_only(&self) -> bool {
         SettingsService::new(self.db.clone(), self.clock.clone())
@@ -1036,55 +1117,158 @@ impl Assistant {
                     );
                 }
                 let when = self.time_text(at);
+                // The same reminder already waiting: say so, so "change it" isn't mistaken for "add".
+                let same: Option<Reminder> = self
+                    .open_reminders()
+                    .await
+                    .unwrap_or_default()
+                    .into_iter()
+                    .find(|r| r.title.eq_ignore_ascii_case(&title));
+                let warn = same.map(|r| {
+                    lang.pick(
+                        format!(
+                            " Yeh pehle se {} par hai.",
+                            self.time_text_dated(r.remind_at)
+                        ),
+                        format!(
+                            " You already have it at {}.",
+                            self.time_text_dated(r.remind_at)
+                        ),
+                    )
+                });
                 Ok((
                     json!({"title": title, "remind_at": at}),
                     lang.pick(
-                        format!("“{title}” ka reminder {when} par. Laga doon?"),
-                        format!("Remind you to “{title}” at {when}?"),
+                        format!(
+                            "“{title}” ka reminder {when} par.{} Laga doon?",
+                            warn.clone().unwrap_or_default()
+                        ),
+                        format!(
+                            "Remind you to “{title}” at {when}?{}",
+                            warn.unwrap_or_default()
+                        ),
                     ),
                     vec![],
                 ))
             }
-            tools::REMINDER_DONE => {
+            tools::REMINDER_DONE | tools::REMINDER_DELETE | tools::REMINDER_UPDATE => {
                 let m = s("match").unwrap_or_default();
-                let list = self.open_reminders().await.map_err(|_| unavailable(lang))?;
-                let items: Vec<(String, String)> = list
-                    .iter()
-                    .map(|r| (r.id.clone(), r.title.clone()))
-                    .collect();
-                let matched = if is_reference(&m) {
-                    self.last_item(true).into_iter().collect()
-                } else {
-                    best_matches(&m, &items)
-                };
-                match matched.as_slice() {
+                let list = self
+                    .pick_reminders(&m, s("at").as_deref())
+                    .await
+                    .map_err(|_| unavailable(lang))?;
+                let label =
+                    |r: &Reminder| format!("{} at {}", r.title, self.time_text_dated(r.remind_at));
+                match list.as_slice() {
                     [] => Err(lang.pick(
                         format!("“{m}” jaisa koi reminder nahi mila."),
                         format!("I couldn't find a reminder like “{m}”."),
                     )),
-                    [(id, title)] => Ok((
-                        json!({"match": m, "reminder_id": id, "reminder_title": title}),
-                        lang.pick(
-                            format!("“{title}” reminder done kar doon?"),
-                            format!("Mark the reminder “{title}” as done?"),
-                        ),
-                        vec![],
-                    )),
+                    [r] => {
+                        let mut out =
+                            json!({"match": m, "reminder_id": r.id, "reminder_title": r.title});
+                        let summary = match tool {
+                            tools::REMINDER_DONE => lang.pick(
+                                format!(
+                                    "“{}” ({}) reminder done kar doon?",
+                                    r.title,
+                                    self.time_text_dated(r.remind_at)
+                                ),
+                                format!(
+                                    "Mark the reminder “{}” ({}) as done?",
+                                    r.title,
+                                    self.time_text_dated(r.remind_at)
+                                ),
+                            ),
+                            tools::REMINDER_DELETE => lang.pick(
+                                format!(
+                                    "“{}” ({}) reminder hata doon?",
+                                    r.title,
+                                    self.time_text_dated(r.remind_at)
+                                ),
+                                format!(
+                                    "Delete the reminder “{}” ({})?",
+                                    r.title,
+                                    self.time_text_dated(r.remind_at)
+                                ),
+                            ),
+                            _ => {
+                                let new_title = s("new_title").map(|t| capitalise(&t));
+                                let at = self.new_reminder_time(r, args).ok_or_else(|| {
+                                    lang.pick(
+                                        "Kab karun? Time boliye, jaise “8:55”.",
+                                        "To when? Say a time, like “8:55 pm”.",
+                                    )
+                                })?;
+                                if at <= self.clock.now_ms() {
+                                    return Err(lang.pick(
+                                        "Woh time nikal chuka hai.",
+                                        "That time has already passed.",
+                                    ));
+                                }
+                                if at == r.remind_at
+                                    && new_title.as_deref().is_none_or(|t| t == r.title)
+                                {
+                                    return Err(lang.pick(
+                                        "Woh pehle se isi time par hai.",
+                                        "It is already set to that time.",
+                                    ));
+                                }
+                                out["remind_at"] = json!(at);
+                                if let Some(t) = &new_title {
+                                    out["new_title"] = json!(t);
+                                }
+                                lang.pick(
+                                    format!(
+                                        "“{}” ko {} se {} par kar doon?",
+                                        r.title,
+                                        self.time_text_dated(r.remind_at),
+                                        self.time_text_dated(at)
+                                    ),
+                                    format!(
+                                        "Move “{}” from {} to {}?",
+                                        r.title,
+                                        self.time_text_dated(r.remind_at),
+                                        self.time_text_dated(at)
+                                    ),
+                                )
+                            }
+                        };
+                        Ok((out, summary, vec![]))
+                    }
                     many => {
-                        let first: Vec<(String, String)> =
-                            many.iter().take(CANDIDATES).cloned().collect();
+                        let first: Vec<&Reminder> = many.iter().take(CANDIDATES).collect();
                         let names: Vec<String> = first
                             .iter()
                             .enumerate()
-                            .map(|(i, (_, t))| format!("{}) {t}", i + 1))
+                            .map(|(i, r)| format!("{}) {}", i + 1, label(r)))
                             .collect();
+                        let mut out = json!({
+                            "match": m,
+                            "candidates": first.iter().map(|r| json!({"id": r.id, "title": r.title})).collect::<Vec<_>>()
+                        });
+                        // The new time depends on which one is meant: keep what was asked for.
+                        for k in ["time", "date", "remind_at", "new_title"] {
+                            if let Some(v) = args.get(k) {
+                                out[k] = v.clone();
+                            }
+                        }
                         Ok((
-                            json!({"match": m, "candidates": first.iter().map(|(id, t)| json!({"id": id, "title": t})).collect::<Vec<_>>()}),
+                            out,
                             lang.pick(
-                                format!("Kaunsa? {}.", names.join(", ")),
-                                format!("Which one? {}.", names.join(", ")),
+                                format!(
+                                    "Kaunsa? {}. Pehla, doosra ya teesra boliye.",
+                                    names.join(", ")
+                                ),
+                                format!(
+                                    "Which one? {}. Say first, second or third.",
+                                    names.join(", ")
+                                ),
                             ),
-                            first,
+                            first
+                                .iter()
+                                .map(|r| (r.id.clone(), r.title.clone()))
+                                .collect(),
                         ))
                     }
                 }
@@ -1528,6 +1712,58 @@ impl Assistant {
                 })?;
                 let r = reminders::set_done(&self.db, &*self.clock, &id, true).await?;
                 done(lang.pick("Ho gaya.", "Done."), &r.id, &r.title)
+            }
+            tools::REMINDER_DELETE => {
+                let id = s("reminder_id").ok_or_else(|| {
+                    VoiceError::new(VoiceErrorCode::ToolFailed, "Which reminder?")
+                })?;
+                let title = s("reminder_title").unwrap_or_default();
+                reminders::delete(&self.db, &*self.clock, &id).await?;
+                done(
+                    lang.pick("Ho gaya. Reminder hata diya.", "Done. Reminder deleted."),
+                    &id,
+                    &title,
+                )
+            }
+            tools::REMINDER_UPDATE => {
+                let id = s("reminder_id").ok_or_else(|| {
+                    VoiceError::new(VoiceErrorCode::ToolFailed, "Which reminder?")
+                })?;
+                let current = reminders::list(&self.db, true)
+                    .await?
+                    .into_iter()
+                    .find(|r| r.id == id)
+                    .ok_or_else(|| {
+                        VoiceError::new(VoiceErrorCode::ToolFailed, "That reminder is gone.")
+                    })?;
+                let at = self
+                    .new_reminder_time(&current, args)
+                    .ok_or_else(|| VoiceError::new(VoiceErrorCode::ToolFailed, "To when?"))?;
+                if at <= self.clock.now_ms() {
+                    return Err(VoiceError::new(
+                        VoiceErrorCode::ToolFailed,
+                        lang.pick("Woh time nikal chuka hai.", "That time has already passed."),
+                    ));
+                }
+                let r = reminders::update(
+                    &self.db,
+                    &*self.clock,
+                    &id,
+                    reminders::ReminderPatch {
+                        title: s("new_title"),
+                        remind_at: Some(at),
+                        ..Default::default()
+                    },
+                )
+                .await?;
+                done(
+                    lang.pick(
+                        format!("Ho gaya. Ab {} par.", self.time_text_dated(r.remind_at)),
+                        format!("Done. It's now at {}.", self.time_text_dated(r.remind_at)),
+                    ),
+                    &r.id,
+                    &r.title,
+                )
             }
             _ => Err(not_yet(lang)),
         }

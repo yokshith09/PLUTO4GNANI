@@ -103,6 +103,35 @@ fn register_all(app: &AppHandle, combos: &[(Action, String)]) {
         }
     }
     register_voice_ptt(app);
+    register_toggle(
+        app,
+        crate::voice::HANDS_FREE_HOTKEY,
+        "hands-free",
+        crate::voice::hotkey_hands_free,
+    );
+    register_toggle(
+        app,
+        crate::voice::DICTATION_HOTKEY,
+        "dictation",
+        crate::voice::hotkey_dictation,
+    );
+}
+
+/// A key that acts once per press (hands-free listening, dictation).
+fn register_toggle(app: &AppHandle, combo: &str, name: &'static str, run: fn(&AppHandle)) {
+    let Ok(shortcut) = Shortcut::from_str(combo) else {
+        return;
+    };
+    let result = app
+        .global_shortcut()
+        .on_shortcut(shortcut, move |app, _shortcut, event| {
+            if event.state() == ShortcutState::Pressed {
+                run(app);
+            }
+        });
+    if let Err(error) = result {
+        tracing::warn!(%error, name, "the {name} hotkey is taken by another app; skipped");
+    }
 }
 
 /// The push-to-talk hotkey: press and release both matter.

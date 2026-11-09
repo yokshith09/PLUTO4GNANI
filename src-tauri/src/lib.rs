@@ -3,6 +3,7 @@
 
 mod auto_meeting;
 mod autostart;
+mod dictation;
 mod earlier_app;
 mod ipc;
 mod logs;

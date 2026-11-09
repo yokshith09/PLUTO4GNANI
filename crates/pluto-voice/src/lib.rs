@@ -10,6 +10,7 @@
 
 pub mod assistant;
 pub mod audio;
+pub mod endpoint;
 pub mod meeting_jobs;
 pub mod mix;
 pub mod privacy;

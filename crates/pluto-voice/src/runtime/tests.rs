@@ -521,3 +521,105 @@ fn the_dominant_language_is_the_one_spoken_longest() {
     );
     assert_eq!(dominant_language(&[]), None);
 }
+
+// ---- hands-free and dictation ---------------------------------------------------------------
+
+struct Typed(StdMutex<Vec<String>>);
+
+impl Typer for Typed {
+    fn type_text(&self, text: &str) -> VoiceResult<()> {
+        self.0.lock().unwrap().push(text.to_owned());
+        Ok(())
+    }
+}
+
+fn loud() -> Vec<u8> {
+    std::iter::repeat_n(5000i16.to_le_bytes(), FRAME_BYTES / 2)
+        .flatten()
+        .collect()
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_hands_free_turn_ends_by_itself_after_a_pause() {
+    let r = rig(
+        MockStt::new(["add a task to call the dentist"]),
+        Turn::Reply,
+    );
+    let session = r.rt.hands_free_toggle().unwrap().expect("a turn started");
+    // 1 s of speech, then silence: no key is released.
+    for _ in 0..32 {
+        r.router.push(&session, loud()).unwrap();
+        tokio::time::sleep(Duration::from_millis(32)).await;
+    }
+    for _ in 0..60 {
+        if r.rt.state() != S::Listening {
+            break;
+        }
+        r.router.push(&session, vec![0u8; FRAME_BYTES]).unwrap();
+        tokio::time::sleep(Duration::from_millis(32)).await;
+        // Let the thread that presses "release" run.
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    until(&r, S::Idle).await;
+    let heard = r.assistant.heard.lock().unwrap().clone();
+    assert_eq!(
+        heard.len(),
+        1,
+        "{:?} {:?}",
+        r.seen.states(),
+        r.seen.statuses.lock().unwrap().last()
+    );
+    assert_eq!(heard[0].text, "add a task to call the dentist");
+}
+
+#[tokio::test(start_paused = true)]
+async fn pressing_the_hands_free_key_again_ends_the_turn_at_once() {
+    let r = rig(MockStt::new(["open meetings"]), Turn::Reply);
+    let session = r.rt.hands_free_toggle().unwrap().unwrap();
+    speak_frames(&r, &session, 20).await;
+    assert_eq!(
+        r.rt.hands_free_toggle().unwrap(),
+        None,
+        "the second press ends it"
+    );
+    until(&r, S::Idle).await;
+    assert_eq!(r.assistant.heard.lock().unwrap().len(), 1);
+}
+
+#[tokio::test(start_paused = true)]
+async fn dictation_types_what_is_said_and_never_reaches_the_assistant() {
+    let typed = Arc::new(Typed(StdMutex::default()));
+    let mut r = rig(MockStt::new(["Send the report to Akhil."]), Turn::Reply);
+    r.rt = Arc::new(
+        Arc::try_unwrap(r.rt)
+            .ok()
+            .expect("one owner")
+            .with_typer(typed.clone()),
+    );
+    let session = r.rt.dictation_toggle().unwrap().expect("dictation started");
+    assert!(r.rt.dictating());
+    speak_frames(&r, &session, 20).await;
+    assert_eq!(
+        r.rt.dictation_toggle().unwrap(),
+        None,
+        "the next press ends it"
+    );
+    until(&r, S::Idle).await;
+    assert_eq!(
+        typed.0.lock().unwrap().clone(),
+        ["Send the report to Akhil."]
+    );
+    assert!(
+        r.assistant.heard.lock().unwrap().is_empty(),
+        "dictation is not a command"
+    );
+    assert_eq!(r.seen.states(), [S::Listening, S::Thinking, S::Idle]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn dictation_without_a_typer_says_so() {
+    let r = rig(MockStt::new(["x"]), Turn::Reply);
+    let err = r.rt.dictation_toggle().unwrap_err();
+    assert!(err.message.contains("Dictation isn't available"));
+    assert_eq!(r.rt.state(), S::Idle);
+}

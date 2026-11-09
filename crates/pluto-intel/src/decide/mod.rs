@@ -23,7 +23,7 @@ use crate::dates::resolve_date;
 use crate::llm::router::default_timeout_ms;
 
 /// The tools the assistant may propose or run (API_CONTRACTS §3.5) and the intent each belongs to.
-const TOOLS: [(&str, Intent); 15] = [
+const TOOLS: [(&str, Intent); 17] = [
     ("tasks_list", Intent::Task),
     ("task_create", Intent::Task),
     ("task_complete", Intent::Task),
@@ -31,6 +31,8 @@ const TOOLS: [(&str, Intent); 15] = [
     ("reminders_list", Intent::Reminder),
     ("reminder_create", Intent::Reminder),
     ("reminder_done", Intent::Reminder),
+    ("reminder_update", Intent::Reminder),
+    ("reminder_delete", Intent::Reminder),
     ("meeting_search", Intent::MeetingQuery),
     ("commitments_list", Intent::MeetingQuery),
     ("notes_search", Intent::Note),
@@ -96,7 +98,9 @@ Reply with JSON {intent, tool, args, confidence}. Use only these tools and argum
 - task_update {match, due_phrase}\n\
 - reminders_list {}\n\
 - reminder_create {title, when_phrase, time?: \"HH:MM\" 24-hour, in_minutes?: number}\n\
-- reminder_done {match}\n\
+- reminder_done {match, at?}\n\
+- reminder_update {match, time?: \"HH:MM\" 24-hour, when_phrase?, in_minutes?, new_title?, at?}  (CHANGE an existing reminder: \"change the dentist reminder to 8:55\", \"move it to tomorrow\"; never create a new one for that)\n\
+- reminder_delete {match, at?}  (\"delete / cancel / remove the dentist reminder\"; at = the reminder's current time \"HH:MM\" if one was said, to tell two apart)\n\
 - meeting_search {query}  (questions about what was said or decided in past meetings)\n\
 - commitments_list {owner?, status?: \"open\"|\"overdue\"|\"done\"}\n\
 - notes_search {query}; note_create {body}\n\
@@ -187,8 +191,54 @@ fn resolve_args(tool: &str, raw: &Map<String, Value>, clock: &Clock) -> Option<V
             "title".to_owned(),
             json!(text(raw, "title")?),
         )])),
-        "task_complete" | "reminder_done" => {
+        "task_complete" => {
             json!({"match": text(raw, "match").or_else(|| text(raw, "title"))?})
+        }
+        "reminder_done" | "reminder_delete" => {
+            let mut out = Map::from_iter([(
+                "match".to_owned(),
+                json!(text(raw, "match").or_else(|| text(raw, "title"))?),
+            )]);
+            if let Some(at) = text(raw, "at").filter(|a| parse_hhmm(a).is_some()) {
+                out.insert("at".into(), json!(at));
+            }
+            Value::Object(out)
+        }
+        "reminder_update" => {
+            let mut out = Map::from_iter([(
+                "match".to_owned(),
+                json!(text(raw, "match").or_else(|| text(raw, "title"))?),
+            )]);
+            if let Some(at) = text(raw, "at").filter(|a| parse_hhmm(a).is_some()) {
+                out.insert("at".into(), json!(at));
+            }
+            if let Some(t) = text(raw, "time").filter(|t| parse_hhmm(t).is_some()) {
+                out.insert("time".into(), json!(t));
+            }
+            if let Some(d) = text(raw, "when_phrase").and_then(|p| resolve_date(&p, today)) {
+                out.insert("date".into(), json!(d.to_string()));
+            }
+            if let Some(mins) = raw
+                .get("in_minutes")
+                .and_then(Value::as_i64)
+                .filter(|m| (1..=7 * 24 * 60).contains(m))
+            {
+                out.insert(
+                    "remind_at".into(),
+                    json!(clock.now_ms + Duration::minutes(mins).num_milliseconds()),
+                );
+            }
+            if let Some(t) = text(raw, "new_title") {
+                out.insert("new_title".into(), json!(t));
+            }
+            // Something has to change.
+            if ["time", "date", "remind_at", "new_title"]
+                .iter()
+                .all(|k| !out.contains_key(*k))
+            {
+                return None;
+            }
+            Value::Object(out)
         }
         "task_update" => {
             let out = with_due(Map::from_iter([(
