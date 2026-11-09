@@ -4,6 +4,7 @@
 //! checks and date/time resolution (the LLM only ever returns phrases; Rust makes the dates).
 
 pub mod rules;
+mod titles;
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -104,7 +105,10 @@ Reply with JSON {intent, tool, args, confidence}. Use only these tools and argum
 - open_page {page: \"today\"|\"tasks\"|\"notes\"|\"projects\"|\"meetings\"|\"voice\"|\"bin\"|\"settings\"|\"time\"|\"archive\"|\"character\"}  \
 (\"meetings kholo\", \"go to settings\", \"show my notes\": open that page; home = today, reminders = tasks, trash = bin)\n\
 Intents: meeting_query, task, reminder, note, focus, project, navigate (for open_page), or noise for anything that is not a command (set tool null). \
-Titles and queries are short English. Copy time words exactly into due_phrase / when_phrase (for example \"kal tak\", \"Friday\"); \
+Write a task title, reminder title or note as English a person can understand at a glance: a clear phrase with the action and what it is about, about 3 to 10 words, \
+keeping the names and details that were said (\"Send the revised budget report to Ravi\"; never a single word like \"Send\" or \"Report\"). \
+For example \"Pluto, add a task to call the dentist tomorrow\" gives {title: \"Call the dentist\", due_phrase: \"tomorrow\"}, and \"kal tak budget report bhejna hai\" gives {title: \"Send the budget report\", due_phrase: \"kal tak\"}. \
+Search queries stay short. Copy time words exactly into due_phrase / when_phrase (for example \"kal tak\", \"Friday\"); \
 never compute dates. For \"remind me in two hours\" set in_minutes. \"time\" is the clock time if one was spoken (\"5 pm\" -> \"17:00\").";
 
 /// Local date and time for a decision.
@@ -361,7 +365,16 @@ impl Decider for DefaultDecider {
         let empty = Map::new();
         let raw = v["args"].as_object().unwrap_or(&empty);
         match resolve_args(tool, raw, &clock) {
-            Some(args) => Ok(done(*tool_intent, Some(tool.to_owned()), args)),
+            Some(mut args) => {
+                // A single-word title for a longer command is replaced by what was said.
+                if matches!(tool, "task_create" | "reminder_create") {
+                    if let Some(title) = args["title"].as_str() {
+                        let better = titles::clearer_title(title, text);
+                        args["title"] = json!(better);
+                    }
+                }
+                Ok(done(*tool_intent, Some(tool.to_owned()), args))
+            }
             None => {
                 tracing::info!(tool, "the model's arguments were incomplete");
                 Ok(done(Intent::Noise, None, json!({})))

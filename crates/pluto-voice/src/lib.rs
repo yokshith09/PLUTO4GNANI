@@ -15,4 +15,5 @@ pub mod privacy;
 pub mod quick;
 pub mod reply_cache;
 pub mod runtime;
+pub mod speakable;
 pub mod wake;

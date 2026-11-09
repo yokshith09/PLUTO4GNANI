@@ -398,6 +398,9 @@ pub fn run() {
                 }
             });
             app.manage(meeting_ai::MeetingShell::new(recorder));
+            // Always-on listening starts with the app (when it was left on and the wake word is
+            // taught), not only when a setting changes.
+            app.state::<voice::VoiceShell>().refresh_wake();
             app.manage(Core {
                 db: db.clone(),
                 bus: bus.clone(),

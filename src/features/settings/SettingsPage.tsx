@@ -24,7 +24,13 @@ const LICENSES: [string, string][] = [
   ["dnd kit", "MIT"], ["react-markdown / remark-gfm", "MIT"], ["class-variance-authority", "Apache-2.0"], ["clsx, tailwind-merge", "MIT"],
 ];
 
-export function SettingsPage() {
+export type SettingsTab = "general" | "voice";
+
+/** Two tabs: everything about the app, and everything about voice, keys and what is sent to the cloud. */
+export function SettingsPage({ tab, onTab }: { tab?: SettingsTab; onTab?: (tab: SettingsTab) => void } = {}) {
+  const [own, setOwn] = useState<SettingsTab>("general");
+  const current = tab ?? own;
+  const choose = (next: SettingsTab) => { setOwn(next); onTab?.(next); };
   const [theme, setTheme] = useSetting("general.theme");
   const [font, setFont] = useSetting("general.font_size");
   const [autostart, setAutostart] = useSetting("general.autostart");
@@ -37,6 +43,12 @@ export function SettingsPage() {
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <PageHeader title="Settings" />
+      <ToggleGroup type="single" value={current} onValueChange={(v) => v && choose(v as SettingsTab)} aria-label="Settings sections">
+        <ToggleGroupItem value="general">General</ToggleGroupItem>
+        <ToggleGroupItem value="voice">Voice &amp; privacy</ToggleGroupItem>
+      </ToggleGroup>
+      {current === "voice" && <VoiceSection />}
+      {current === "general" && (<>
       <Section title="General">
         <Row label="Theme" hint="System follows your operating system.">
           <ToggleGroup type="single" value={theme ?? "dark"} onValueChange={(v) => v && void setTheme(v as "system" | "light" | "dark")} aria-label="Theme">
@@ -56,7 +68,6 @@ export function SettingsPage() {
           <Switch checked={autostart ?? false} onCheckedChange={(v) => void setAutostart(v)} aria-label="Open Pluto at login" />
         </Row>
       </Section>
-      <VoiceSection />
       <GuideSection />
       <Section title="Keyboard shortcuts">
         {GLOBAL_SHORTCUTS.map((g) => (
@@ -107,6 +118,7 @@ export function SettingsPage() {
           </ul>
         </details>
       </Section>
+      </>)}
     </div>
   );
 }

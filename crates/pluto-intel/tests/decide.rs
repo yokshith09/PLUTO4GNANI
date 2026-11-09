@@ -273,3 +273,31 @@ async fn the_prompt_carries_now_open_tasks_and_the_command_but_no_keys() {
     );
     assert_eq!(r.timeout_ms, 4_000, "intent calls have the short timeout");
 }
+
+#[tokio::test]
+async fn a_single_word_task_title_becomes_what_was_said() {
+    // The model returned one word for a whole sentence: the task must still say what it is.
+    let d = decide_with(
+        json!({"intent":"task","tool":"task_create","args":{"title":"send"}}),
+        "Pluto add a task to send the budget report to Ravi",
+    )
+    .await;
+    assert_eq!(d.tool.as_deref(), Some("task_create"));
+    assert_eq!(d.args["title"], "Send the budget report to Ravi");
+
+    // A proper title from the model is left alone.
+    let d = decide_with(
+        json!({"intent":"task","tool":"task_create","args":{"title":"Call the dentist","due_phrase":"tomorrow"}}),
+        "Pluto add a task to call the dentist tomorrow",
+    )
+    .await;
+    assert_eq!(d.args["title"], "Call the dentist");
+
+    // The same for a reminder's title.
+    let d = decide_with(
+        json!({"intent":"reminder","tool":"reminder_create","args":{"title":"call","when_phrase":"Friday"}}),
+        "Pluto remind me to call the dentist on Friday",
+    )
+    .await;
+    assert_eq!(d.args["title"], "Call the dentist on Friday");
+}

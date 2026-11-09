@@ -17,7 +17,7 @@ import { CharacterPage } from "@/features/character/CharacterPage";
 import { NoteEditor } from "@/features/notes/NoteEditor";
 import { NotesPage } from "@/features/notes/NotesPage";
 import type { NotesLayout } from "@/features/notes/NotesBoard";
-import { SettingsPage } from "@/features/settings/SettingsPage";
+import { SettingsPage, type SettingsTab } from "@/features/settings/SettingsPage";
 import { Sidebar, type Page } from "@/features/shell/Sidebar";
 import { TasksPage } from "@/features/tasks/TasksPage";
 import { TimePage } from "@/features/time/TimePage";
@@ -54,6 +54,7 @@ function Screen() {
   const demoOnly = demoSetting === true;
   const firstRun = useFirstRun();
   const tour = usePref(TOUR_PREF, parseTour);
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>("general");
   // FR-85: "You have N daily routine tasks pending", once a day at the chosen time.
   useRoutineReminder();
   // FR-93/94: hello once a day, and birthdays.
@@ -185,7 +186,7 @@ function Screen() {
             )}
             {page === "bin" && <BinPage />}
             {page === "character" && <CharacterPage />}
-            {page === "settings" && <SettingsPage />}
+            {page === "settings" && <SettingsPage tab={settingsTab} onTab={setSettingsTab} />}
             {page === "tasks" && <TasksPage focus={taskFocus} onClearFocus={() => setTaskFocus(null)} />}
             {page === "meetings" && <MeetingsPage newTick={newMeeting} />}
             {page === "voice" && <VoicePage />}
@@ -193,7 +194,7 @@ function Screen() {
             {page === "time" && <TimePage />}
           </div>
         </main>
-        <VoiceBar onOpenSettings={() => setPage("settings")} />
+        <VoiceBar onOpenSettings={() => { setSettingsTab("voice"); setPage("settings"); }} />
       </div>
       <NoteEditor noteId={editing} onClose={() => setEditing(null)} />
       {tour.value === "pending" && (

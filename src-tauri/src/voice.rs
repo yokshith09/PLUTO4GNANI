@@ -296,6 +296,12 @@ fn save_settings(data_dir: &std::path::Path, s: &VoiceSettings) {
     }
 }
 
+/// Should Pluto be listening for "Pluto" right now? Only when the person turned always-on on,
+/// Cloud voice is on with a Gnani key, and a teaching session is not using the microphone.
+fn wake_wanted(always_on: bool, cloud_voice: bool, has_gnani_key: bool, teaching: bool) -> bool {
+    always_on && cloud_voice && has_gnani_key && !teaching
+}
+
 fn lock_settings(s: &Mutex<VoiceSettings>) -> MutexGuard<'_, VoiceSettings> {
     s.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 }
@@ -512,11 +518,16 @@ impl VoiceShell {
     /// Listens for "Pluto" when always-on is on, the wake word is taught and Cloud voice is
     /// ready; otherwise stops. Tells the UI (`voice://wake`) when that changes.
     pub(crate) fn refresh_wake(&self) {
-        let want = {
+        let (always_on, cloud) = {
             let s = lock_settings(&self.settings);
-            s.always_on_enabled && s.cloud_voice_enabled
-        } && self.has_key(Account::Gnani)
-            && !self.lock().teaching;
+            (s.always_on_enabled, s.cloud_voice_enabled)
+        };
+        let want = wake_wanted(
+            always_on,
+            cloud,
+            self.has_key(Account::Gnani),
+            self.lock().teaching,
+        );
         let store = self.wake_store();
         let running = self.lock().wake.is_some();
         if want && !running {
@@ -931,7 +942,8 @@ pub async fn voice_speak(
 ) -> VoiceResult<()> {
     let settings = shell.settings();
     let request = TtsRequest {
-        text,
+        // The screen keeps dates short ("Tue, 10 Nov"); the voice says them in full.
+        text: pluto_voice::speakable::speakable(&text),
         language: language.unwrap_or_else(|| "auto".into()),
         // Only a Timbre v3.0 voice works; an unknown name (the old "Arya" default) falls back.
         voice: Some(settings.tts_voice.trim().to_string())
@@ -1059,6 +1071,18 @@ mod tests {
         fixture::<Vec<TranscriptSegment>>(fixtures::TRANSCRIPT_AS1).unwrap();
         fixture::<ExtractionResult>(fixtures::EXTRACTION_AS1).unwrap();
         fixture::<RecallAnswer>(fixtures::RECALL_OK).unwrap();
+    }
+
+    #[test]
+    fn listening_for_pluto_needs_all_four_things() {
+        assert!(wake_wanted(true, true, true, false));
+        assert!(!wake_wanted(false, true, true, false), "always-on is off");
+        assert!(!wake_wanted(true, false, true, false), "Cloud voice is off");
+        assert!(!wake_wanted(true, true, false, false), "no Gnani key");
+        assert!(
+            !wake_wanted(true, true, true, true),
+            "teaching is using the microphone"
+        );
     }
 
     #[test]
