@@ -855,6 +855,12 @@ fn rig_with(cited: bool) -> Rig {
             Some("commitments_list"),
             json!({}),
         ),
+        (
+            "usse Monday kar do",
+            Intent::Task,
+            Some("task_update"),
+            json!({"match": "usse", "due_date": "2025-11-10", "due_phrase": "Monday"}),
+        ),
     ]);
     let dir = tempfile::tempdir().unwrap();
     let db = Arc::new(Database::open(&dir.path().join("pluto.db"), EventBus::default()).unwrap());
@@ -961,4 +967,85 @@ async fn fixed_commands_are_answered_without_the_decider() {
         .await
         .unwrap();
     assert_eq!(r.seen.pages.lock().unwrap().len(), 1);
+}
+
+/// A meeting promise the answer will quote (segment `s1`), already turned into a task.
+async fn promise_with_task(r: &Rig) {
+    r.db
+        .write(|tx| {
+            tx.execute("INSERT INTO meetings (id, title, starts_at, created_at, updated_at) VALUES ('m','Kickoff',0,0,0)", [])?;
+            tx.execute("INSERT INTO transcript_segments (id, meeting_id, seg_index, start_ms, end_ms, speaker_label, text) VALUES ('s1','m',0,0,900,1,'I will send the proposal by Friday')", [])?;
+            tx.execute("INSERT INTO tasks (id, title, status, created_at, updated_at) VALUES ('t-prop','Send the proposal','PLANNED',0,0)", [])?;
+            tx.execute("INSERT INTO meeting_action_items (id, meeting_id, position, body, task_id) VALUES ('a1','m',0,'Send the proposal','t-prop')", [])?;
+            tx.execute("INSERT INTO action_item_meta (action_item_id, source_segment_id, quote) VALUES ('a1','s1','I will send the proposal by Friday')", [])?;
+            Ok(((), vec![]))
+        })
+        .await
+        .unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_follow_up_after_a_recall_answer_changes_the_task_it_quoted_after_approval() {
+    let r = rig_with(true);
+    promise_with_task(&r).await;
+    r.a.turn(heard("what did Ravi promise", "hi-IN"))
+        .await
+        .unwrap();
+    assert!(
+        r.seen.proposals.lock().unwrap().is_empty(),
+        "answering proposes nothing"
+    );
+
+    // "Monday kar do": not a word about which task, yet it means the one the answer quoted.
+    assert_eq!(
+        r.a.turn(heard("usse Monday kar do", "hi-IN"))
+            .await
+            .unwrap(),
+        Turn::Proposal
+    );
+    let p = r.seen.proposals.lock().unwrap()[0].clone();
+    assert_eq!(p.tool, "task_update");
+    assert_eq!(p.args["task_title"], "Send the proposal");
+    assert_eq!(p.args["task_id"], "t-prop");
+
+    // Nothing changes until it is approved.
+    let due = |r: &Rig| {
+        let db = r.db.clone();
+        async move {
+            db.read(|c| {
+                Ok(
+                    c.query_row("SELECT due_date FROM tasks WHERE id = 't-prop'", [], |x| {
+                        x.get::<_, Option<String>>(0)
+                    })?,
+                )
+            })
+            .await
+            .unwrap()
+        }
+    };
+    assert_eq!(due(&r).await, None);
+    r.a.respond(&p.id, ProposalResponse::Approve).await.unwrap();
+    assert_eq!(due(&r).await.as_deref(), Some("2025-11-10"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_answer_that_quotes_no_task_leaves_a_follow_up_with_nothing_to_change() {
+    let r = rig_with(true);
+    // The quoted line exists but never became a task.
+    r.db
+        .write(|tx| {
+            tx.execute("INSERT INTO meetings (id, title, starts_at, created_at, updated_at) VALUES ('m','Kickoff',0,0,0)", [])?;
+            tx.execute("INSERT INTO transcript_segments (id, meeting_id, seg_index, start_ms, end_ms, speaker_label, text) VALUES ('s1','m',0,0,900,1,'I will send the proposal by Friday')", [])?;
+            Ok(((), vec![]))
+        })
+        .await
+        .unwrap();
+    r.a.turn(heard("what did Ravi promise", "hi-IN"))
+        .await
+        .unwrap();
+    let err = r.a.turn(heard("usse Monday kar do", "hi-IN")).await;
+    assert!(
+        r.seen.proposals.lock().unwrap().is_empty(),
+        "no task to change, so nothing is proposed: {err:?}"
+    );
 }

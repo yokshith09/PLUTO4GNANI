@@ -528,11 +528,16 @@ impl Assistant {
     }
 
     /// The recall answer for a spoken question: only when it cites a real segment (T-305).
-    async fn grounded_answer(&self, question: &str, lang: Lang) -> Option<String> {
+    /// The spoken text and the transcript lines it cites.
+    async fn grounded_answer(&self, question: &str, lang: Lang) -> Option<(String, Vec<String>)> {
         let knowledge = self.knowledge.as_ref()?;
         let answer = knowledge.recall(question, Some(lang.code())).await.ok()?;
-        (!answer.citations.is_empty() && !answer.answer_text.trim().is_empty())
-            .then(|| answer.answer_text.trim().to_owned())
+        (!answer.citations.is_empty() && !answer.answer_text.trim().is_empty()).then(|| {
+            (
+                answer.answer_text.trim().to_owned(),
+                answer.citations.into_iter().map(|c| c.segment_id).collect(),
+            )
+        })
     }
 
     /// Keyword fallback: read out the best matching quotes.
@@ -678,7 +683,20 @@ impl Assistant {
                     .and_then(Value::as_str)
                     .unwrap_or_default();
                 match self.grounded_answer(query, lang).await {
-                    Some(text) => text,
+                    Some((text, cited)) => {
+                        // The promise the answer quotes may already be a task: "Monday kar do"
+                        // next means that task, through the usual approval (B2).
+                        let found = self
+                            .db
+                            .read(move |c| meeting_ai_store::open_task_for_segments(c, &cited))
+                            .await
+                            .ok()
+                            .flatten();
+                        if found.is_some() {
+                            seen.task = found;
+                        }
+                        text
+                    }
                     None => self.quote_search(query, lang).await?,
                 }
             }

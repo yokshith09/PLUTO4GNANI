@@ -1,9 +1,11 @@
 import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Check, Quote, Sparkles } from "lucide-react";
+import { AlertTriangle, Check, Quote, Sparkles, Square, Volume2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { realAudio, type AudioDeps } from "@/features/voice/VoiceProvider";
+import { useSpeakText } from "@/features/voice/useSpeakText";
 import { ipc } from "@/ipc";
 import { meetingAi } from "@/ipc/meetingAi";
 import { voiceErrorMessage } from "@/ipc/voiceClient";
@@ -51,12 +53,13 @@ export function toApply(meetingId: string, items: ExtractedItem[], rows: Record<
  * Review and apply (T-204): find decisions and action items, edit or reject each (always showing the
  * words they came from), then apply. Nothing is written until Apply.
  */
-export function ReviewPanel({ meetingId, participants, onShowSegment }: { meetingId: string; participants: string[]; onShowSegment: (segmentId: string) => void }) {
+export function ReviewPanel({ meetingId, participants, onShowSegment, audio = realAudio }: { meetingId: string; participants: string[]; onShowSegment: (segmentId: string) => void; audio?: AudioDeps }) {
   const qc = useQueryClient();
   const [result, setResult] = useState<ExtractionResult | null>(null);
   const [rows, setRows] = useState<Record<string, Row>>({});
   const [busy, setBusy] = useState<"extract" | "apply" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const voice = useSpeakText(audio);
 
   const find = async () => {
     setBusy("extract"); setError(null);
@@ -98,9 +101,15 @@ export function ReviewPanel({ meetingId, participants, onShowSegment }: { meetin
   return (
     <section aria-label="Review" className="space-y-4">
       {warnings.length > 0 && (
-        <ul aria-label="Warnings" className="space-y-1 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-[13px]">
-          {warnings.map((t) => <li key={t} className="flex items-start gap-2"><AlertTriangle className="mt-0.5 size-3.5 shrink-0" />{t}</li>)}
-        </ul>
+        <div className="space-y-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-[13px]">
+          <ul aria-label="Warnings" className="space-y-1">
+            {warnings.map((t) => <li key={t} className="flex items-start gap-2"><AlertTriangle className="mt-0.5 size-3.5 shrink-0" />{t}</li>)}
+          </ul>
+          {voice.speaking
+            ? <Button size="sm" variant="ghost" onClick={voice.stop}><Square />Stop</Button>
+            : <Button size="sm" variant="ghost" onClick={() => void voice.speak(`Check before you apply. ${warnings.join(" ")}`, "en-IN")}><Volume2 />Read aloud</Button>}
+          {voice.error && <p role="alert" className="text-destructive">{voice.error}</p>}
+        </div>
       )}
       {GROUPS.map(({ kind, title }) => {
         const list = result.items.filter((i) => i.kind === kind);

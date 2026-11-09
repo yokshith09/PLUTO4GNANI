@@ -392,6 +392,32 @@ pub fn find_action_item_from(
     Ok(ids)
 }
 
+/// The open task that came from an action item whose source line is one of `segment_ids`, in the
+/// order given: the first segment that has one wins. Used when a spoken answer quotes a promise, so
+/// a follow-up ("Monday kar do") can mean that task. Done or cancelled tasks do not count.
+pub fn open_task_for_segments(
+    conn: &Connection,
+    segment_ids: &[String],
+) -> Result<Option<(String, String)>> {
+    let mut stmt = conn.prepare(
+        "SELECT t.id, t.title
+         FROM action_item_meta m
+         JOIN meeting_action_items a ON a.id = m.action_item_id
+         JOIN tasks t ON t.id = a.task_id
+         WHERE m.source_segment_id = ?1 AND t.status NOT IN ('COMPLETED', 'CANCELLED')
+         ORDER BY a.position LIMIT 1",
+    )?;
+    for id in segment_ids {
+        if let Some(found) = stmt
+            .query_row([id], |r| Ok((r.get(0)?, r.get(1)?)))
+            .optional()?
+        {
+            return Ok(Some(found));
+        }
+    }
+    Ok(None)
+}
+
 pub fn find_decision_from(
     conn: &Connection,
     meeting_id: &str,
@@ -673,6 +699,56 @@ mod tests {
         assert_eq!(search_segments(&c, "budget friday").unwrap()[0].id, "a");
         assert!(search_segments(&c, "\" OR NEAR(").is_ok());
         assert!(search_segments(&c, "   ").unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_quoted_promise_finds_its_open_task() {
+        let c = db();
+        replace_segments(
+            &c,
+            "m1",
+            &[seg("s1", 0, "I will send the report"), seg("s2", 1, "ok")],
+        )
+        .unwrap();
+        c.execute("INSERT INTO meeting_action_items (id, meeting_id, position, body) VALUES ('a1','m1',0,'Send the report')", []).unwrap();
+        link_action_item(
+            &c,
+            &ActionMeta {
+                action_item_id: "a1".into(),
+                source_segment_id: Some("s1".into()),
+                quote: "I will send the report".into(),
+                due_phrase: None,
+                due_date: None,
+                priority: None,
+                confidence: None,
+            },
+        )
+        .unwrap();
+        let ids = |v: &[&str]| v.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();
+        // No task made from it yet.
+        assert_eq!(open_task_for_segments(&c, &ids(&["s1"])).unwrap(), None);
+
+        c.execute("INSERT INTO tasks (id, title, status, created_at, updated_at) VALUES ('t1','Send the report','PLANNED',0,0)", []).unwrap();
+        c.execute(
+            "UPDATE meeting_action_items SET task_id = 't1' WHERE id = 'a1'",
+            [],
+        )
+        .unwrap();
+        assert_eq!(
+            open_task_for_segments(&c, &ids(&["s2", "s1"])).unwrap(),
+            Some(("t1".into(), "Send the report".into())),
+            "the first segment that has a task wins, even when it is not the first listed"
+        );
+        assert_eq!(open_task_for_segments(&c, &ids(&["s2"])).unwrap(), None);
+        assert_eq!(open_task_for_segments(&c, &[]).unwrap(), None);
+
+        // A finished task is not something to reschedule.
+        c.execute(
+            "UPDATE tasks SET status = 'COMPLETED', completed_at = 5 WHERE id = 't1'",
+            [],
+        )
+        .unwrap();
+        assert_eq!(open_task_for_segments(&c, &ids(&["s1"])).unwrap(), None);
     }
 
     #[test]

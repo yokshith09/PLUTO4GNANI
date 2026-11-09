@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Copy, ScrollText, Square, Volume2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { playbackChannel } from "@/audio";
 import { realAudio, type AudioDeps } from "@/features/voice/VoiceProvider";
+import { useSpeakText } from "@/features/voice/useSpeakText";
 import { meetingAi } from "@/ipc/meetingAi";
-import { voiceErrorMessage, voiceIpc } from "@/ipc/voiceClient";
+import { voiceErrorMessage } from "@/ipc/voiceClient";
 import { notify } from "@/lib/notify";
 
 const LANGUAGES = [
@@ -21,11 +21,7 @@ export function RecapPanel({ meetingId, audio = realAudio }: { meetingId: string
   const [text, setText] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [speaking, setSpeaking] = useState(false);
-  const player = useRef<ReturnType<AudioDeps["createPlayer"]> | null>(null);
-
-  // Leaving the page silences it.
-  useEffect(() => () => { player.current?.stop(); void voiceIpc.stopSpeaking().catch(() => undefined); }, []);
+  const voice = useSpeakText(audio);
 
   const write = async () => {
     setBusy(true);
@@ -38,25 +34,6 @@ export function RecapPanel({ meetingId, audio = realAudio }: { meetingId: string
     } finally {
       setBusy(false);
     }
-  };
-  const readAloud = async () => {
-    if (!text) return;
-    setError(null);
-    setSpeaking(true);
-    try {
-      player.current ??= audio.createPlayer(() => undefined);
-      const p = player.current;
-      await voiceIpc.speak(text, language, playbackChannel((pcm) => p.enqueue(pcm)));
-    } catch (e) {
-      setError(voiceErrorMessage(e));
-    } finally {
-      setSpeaking(false);
-    }
-  };
-  const stop = () => {
-    player.current?.stop();
-    void voiceIpc.stopSpeaking().catch(() => undefined);
-    setSpeaking(false);
   };
   const copy = async () => {
     try {
@@ -82,14 +59,14 @@ export function RecapPanel({ meetingId, audio = realAudio }: { meetingId: string
         <div className="space-y-2">
           <p className="max-w-prose text-[14px] leading-relaxed" aria-live="polite">{text}</p>
           <div className="flex gap-1">
-            {speaking
-              ? <Button size="sm" variant="ghost" onClick={stop}><Square />Stop</Button>
-              : <Button size="sm" variant="ghost" onClick={() => void readAloud()}><Volume2 />Read aloud</Button>}
+            {voice.speaking
+              ? <Button size="sm" variant="ghost" onClick={voice.stop}><Square />Stop</Button>
+              : <Button size="sm" variant="ghost" onClick={() => void voice.speak(text, language)}><Volume2 />Read aloud</Button>}
             <Button size="sm" variant="ghost" onClick={() => void copy()}><Copy />Copy</Button>
           </div>
         </div>
       )}
-      {error && <p role="alert" className="text-[13px] text-destructive">{error}</p>}
+      {(error ?? voice.error) && <p role="alert" className="text-[13px] text-destructive">{error ?? voice.error}</p>}
       {!text && !error && <p className="text-[12px] text-muted-foreground">Uses only the decisions and action items on this meeting. The text is sent to Gemini or Groq.</p>}
     </section>
   );

@@ -1,10 +1,16 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ExtractedItem } from "@/ipc/generated";
+import type { AudioDeps } from "@/features/voice/VoiceProvider";
+import { meetingAi } from "@/ipc/meetingAi";
+import { voiceIpc } from "@/ipc/voiceClient";
 import { MeetingsPage } from "./MeetingsPage";
-import { toApply, warningText } from "./ReviewPanel";
+import { ReviewPanel, toApply, warningText } from "./ReviewPanel";
+
+// There is no Tauri channel in the test browser.
+vi.mock("@/audio", async (original) => ({ ...(await original<typeof import("@/audio")>()), playbackChannel: () => ({}) }));
 
 afterEach(cleanup);
 
@@ -93,4 +99,45 @@ describe("Review and apply (T-204), against the in-memory shell", () => {
     const line = await within(panel).findByRole("list", { name: "Transcript" });
     expect(line.querySelector('[aria-current="true"]')).toBeTruthy();
   }, 20_000);
+});
+
+describe("Warnings are shown and can be read aloud (T-502)", () => {
+  const noOwner = [item("a", "action_item", { body: "Send the report" }), item("d", "decision", { body: "Ship Friday" })];
+  const fakeAudio = () => ({ createPlayer: () => ({ enqueue: vi.fn(), stop: vi.fn() }) }) as unknown as AudioDeps;
+  const open = async (items: ExtractedItem[], warnings: Parameters<typeof warningText>[0][]) => {
+    vi.spyOn(meetingAi, "extract").mockResolvedValue({ meeting_id: "m1", items, warnings, dominant_language: null });
+    const user = userEvent.setup();
+    render(<QueryClientProvider client={new QueryClient()}><ReviewPanel meetingId="m1" participants={["Asha"]} onShowSegment={() => undefined} audio={fakeAudio()} /></QueryClientProvider>);
+    await user.click(screen.getByRole("button", { name: /Find decisions and action items/ }));
+    return user;
+  };
+
+  it("an action item with no owner shows its warning, and Read aloud speaks it", async () => {
+    const speak = vi.spyOn(voiceIpc, "speak").mockResolvedValue(null);
+    const user = await open(noOwner, [{ kind: "action_item_without_owner", item_id: "a" }]);
+    const list = await screen.findByRole("list", { name: "Warnings" });
+    expect(within(list).getByText("“Send the report” has no owner.")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: /Read aloud/ }));
+    await waitFor(() => expect(speak).toHaveBeenCalledTimes(1));
+    expect(speak.mock.calls[0]?.[0]).toBe("Check before you apply. “Send the report” has no owner.");
+    expect(speak.mock.calls[0]?.[1]).toBe("en-IN");
+  });
+
+  it("no decisions is a warning too, and nothing is offered when there is nothing to warn about", async () => {
+    await open([item("a", "action_item", { owner: "Asha" })], [{ kind: "no_decisions" }]);
+    expect(await screen.findByText(/No decisions/)).toBeTruthy();
+    cleanup();
+    await open(noOwner, []);
+    await screen.findByRole("region", { name: "Review" });
+    expect(screen.queryByRole("list", { name: "Warnings" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Read aloud/ })).toBeNull();
+  });
+
+  it("a speaking failure is shown and the warnings stay", async () => {
+    vi.spyOn(voiceIpc, "speak").mockRejectedValue({ code: "cloud_voice_disabled", message: "Cloud voice is off.", retryable: false });
+    const user = await open(noOwner, [{ kind: "action_item_without_owner", item_id: "a" }]);
+    await user.click(await screen.findByRole("button", { name: /Read aloud/ }));
+    expect((await screen.findByRole("alert")).textContent).toMatch(/Cloud voice is off/);
+    expect(screen.getByRole("list", { name: "Warnings" })).toBeTruthy();
+  });
 });
