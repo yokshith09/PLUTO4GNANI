@@ -221,8 +221,8 @@ async fn pluto_starts_a_turn_that_gets_the_command_and_ends_after_a_pause() {
         "the pause ended the command"
     );
     let sent = turns.pushed_to("wake-turn");
-    // Half a second before the detection, the 1 s command, then up to the 0.8 s pause.
-    let expected = 16 + 32 + 25;
+    // Half a second before the detection, the 1 s command, then up to the 1.2 s pause.
+    let expected = 16 + 32 + 38;
     assert!(
         (expected - 4..=expected + 4).contains(&sent),
         "{sent} frames went to the turn"

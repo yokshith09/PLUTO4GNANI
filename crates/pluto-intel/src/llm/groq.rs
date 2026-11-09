@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use pluto_contracts::error::{VoiceError, VoiceErrorCode, VoiceResult};
-use pluto_contracts::llm::{Llm, LlmProvider, LlmRequest, LlmResponse, LlmRole};
+use pluto_contracts::llm::{Llm, LlmProvider, LlmRequest, LlmResponse, LlmRole, LlmTask};
 use pluto_contracts::voice::Destination;
 use pluto_core::secrets::{Account, SecretStore};
 use pluto_gnani::http::{OutboundLog, OutboundRecord};
@@ -89,7 +89,18 @@ impl GroqClient {
             };
             messages.push(json!({"role":role,"content":m.content}));
         }
-        json!({"model": self.model, "temperature": 0, "response_format": {"type":"json_object"}, "messages": messages})
+        let mut body = json!({"model": self.model, "temperature": 0, "response_format": {"type":"json_object"}, "messages": messages});
+        // gpt-oss thinks before it answers; for a spoken command that is seconds of waiting.
+        // Short commands get the lowest effort, long meeting text keeps a little more.
+        if self.model.contains("gpt-oss") {
+            let effort = if req.task == LlmTask::Intent {
+                "low"
+            } else {
+                "medium"
+            };
+            body["reasoning_effort"] = json!(effort);
+        }
+        body
     }
 }
 

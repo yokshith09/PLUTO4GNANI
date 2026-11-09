@@ -1020,13 +1020,112 @@ pub async fn voice_usage() -> VoiceResult<UsageCounters> {
     fixture(fixtures::USAGE_SAMPLE)
 }
 
-/// The assistant's turns this session, newest first (each is also in `voice_interactions`).
+/// The assistant's turns, newest first: this run's (with replies) and, after them, older ones from
+/// the log (what was said, what was decided; replies are not kept).
 #[tauri::command]
 pub async fn voice_history(
     limit: u32,
     shell: State<'_, VoiceShell>,
+    core: State<'_, Core>,
 ) -> VoiceResult<Vec<AssistantTurn>> {
-    Ok(shell.assistant.history(limit.clamp(1, 200) as usize))
+    let limit = limit.clamp(1, 200);
+    let mut turns = shell.assistant.history(limit as usize);
+    if turns.len() < limit as usize {
+        let rows = core
+            .db
+            .read(move |c| voice_store::recent_interactions(c, limit))
+            .await?;
+        for r in rows {
+            if turns.iter().any(|t| t.interaction_id == r.id) {
+                continue;
+            }
+            turns.push(past_turn(r));
+            if turns.len() >= limit as usize {
+                break;
+            }
+        }
+    }
+    Ok(turns)
+}
+
+/// An older turn rebuilt from its log row.
+fn past_turn(r: voice_store::InteractionRow) -> AssistantTurn {
+    use pluto_contracts::decide::{AssistantDecision, DecisionSource, Intent};
+    let intent = r
+        .intent
+        .as_deref()
+        .and_then(|i| serde_json::from_value::<Intent>(serde_json::Value::String(i.into())).ok())
+        .unwrap_or(Intent::Noise);
+    let source = if r.decision_source.as_deref() == Some("rules") {
+        DecisionSource::Rules
+    } else {
+        DecisionSource::Llm
+    };
+    let result = r.outcome.as_deref().and_then(|o| {
+        let (ok, message) = match o {
+            "executed" => (true, "Done"),
+            "rejected" => (false, "You said no"),
+            "expired" => (false, "It ran out of time"),
+            "failed" => (false, "It didn't work"),
+            "cancelled" => (false, "Cancelled"),
+            _ => return None,
+        };
+        Some(pluto_contracts::voice::ToolResult {
+            tool: r.tool.clone().unwrap_or_default(),
+            ok,
+            message: message.into(),
+            record_id: None,
+        })
+    });
+    AssistantTurn {
+        interaction_id: r.id,
+        transcript: r.transcript,
+        language: r.language,
+        decision: AssistantDecision {
+            intent,
+            tool: r.tool,
+            args: r
+                .args_json
+                .and_then(|a| serde_json::from_str(&a).ok())
+                .unwrap_or_else(|| serde_json::json!({})),
+            confidence: None,
+            source,
+            latency_ms: u32::try_from(r.llm_latency_ms.unwrap_or(0)).unwrap_or(0),
+        },
+        reply_text: None,
+        proposal: None,
+        result,
+    }
+}
+
+/// Forgets the history shown on the Voice page and deletes its log. A change still waiting for
+/// your answer is kept.
+#[tauri::command]
+pub async fn voice_history_clear(
+    shell: State<'_, VoiceShell>,
+    core: State<'_, Core>,
+) -> VoiceResult<()> {
+    core.db
+        .write(|tx| Ok((voice_store::clear_interactions(tx)?, vec![])))
+        .await?;
+    shell.assistant.clear_history();
+    Ok(())
+}
+
+/// A command typed instead of spoken. It goes through the same assistant as a spoken one: reads
+/// answer at once, changes are proposed and wait for your approval.
+#[tauri::command]
+pub async fn voice_text_turn(text: String, shell: State<'_, VoiceShell>) -> VoiceResult<()> {
+    let text = text.trim().to_string();
+    if text.is_empty() {
+        return Ok(());
+    }
+    let heard = pluto_voice::runtime::Heard {
+        session_id: pluto_core::ids::new_id(),
+        text,
+        language: None,
+    };
+    shell.assistant.turn(heard).await.map(|_| ())
 }
 
 /// Real: newest first from `privacy_log`.

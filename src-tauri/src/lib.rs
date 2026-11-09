@@ -277,6 +277,8 @@ pub fn run() {
             voice::voice_stop_speaking,
             voice::voice_usage,
             voice::voice_history,
+            voice::voice_history_clear,
+            voice::voice_text_turn,
             voice::voice_wake_status,
             voice::voice_wake_teach_begin,
             voice::voice_wake_clip_start,

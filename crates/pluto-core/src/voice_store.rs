@@ -171,6 +171,16 @@ pub fn recent_interactions(conn: &Connection, limit: u32) -> Result<Vec<Interact
     Ok(rows)
 }
 
+/// Deletes every logged interaction (and, by cascade, its proposals). A proposal still waiting for
+/// an answer is kept, with its interaction, so clearing never silently drops a pending write.
+pub fn clear_interactions(conn: &Connection) -> Result<usize> {
+    Ok(conn.execute(
+        "DELETE FROM voice_interactions WHERE id NOT IN
+           (SELECT interaction_id FROM voice_proposals WHERE status = 'pending')",
+        [],
+    )?)
+}
+
 // ---- proposals -----------------------------------------------------------------------------
 
 /// A proposed write (`voice_proposals`).

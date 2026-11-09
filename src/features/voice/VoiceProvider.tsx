@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { FrameSender, PcmPlayer, playbackChannel, pushFrame, startCapture, type CaptureHandle } from "@/audio";
 import { onNamed } from "@/ipc/namedEvents";
+import { createEndpointer, type Endpointer } from "./endpoint";
 import { voiceErrorMessage, voiceIpc } from "@/ipc/voiceClient";
 import type { Proposal, ProposalResponse, ToolResult, VoiceStatus, WakeClip, WakeStatus } from "@/ipc/generated";
 
@@ -67,6 +68,15 @@ export function VoiceProvider({ children, audio = realAudio }: { children: React
   const spoken = useRef(new Set<string>());
   const lastLanguage = useRef<string | null>(null);
   const [wake, setWake] = useState<WakeStatus | null>(null);
+  // Set while a Talk-button turn runs: it ends by itself after a pause (no Send press needed).
+  const button = useRef<Endpointer | null>(null);
+  const stopByPause = useRef<() => void>(() => undefined);
+  const watch = useCallback((f: ArrayBuffer) => {
+    if (button.current?.feed(f) === "end") {
+      button.current = null;
+      stopByPause.current();
+    }
+  }, []);
   // The always-on microphone (T-705). While it is open it is the only one: Rust sends its audio
   // to whichever turn is listening (wake word, hotkey or button).
   const wakeMic = useRef<{ handle: CaptureHandle; sender: FrameSender; session: string } | null>(null);
@@ -143,7 +153,7 @@ export function VoiceProvider({ children, audio = realAudio }: { children: React
         try {
           const sender = new audio.FrameSender(want, audio.pushFrame);
           const handle = await audio.startCapture({
-            onFrame: (f) => sender.send(f),
+            onFrame: (f) => { sender.send(f); watch(f); },
             onEnded: () => {
               setError("The microphone stopped, so Pluto can't hear its name. Check it is plugged in.");
               void closeWakeMic();
@@ -166,7 +176,7 @@ export function VoiceProvider({ children, audio = realAudio }: { children: React
       off();
       void closeWakeMic();
     };
-  }, [audio, closeMic, closeWakeMic]);
+  }, [audio, closeMic, closeWakeMic, watch]);
 
   const recordClip = useCallback(
     async (ms: number): Promise<WakeClip> => {
@@ -187,7 +197,7 @@ export function VoiceProvider({ children, audio = realAudio }: { children: React
       try {
         const sender = new audio.FrameSender(session, audio.pushFrame, { onError: () => setError("Some audio couldn't be sent. Try again.") });
         const handle = await audio.startCapture({
-          onFrame: (f) => sender.send(f),
+          onFrame: (f) => { sender.send(f); watch(f); },
           onEnded: () => {
             setTalking(false);
             setError("The microphone stopped. Check it is plugged in.");
@@ -204,12 +214,13 @@ export function VoiceProvider({ children, audio = realAudio }: { children: React
         return false;
       }
     },
-    [audio, closeMic],
+    [audio, closeMic, watch],
   );
 
   const toggleTalk = useCallback(async () => {
     setError(null);
     if (mic.current || talking) {
+      button.current = null;
       setTalking(false);
       await closeMic(); // nothing to close while the always-on microphone serves the turn
       try {
@@ -231,12 +242,15 @@ export function VoiceProvider({ children, audio = realAudio }: { children: React
         setError(voiceErrorMessage(e));
         return;
       }
+      button.current = createEndpointer();
       if (wakeMic.current) setTalking(true); // the always-on microphone already sends to it
-      else await openMic(session);
+      else if (!(await openMic(session))) button.current = null;
     } finally {
       opening.current = false;
     }
   }, [closeMic, openMic, talking]);
+
+  stopByPause.current = () => void toggleTalk();
 
   // The global push-to-talk hotkey (T-301) opens Listening in Rust: open the microphone for that
   // session, and close it when Listening ends (key released, the 60 s auto-commit, an error).

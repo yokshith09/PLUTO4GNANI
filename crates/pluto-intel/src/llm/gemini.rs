@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use pluto_contracts::error::{VoiceError, VoiceErrorCode, VoiceResult};
-use pluto_contracts::llm::{Llm, LlmProvider, LlmRequest, LlmResponse, LlmRole};
+use pluto_contracts::llm::{Llm, LlmProvider, LlmRequest, LlmResponse, LlmRole, LlmTask};
 use pluto_contracts::voice::Destination;
 use pluto_core::secrets::{Account, SecretStore};
 use pluto_gnani::http::{OutboundLog, OutboundRecord};
@@ -147,7 +147,7 @@ fn request_body(req: &LlmRequest) -> Value {
             }
         }
     }
-    json!({
+    let mut body = json!({
         "systemInstruction": {"parts": [{"text": system}]},
         "contents": contents,
         "generationConfig": {
@@ -155,7 +155,12 @@ fn request_body(req: &LlmRequest) -> Value {
             "responseSchema": to_gemini_schema(&req.json_schema),
             "temperature": 0
         }
-    })
+    });
+    // Gemini 2.5 thinks first by default. A spoken command does not need it, and it adds seconds.
+    if req.task == LlmTask::Intent {
+        body["generationConfig"]["thinkingConfig"] = json!({"thinkingBudget": 0});
+    }
+    body
 }
 
 #[cfg(test)]

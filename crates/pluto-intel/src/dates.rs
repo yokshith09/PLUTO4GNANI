@@ -70,6 +70,60 @@ fn month_of(tok: &str) -> Option<u32> {
         .map(|i| i as u32 + 1)
 }
 
+fn next_month_start(d: NaiveDate) -> NaiveDate {
+    let (y, m) = if d.month() == 12 {
+        (d.year() + 1, 1)
+    } else {
+        (d.year(), d.month() + 1)
+    };
+    NaiveDate::from_ymd_opt(y, m, 1).unwrap_or(d)
+}
+
+/// A bare day of the month: "11th", "on the 11", "11 tareekh". A plain number counts only when the
+/// phrase says it is a date, so "5 days" and "3 pm" are not read as the 5th and the 3rd.
+fn day_of_month(toks: &[String]) -> Option<u32> {
+    let says_date = has(
+        toks,
+        &[
+            "month", "mahine", "maheena", "tareekh", "tarikh", "date", "thethi",
+        ],
+    );
+    for (i, t) in toks.iter().enumerate() {
+        let digits = t.trim_end_matches(|c: char| c.is_alphabetic());
+        let suffix = &t[digits.len()..];
+        let Ok(n) = digits.parse::<u32>() else {
+            continue;
+        };
+        if !(1..=31).contains(&n) {
+            continue;
+        }
+        let ordinal = matches!(suffix, "st" | "nd" | "rd" | "th");
+        let unit_follows = toks.get(i + 1).is_some_and(|u| {
+            matches!(
+                u.as_str(),
+                "day"
+                    | "days"
+                    | "din"
+                    | "naal"
+                    | "naalil"
+                    | "dina"
+                    | "pm"
+                    | "am"
+                    | "baje"
+                    | "minutes"
+                    | "hours"
+            )
+        });
+        if unit_follows || (!suffix.is_empty() && !ordinal) {
+            continue;
+        }
+        if ordinal || says_date || toks.len() == 1 {
+            return Some(n);
+        }
+    }
+    None
+}
+
 /// Days from `today` to the next `target` weekday, 1..=7 (never today).
 fn days_until(today: NaiveDate, target: Weekday) -> i64 {
     let diff = (i64::from(target.num_days_from_monday())
@@ -119,6 +173,23 @@ pub fn resolve_date(phrase: &str, today: NaiveDate) -> Option<NaiveDate> {
                 return Some(today + Duration::days(n));
             }
         }
+    }
+
+    // "11th", "the 11th of this month", "11 tareekh", "11th of next month": a day of the month.
+    if let Some(day) = day_of_month(&toks) {
+        let next = has(&toks, &NEXT) && has(&toks, &["month", "mahine", "maheena", "madam"]);
+        let first = if next { next_month_start(today) } else { today };
+        // This month if that day is still ahead (or today); otherwise the next month that has it.
+        let mut start = first;
+        for _ in 0..13 {
+            if let Some(d) = NaiveDate::from_ymd_opt(start.year(), start.month(), day) {
+                if d >= first {
+                    return Some(d);
+                }
+            }
+            start = next_month_start(start);
+        }
+        return None;
     }
 
     if has(&toks, &DAY_AFTER)
@@ -210,6 +281,41 @@ mod tests {
             "rolls to next year once passed"
         );
         assert_eq!(resolve_date("31 February", MON()), None, "not a date");
+    }
+
+    #[test]
+    fn a_bare_day_of_the_month() {
+        // Wednesday 4 November.
+        for p in [
+            "11th",
+            "the 11th of this month",
+            "on 11th of this month",
+            "11 tareekh",
+            "11",
+        ] {
+            assert_eq!(resolve_date(p, WED()), Some(d(2026, 11, 11)), "{p}");
+        }
+        assert_eq!(
+            resolve_date("the 11th of next month", WED()),
+            Some(d(2026, 12, 11))
+        );
+        assert_eq!(
+            resolve_date("2nd", WED()),
+            Some(d(2026, 12, 2)),
+            "already past: next month"
+        );
+        assert_eq!(
+            resolve_date("4th", WED()),
+            Some(d(2026, 11, 4)),
+            "today counts"
+        );
+        assert_eq!(
+            resolve_date("31st", d(2026, 11, 4)),
+            Some(d(2026, 12, 31)),
+            "November has no 31st"
+        );
+        assert_eq!(resolve_date("in 3 days", WED()), Some(d(2026, 11, 7)));
+        assert_eq!(resolve_date("5 din mein", WED()), Some(d(2026, 11, 9)));
     }
 
     #[test]

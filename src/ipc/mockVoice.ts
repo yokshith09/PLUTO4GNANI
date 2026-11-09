@@ -198,6 +198,19 @@ export function createVoiceMock({ now, createMeeting, applyItems, delayMs = 250 
     },
     voice_speak: () => null,
     voice_stop_speaking: () => null,
+    voice_history_clear: () => { turns.length = 0; return null; },
+    voice_text_turn: (a: Args) => {
+      const text = String(a.text ?? "").trim();
+      if (!text) return null;
+      const turn: AssistantTurn = {
+        interaction_id: id("turn"), transcript: text, language: "en-IN",
+        decision: { intent: "task", tool: "tasks_list", args: { view: "today" }, confidence: 0.9, source: "llm", latency_ms: 600 },
+        reply_text: "You have no tasks today.", proposal: null, result: null,
+      };
+      turns.unshift(turn);
+      emitNamed("voice://turn", structuredClone(turn));
+      return null;
+    },
     voice_history: (a: Args) => structuredClone(turns.slice(0, Number(a.limit ?? 50))),
     voice_usage: () => structuredClone(usageSample.data) as UsageCounters,
     privacy_log_list: (a: Args) => privacy.slice(0, Number(a.limit ?? 100)),

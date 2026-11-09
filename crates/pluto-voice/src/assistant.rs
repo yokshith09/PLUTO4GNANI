@@ -107,6 +107,38 @@ fn spoken_list(items: &[String], lang: Lang) -> String {
     out
 }
 
+/// The open tasks whose titles share the most words with what was said ("report akhil"), best first.
+/// Short filler words don't count. Empty when nothing shares a word.
+fn best_title_matches(tasks: Vec<tasks::Task>, said: &str) -> Vec<tasks::Task> {
+    const FILLER: [&str; 12] = [
+        "the", "task", "for", "this", "that", "and", "kaam", "ka", "ki", "to", "of", "on",
+    ];
+    let words: Vec<String> = said
+        .to_lowercase()
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| w.len() >= 3 && !FILLER.contains(w))
+        .map(str::to_owned)
+        .collect();
+    let mut scored: Vec<(usize, tasks::Task)> = tasks
+        .into_iter()
+        .map(|t| {
+            let title = t.title.to_lowercase();
+            (
+                words.iter().filter(|w| title.contains(w.as_str())).count(),
+                t,
+            )
+        })
+        .filter(|(n, _)| *n > 0)
+        .collect();
+    scored.sort_by_key(|b| std::cmp::Reverse(b.0));
+    let best = scored.first().map_or(0, |(n, _)| *n);
+    scored
+        .into_iter()
+        .filter(|(n, _)| *n == best)
+        .map(|(_, t)| t)
+        .collect()
+}
+
 /// The page's name as the sidebar shows it.
 pub fn page_title(page: &str) -> &'static str {
     match page {
@@ -403,6 +435,18 @@ impl Assistant {
         self.lock().history.iter().take(limit).cloned().collect()
     }
 
+    /// Forgets the turns kept in memory (the log rows are cleared by `voice_store`). A proposal
+    /// still waiting keeps its turn.
+    pub fn clear_history(&self) {
+        let mut st = self.lock();
+        let waiting = st
+            .pending
+            .as_ref()
+            .map(|p| p.proposal.interaction_id.clone());
+        st.history
+            .retain(|t| waiting.as_deref() == Some(t.interaction_id.as_str()));
+    }
+
     /// The proposal waiting for an answer, if any.
     pub fn pending(&self) -> Option<Proposal> {
         self.lock().pending.as_ref().map(|p| p.proposal.clone())
@@ -616,6 +660,75 @@ impl Assistant {
             reminder: None,
         };
         let message = match tool {
+            tools::TASKS_LIST
+                if args
+                    .get("match")
+                    .and_then(Value::as_str)
+                    .is_some_and(|m| !m.trim().is_empty()) =>
+            {
+                // "On which day is the report task?" — find it and say its date.
+                let words = args
+                    .get("match")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                let rows = tasks::query(
+                    &self.db,
+                    &*self.clock,
+                    TaskView::All,
+                    TaskFilters::default(),
+                )
+                .await?;
+                let found = best_title_matches(
+                    rows.into_iter()
+                        .filter(|r| {
+                            !matches!(r.task.status, TaskStatus::Completed | TaskStatus::Cancelled)
+                        })
+                        .map(|r| r.task)
+                        .collect(),
+                    words,
+                );
+                if let [only] = found.as_slice() {
+                    seen.task = Some((only.id.clone(), only.title.clone()));
+                }
+                let lines: Vec<String> = found
+                    .iter()
+                    .take(CANDIDATES)
+                    .map(|t| match (t.due_date, t.planned_date) {
+                        (Some(d), _) => lang.pick(
+                            format!(
+                                "{} ki deadline {} hai",
+                                t.title,
+                                friendly_date(&d.to_string())
+                            ),
+                            format!("{} is due {}", t.title, friendly_date(&d.to_string())),
+                        ),
+                        (None, Some(d)) => lang.pick(
+                            format!(
+                                "{} {} ke liye planned hai",
+                                t.title,
+                                friendly_date(&d.to_string())
+                            ),
+                            format!(
+                                "{} is planned for {}",
+                                t.title,
+                                friendly_date(&d.to_string())
+                            ),
+                        ),
+                        _ => lang.pick(
+                            format!("{} ki koi date nahi hai", t.title),
+                            format!("{} has no date yet", t.title),
+                        ),
+                    })
+                    .collect();
+                if lines.is_empty() {
+                    lang.pick(
+                        "Mujhe aisa koi kaam nahi mila.",
+                        "I couldn't find a task like that.",
+                    )
+                } else {
+                    format!("{}.", lines.join(". "))
+                }
+            }
             tools::TASKS_LIST => {
                 let view = args.get("view").and_then(Value::as_str).unwrap_or("today");
                 let rows = tasks::query(
@@ -639,7 +752,16 @@ impl Assistant {
                 if let [only] = rows.as_slice() {
                     seen.task = Some((only.task.id.clone(), only.task.title.clone()));
                 }
-                let titles: Vec<String> = rows.iter().map(|r| r.task.title.clone()).collect();
+                // Longer lists say the date each one is due, so "what's pending?" answers "by when?".
+                let titles: Vec<String> = rows
+                    .iter()
+                    .map(|r| match (view != "today", r.task.due_date) {
+                        (true, Some(d)) => {
+                            format!("{} (due {})", r.task.title, friendly_date(&d.to_string()))
+                        }
+                        _ => r.task.title.clone(),
+                    })
+                    .collect();
                 match (titles.len(), view) {
                     (0, "overdue") => lang.pick("Koi kaam late nahi hai.", "Nothing is overdue."),
                     (0, _) => lang.pick("Aaj koi kaam nahi hai.", "You have no tasks today."),

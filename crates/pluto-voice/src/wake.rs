@@ -355,7 +355,7 @@ impl Default for WakePolicy {
     fn default() -> Self {
         Self {
             preroll: Duration::from_millis(500),
-            end_silence: Duration::from_millis(800),
+            end_silence: Duration::from_millis(1200),
             no_speech: Duration::from_secs(4),
             max_turn: Duration::from_secs(15),
         }

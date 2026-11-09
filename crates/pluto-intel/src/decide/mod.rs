@@ -90,7 +90,7 @@ fn schema() -> Value {
 
 const SYSTEM: &str = "You route one spoken command (Hindi, Tamil, Kannada or English, often mixed) to a tool for a personal productivity app. \
 Reply with JSON {intent, tool, args, confidence}. Use only these tools and arguments:\n\
-- tasks_list {view: \"today\"|\"overdue\"|\"all\"}\n\
+- tasks_list {view: \"today\"|\"overdue\"|\"all\", match?}  (match = words from the title, for \"which day is the report task?\", \"when is X due?\")\n\
 - task_create {title, due_phrase?}\n\
 - task_complete {match}  (match = words from the task title)\n\
 - task_update {match, due_phrase}\n\
@@ -178,7 +178,10 @@ fn resolve_args(tool: &str, raw: &Map<String, Value>, clock: &Clock) -> Option<V
             let view = text(raw, "view")
                 .filter(|v| ["today", "overdue", "all"].contains(&v.as_str()))
                 .unwrap_or_else(|| "today".into());
-            json!({"view": view})
+            match text(raw, "match") {
+                Some(m) => json!({"view": view, "match": m}),
+                None => json!({"view": view}),
+            }
         }
         "task_create" => with_due(Map::from_iter([(
             "title".to_owned(),

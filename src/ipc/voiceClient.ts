@@ -30,6 +30,9 @@ export const voiceIpc = {
   usage: () => call<UsageCounters>("voice_usage"),
   /** The assistant's turns, newest first. */
   history: (limit = 50) => call<AssistantTurn[]>("voice_history", { limit }),
+  historyClear: () => call<null>("voice_history_clear"),
+  /** A command typed instead of spoken: the same assistant, the same approval. */
+  textTurn: (text: string) => call<null>("voice_text_turn", { text }),
   privacyLogList: (limit = 100) => call<PrivacyLogEntry[]>("privacy_log_list", { limit }),
   privacyLogClear: () => call<null>("privacy_log_clear"),
   // Always-on listening (T-705). Teaching: begin → (clipStart, frames, clipStop) × n → finish.

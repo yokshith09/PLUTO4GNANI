@@ -1049,3 +1049,46 @@ async fn an_answer_that_quotes_no_task_leaves_a_follow_up_with_nothing_to_change
         "no task to change, so nothing is proposed: {err:?}"
     );
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn asking_when_a_task_is_due_finds_it_by_its_words_and_says_the_date() {
+    let r = rig(Script(vec![]), PROPOSAL_WINDOW);
+    tasks::create(
+        &r.db,
+        &*r.clock,
+        TaskInput {
+            title: "Send report to Akhil".into(),
+            due_date: chrono::NaiveDate::from_ymd_opt(2026, 11, 11),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    add_task(&r, "Buy milk").await;
+    let api = AssistantTools(r.a.clone());
+    let said = api
+        .run_read(
+            "tasks_list",
+            &json!({"view": "all", "match": "the report task for Akhil"}),
+        )
+        .await
+        .unwrap();
+    assert!(said.ok);
+    assert_eq!(said.message, "Send report to Akhil is due Wed, 11 Nov.");
+    let none = api
+        .run_read("tasks_list", &json!({"view": "all", "match": "dentist"}))
+        .await
+        .unwrap();
+    assert_eq!(none.message, "I couldn't find a task like that.");
+    // Without `match` a longer list names each task's date.
+    let all = api
+        .run_read("tasks_list", &json!({"view": "all"}))
+        .await
+        .unwrap();
+    assert!(
+        all.message
+            .contains("Send report to Akhil (due Wed, 11 Nov)"),
+        "{}",
+        all.message
+    );
+}
