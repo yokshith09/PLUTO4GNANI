@@ -423,6 +423,9 @@ pub struct VoiceRuntime {
     config: Box<ConfigSource>,
     extra_sinks: Box<SinkFactory>,
     typer: std::sync::OnceLock<Arc<dyn Typer>>,
+    /// The runtime to start listening tasks on when a turn starts from a thread that has none
+    /// (a global hotkey is reported on the operating system's own thread).
+    handle: std::sync::OnceLock<tokio::runtime::Handle>,
     inner: Mutex<Inner>,
 }
 
@@ -449,6 +452,7 @@ impl VoiceRuntime {
             config: Box::new(RtConfig::default),
             extra_sinks: Box::new(|_| Vec::new()),
             typer: std::sync::OnceLock::new(),
+            handle: std::sync::OnceLock::new(),
             inner: Mutex::new(Inner {
                 status: VoiceStatus::new(state),
                 listen: None,
@@ -478,6 +482,12 @@ impl VoiceRuntime {
         sinks: impl Fn(&str) -> Vec<Arc<dyn FrameSink>> + Send + Sync + 'static,
     ) -> Self {
         self.extra_sinks = Box::new(sinks);
+        self
+    }
+
+    /// The async runtime turns run on, for turns started from a thread outside it.
+    pub fn with_handle(self, handle: tokio::runtime::Handle) -> Self {
+        let _ = self.handle.set(handle);
         self
     }
 
@@ -782,7 +792,22 @@ impl VoiceRuntime {
             match w {
                 Work::Listen(session_id, rx, stats) => {
                     let me = Arc::clone(self);
-                    tokio::spawn(async move { me.listen(session_id, rx, stats).await });
+                    let task = async move { me.listen(session_id, rx, stats).await };
+                    match tokio::runtime::Handle::try_current() {
+                        Ok(h) => {
+                            h.spawn(task);
+                        }
+                        Err(_) => match self.handle.get() {
+                            Some(h) => {
+                                h.spawn(task);
+                            }
+                            None => {
+                                // Nothing to run it on: end the turn rather than panic.
+                                tracing::error!("no async runtime to start a voice turn on");
+                                let _ = self.apply(Input::Cancel, None);
+                            }
+                        },
+                    }
                 }
             }
         }

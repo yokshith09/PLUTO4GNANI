@@ -538,7 +538,11 @@ impl VoiceShell {
             )
             .with_config(move || rt_config(&lock_settings(&for_config)))
             .with_extra_sinks(check_sinks(data_dir.clone()))
-            .with_typer(Arc::new(crate::dictation::OsTyper)),
+            .with_typer(Arc::new(crate::dictation::OsTyper))
+            .with_handle({
+                let tauri::async_runtime::RuntimeHandle::Tokio(h) = tauri::async_runtime::handle();
+                h
+            }),
         );
         assistant.attach(&runtime);
         // Replies saved by an older version may hold the user's own words: cleared once.
@@ -1017,16 +1021,27 @@ pub(crate) fn hotkey(app: &AppHandle, pressed: bool) {
     let Some(shell) = app.try_state::<VoiceShell>() else {
         return;
     };
-    if pressed {
-        if let Err(e) = shell.ptt_down() {
-            if e.code != VoiceErrorCode::Busy {
-                // Busy was already reported by the runtime.
-                emit(app, events::ERROR, &e);
+    in_runtime(|| {
+        if pressed {
+            if let Err(e) = shell.ptt_down() {
+                if e.code != VoiceErrorCode::Busy {
+                    // Busy was already reported by the runtime.
+                    emit(app, events::ERROR, &e);
+                }
             }
+        } else {
+            shell.ptt_up();
         }
-    } else {
-        shell.ptt_up();
-    }
+    });
+}
+
+/// Runs `f` inside Tauri's async runtime. A global hotkey is reported on the operating system's
+/// own thread, where there is no runtime; starting a voice turn spawns tasks and panics without one
+/// (which closed the app on Ctrl+Alt+D).
+fn in_runtime<R>(f: impl FnOnce() -> R) -> R {
+    let tauri::async_runtime::RuntimeHandle::Tokio(handle) = tauri::async_runtime::handle();
+    let _guard = handle.enter();
+    f()
 }
 
 /// Where the hands-free key and the dictation key are, until they become settings: the first

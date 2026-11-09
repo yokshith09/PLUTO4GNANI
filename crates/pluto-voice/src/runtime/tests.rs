@@ -702,3 +702,29 @@ async fn after_release_it_does_not_wait_three_seconds_for_words_that_already_cam
     assert_eq!(heard.len(), 1);
     assert_eq!(heard[0].text, "delete the reminder at 8:55 pm");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_turn_started_from_a_thread_with_no_runtime_does_not_panic() {
+    // A global hotkey is reported on the operating system's own thread: no tokio runtime there.
+    let router = Arc::new(AudioRouter::new());
+    let assistant = Arc::new(Assistant {
+        reply: Turn::Reply,
+        heard: StdMutex::default(),
+    });
+    let rt = Arc::new(
+        VoiceRuntime::new(
+            Arc::new(MockStt::new(["open meetings"])),
+            router,
+            Arc::new(Seen::default()),
+            assistant,
+            true,
+        )
+        .with_handle(tokio::runtime::Handle::current()),
+    );
+    let there = rt.clone();
+    let started = std::thread::spawn(move || there.hands_free_toggle())
+        .join()
+        .expect("no panic on a thread without a runtime");
+    assert!(started.unwrap().is_some());
+    assert_eq!(rt.state(), S::Listening);
+}
