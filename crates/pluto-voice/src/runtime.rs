@@ -508,6 +508,16 @@ impl VoiceRuntime {
             .map_err(|_| VoiceError::new(VoiceErrorCode::Busy, "Finish talking to Pluto first."))
     }
 
+    /// A recording is about to start. `Ok(true)`: voice is now `Recording` (push-to-talk answers
+    /// Busy until `recording_stopped`). `Ok(false)`: voice is off, so there is nothing to hold and
+    /// the recording may go ahead. `Err(Busy)`: Pluto is in the middle of a voice turn.
+    pub fn try_recording_started(self: &Arc<Self>) -> VoiceResult<bool> {
+        if self.state() == VoiceState::Disabled {
+            return Ok(false);
+        }
+        self.recording_started().map(|()| true)
+    }
+
     pub fn recording_stopped(self: &Arc<Self>) {
         let _ = self.apply(Input::RecordStop, None);
     }
