@@ -6,5 +6,8 @@
   <!-- Shown when "Track websites" first asks a browser for its active tab (src/sites.rs). -->
   <key>NSAppleEventsUsageDescription</key>
   <string>Pluto asks your browser which website is open so it can count time per site. Only the site's name is kept, never the full address, and nothing leaves this Mac.</string>
+  <!-- Shown the first time Pluto listens: push-to-talk, the "Pluto" wake word and recording meetings. -->
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Pluto listens to your microphone when you talk to it, when it waits for "Pluto", and when you record a meeting. Audio is sent for transcription only when Cloud voice is on.</string>
 </dict>
 </plist>
