@@ -43,7 +43,7 @@ function Turn({ t }: { t: AssistantTurn }) {
 
 /** Things to say, grouped by what they do. Pressing one runs it as if it had been said. */
 export const EXAMPLES: { group: string; lines: string[] }[] = [
-  { group: "Tasks", lines: ["Add a task to send the report to Akhil on the 11th", "Which tasks do I have today?", "On which day is the report task?", "Change the report task to Friday", "Mark the report task done"] },
+  { group: "Tasks", lines: ["Add a task to send the report to Akhil on the 11th", "Which tasks do I have today?", "On which day is the report task?", "Move the report task to the 11th", "Mark the report task done"] },
   { group: "Reminders", lines: ["Remind me at 5 pm to call the dentist", "What are my reminders?"] },
   { group: "Notes and focus", lines: ["Add a note: budget review went well", "Start a 25 minute focus"] },
   { group: "Meetings and pages", lines: ["What did we decide about the budget?", "Open Meetings"] },

@@ -37,7 +37,7 @@ export function useAutoMeet(onAsk: () => void) {
     ask,
     answer: (a: PetAsk, choice: string) => {
       setAsks((q) => q.filter((x) => x.id !== a.id));
-      void ipc.autoMeetingAnswer(a.id, choice);
+      void (a.kind === "proposal" ? ipc.petProposalAnswer(a.id, choice) : ipc.autoMeetingAnswer(a.id, choice));
     },
     rec,
     elapsedMs: rec ? Math.max(0, now - rec.started_at) : 0,

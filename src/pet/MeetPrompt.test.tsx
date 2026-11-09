@@ -15,6 +15,20 @@ const renderPet = () =>
   render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><PetApp /></QueryClientProvider>);
 const send = (name: string, detail: unknown) => act(() => { window.dispatchEvent(new CustomEvent(name, { detail })); });
 
+describe("Approval questions on the pet", () => {
+  it("a voice change waiting for approval can be approved from the pet and goes to the assistant", async () => {
+    const proposal = vi.spyOn(ipc, "petProposalAnswer").mockResolvedValue(null);
+    const meet = vi.spyOn(ipc, "autoMeetingAnswer").mockResolvedValue(null);
+    renderPet();
+    await screen.findByRole("button", { name: /^Pluto\./ });
+    send("pluto-pet-ask", { id: 99, title: "Approve this change?", detail: "Move “Send report to Akhil” to Wed, 11 Nov?", options: ["Approve", "Reject"], kind: "proposal" });
+    const card = await screen.findByRole("alertdialog", { name: "Approve this change?" });
+    fireEvent.click(within(card).getByRole("button", { name: "Approve" }));
+    expect(proposal).toHaveBeenCalledWith(99, "Approve");
+    expect(meet).not.toHaveBeenCalled();
+  });
+});
+
 describe("Google Meet auto mode on the pet", () => {
   it("shows the question with its buttons and sends the answer back", async () => {
     const answer = vi.spyOn(ipc, "autoMeetingAnswer").mockResolvedValue(null);

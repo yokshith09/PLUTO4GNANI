@@ -225,13 +225,88 @@ impl RuntimeEvents for AppRuntimeEvents {
 /// Sends assistant turns and proposals to the windows (`voice://turn`, `voice://proposal`).
 struct AppAssistantEvents(AppHandle);
 
+/// Whether the dashboard is open in front. When it isn't (you are in another app, or it is in
+/// the tray), answers and approval questions come to the pet instead.
+fn dashboard_in_front(app: &AppHandle) -> bool {
+    use tauri::Manager;
+    app.get_webview_window("main")
+        .is_some_and(|w| w.is_visible().unwrap_or(false) && w.is_focused().unwrap_or(false))
+}
+
+/// Approval questions shown on the pet: pet question id → proposal id.
+static PET_PROPOSALS: Mutex<Vec<(u64, String)>> = Mutex::new(Vec::new());
+static PET_ASK_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1 << 40);
+
+fn pet_proposals() -> std::sync::MutexGuard<'static, Vec<(u64, String)>> {
+    PET_PROPOSALS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// Takes the pet's question about `proposal_id` back, if there is one.
+fn withdraw_pet_ask(app: &AppHandle, proposal_id: &str) {
+    let ids: Vec<u64> = {
+        let mut list = pet_proposals();
+        let ids = list
+            .iter()
+            .filter(|(_, p)| p == proposal_id)
+            .map(|(i, _)| *i)
+            .collect();
+        list.retain(|(_, p)| p != proposal_id);
+        ids
+    };
+    for id in ids {
+        let _ = app.emit("pet://ask-done", id);
+    }
+}
+
+fn pet_say(app: &AppHandle, text: &str, ms: u32) {
+    let _ = app.emit(
+        "pet://say",
+        serde_json::json!({"text": text, "pose": "wave", "ms": ms}),
+    );
+}
+
 impl AssistantEvents for AppAssistantEvents {
     fn turn(&self, turn: &AssistantTurn) {
         emit(&self.0, events::TURN, turn);
+        let waiting = turn.proposal.is_some() && turn.result.is_none();
+        // Resolved somewhere (voice, the dashboard, the pet): the pet's question goes away.
+        if let (Some(p), true) = (&turn.proposal, turn.result.is_some()) {
+            withdraw_pet_ask(&self.0, &p.id);
+        }
+        // Away from the dashboard the answer is shown on the pet, since you may not be looking at it.
+        if !waiting && !dashboard_in_front(&self.0) {
+            if let Some(text) = turn.reply_text.as_deref().filter(|t| !t.is_empty()) {
+                pet_say(&self.0, text, 7000);
+            }
+        }
     }
 
     fn proposal(&self, proposal: &Proposal) {
         emit(&self.0, events::PROPOSAL, proposal);
+        if dashboard_in_front(&self.0) {
+            return;
+        }
+        // The same question on the pet, answerable by a click or by saying "Pluto, haan".
+        let id = PET_ASK_SEQ.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        pet_proposals().push((id, proposal.id.clone()));
+        let _ = self.0.emit(
+            "pet://ask",
+            serde_json::json!({
+                "id": id,
+                "title": "Approve this change?",
+                "detail": proposal.summary_text,
+                "options": ["Approve", "Reject"],
+                "kind": "proposal",
+            }),
+        );
+        // The proposal lasts 30 s; so does the question.
+        let (app, pid) = (self.0.clone(), proposal.id.clone());
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_secs(31)).await;
+            withdraw_pet_ask(&app, &pid);
+        });
     }
 
     /// "Meetings kholo": the dashboard's existing `page:<name>` command (also used by the pet's
@@ -239,6 +314,34 @@ impl AssistantEvents for AppAssistantEvents {
     fn navigate(&self, page: &str) {
         crate::pet::command(&self.0, &format!("page:{page}"));
     }
+}
+
+/// A button on the pet's approval question was pressed.
+#[tauri::command]
+pub async fn pet_proposal_answer(
+    id: u64,
+    choice: String,
+    app: AppHandle,
+    shell: State<'_, VoiceShell>,
+) -> VoiceResult<()> {
+    let proposal_id = pet_proposals()
+        .iter()
+        .find(|(i, _)| *i == id)
+        .map(|(_, p)| p.clone());
+    let Some(proposal_id) = proposal_id else {
+        return Ok(()); // an old question
+    };
+    withdraw_pet_ask(&app, &proposal_id);
+    let response = if choice == "Approve" {
+        ProposalResponse::Approve
+    } else {
+        ProposalResponse::Reject
+    };
+    match shell.assistant.respond(&proposal_id, response).await {
+        Ok(result) => pet_say(&app, &result.message, 6000),
+        Err(e) => pet_say(&app, &e.message, 6000),
+    }
+    Ok(())
 }
 
 /// What the voice shell keeps between calls. Managed by Tauri (`app.manage`).

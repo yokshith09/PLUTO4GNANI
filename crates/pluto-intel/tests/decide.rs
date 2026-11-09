@@ -340,3 +340,21 @@ async fn changing_or_deleting_a_reminder_names_it_and_keeps_the_time_as_said() {
     assert_eq!(d.tool.as_deref(), Some("reminder_delete"));
     assert_eq!(d.args["at"], "21:00");
 }
+
+#[tokio::test]
+async fn moving_a_task_to_a_day_of_the_month_uses_that_day_not_a_weekday() {
+    // 2026-11-04 is the reference day: "the 11th" is 11 November.
+    let d = decide_with(
+        json!({"intent":"task","tool":"task_update","args":{"match":"report","due_phrase":"the 11th"}}),
+        "move the report task to the 11th",
+    )
+    .await;
+    assert_eq!(d.tool.as_deref(), Some("task_update"));
+    assert_eq!(d.args["due_date"], "2026-11-11");
+    let d = decide_with(
+        json!({"intent":"task","tool":"task_update","args":{"match":"report","due_phrase":"11th of this month"}}),
+        "change the report task to 11th of this month",
+    )
+    .await;
+    assert_eq!(d.args["due_date"], "2026-11-11");
+}

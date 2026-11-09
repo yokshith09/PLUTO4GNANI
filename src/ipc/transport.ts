@@ -174,7 +174,7 @@ export function onPetPlaced(cb: () => void): () => void {
 // ---- Google Meet auto mode: messages between the shell, the pet and the page -------------------
 
 /** A question on the pet with buttons (`options`; the first is the main one). */
-export interface PetAsk { id: number; title: string; detail: string; options: string[] }
+export interface PetAsk { id: number; title: string; detail: string; options: string[]; /** "proposal": answers go to the voice assistant's approval, not Meet recording. */ kind?: "proposal" }
 /** The recording auto mode is running. */
 export interface AutoRec { session_id: string; meeting_id: string; started_at: number }
 

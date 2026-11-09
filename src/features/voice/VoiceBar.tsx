@@ -1,4 +1,5 @@
 import { getWakeWord } from "./WakeSetup";
+import { useEffect } from "react";
 import { Mic, MicOff, Square, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -31,6 +32,16 @@ export function VoiceBar({ onOpenSettings }: { onOpenSettings: () => void }) {
   const idleLabel = state === "idle" && v.wake?.session_id ? `Say “${getWakeWord()}” to start` : STATE_LABEL[state];
   const label = v.error ?? dictationLabel ?? (v.status?.detail && state !== "listening" ? v.status.detail : idleLabel);
 
+  // Something can be called off while Pluto listens, thinks or speaks. Escape does it too.
+  const cancellable = state === "listening" || state === "thinking" || state === "speaking" || v.dictating;
+  const { cancel } = v;
+  useEffect(() => {
+    if (!cancellable) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") void cancel(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [cancellable, cancel]);
+
   return (
     <div className="relative shrink-0 border-t bg-[var(--sidebar)]">
       {v.proposal && (
@@ -51,6 +62,7 @@ export function VoiceBar({ onOpenSettings }: { onOpenSettings: () => void }) {
           )}
         </div>
         {v.error && <Button size="icon" variant="ghost" aria-label="Dismiss" onClick={v.clearError}><X /></Button>}
+        {cancellable && <Button size="sm" variant="outline" aria-label="Cancel" title="Cancel (Esc)" onClick={() => void v.cancel()}><X />Cancel</Button>}
         {off ? (
           <Button size="sm" variant="outline" onClick={onOpenSettings}><MicOff />Turn on in Settings</Button>
         ) : (

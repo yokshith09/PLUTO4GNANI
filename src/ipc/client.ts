@@ -113,6 +113,7 @@ export const ipc = {
    */
   petSolid: (rects: number[][], holding: boolean) => call<unknown>("pet_solid", { rects, holding }),
   /** A button on a question the pet is asking was pressed. */
+  petProposalAnswer: (id: number, choice: string) => call<unknown>("pet_proposal_answer", { id, choice }),
   autoMeetingAnswer: (id: number, choice: string) => call<unknown>("auto_meeting_answer", { id, choice }),
   /** The Stop button on the pet while a Google Meet call is being recorded. */
   autoMeetingStop: () => call<unknown>("auto_meeting_stop"),

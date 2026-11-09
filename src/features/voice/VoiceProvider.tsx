@@ -29,6 +29,8 @@ export interface VoiceApi {
   /** Dictation is on: what you say is typed into the app that has the focus. */
   dictating: boolean;
   toggleTalk: () => Promise<void>;
+  /** Stops whatever is going on (listening, thinking, speaking) and sends nothing. */
+  cancel: () => Promise<void>;
   respond: (response: ProposalResponse) => Promise<ToolResult | null>;
   /** The proposal ran out of time (its card closes). */
   expireProposal: () => void;
@@ -338,6 +340,18 @@ export function VoiceProvider({ children, audio = realAudio }: { children: React
     [closeMic, openMic],
   );
 
+  const cancel = useCallback(async () => {
+    button.current = null;
+    setTalking(false);
+    player.current?.stop();
+    await closeMic();
+    try {
+      await voiceIpc.cancel();
+    } catch (e) {
+      setError(voiceErrorMessage(e));
+    }
+  }, [closeMic]);
+
   const respond = useCallback(async (response: ProposalResponse) => {
     const p = proposal;
     if (!p) return null;
@@ -354,8 +368,8 @@ export function VoiceProvider({ children, audio = realAudio }: { children: React
   }, [proposal, speak]);
 
   const api = useMemo<VoiceApi>(
-    () => ({ status, heard, reply, proposal, error, talking, dictating, toggleTalk, respond, expireProposal: () => setProposal(null), clearError: () => setError(null), wake, recordClip }),
-    [status, heard, reply, proposal, error, talking, dictating, toggleTalk, respond, wake, recordClip],
+    () => ({ status, heard, reply, proposal, error, talking, dictating, toggleTalk, cancel, respond, expireProposal: () => setProposal(null), clearError: () => setError(null), wake, recordClip }),
+    [status, heard, reply, proposal, error, talking, dictating, toggleTalk, cancel, respond, wake, recordClip],
   );
   return <VoiceContext.Provider value={api}>{children}</VoiceContext.Provider>;
 }

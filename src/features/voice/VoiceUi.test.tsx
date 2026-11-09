@@ -104,6 +104,20 @@ describe("Voice bar and approval (T-304), against the in-memory shell", () => {
     await waitFor(() => expect(bar().getByRole("button", { name: "Push to talk" }).getAttribute("aria-pressed")).toBe("false"));
   });
 
+  it("Cancel stops a turn in the middle and sends nothing", async () => {
+    const user = userEvent.setup();
+    await enableCloud();
+    const audio = fakeAudio();
+    await mount(audio);
+    await user.click(await bar().findByRole("button", { name: "Push to talk" }));
+    await bar().findByText("Listening…");
+    await user.click(bar().getByRole("button", { name: "Cancel" }));
+    expect(audio.stopped.n).toBe(1);
+    await waitFor(() => expect(bar().getByRole("button", { name: "Push to talk" }).getAttribute("aria-pressed")).toBe("false"));
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(bar().queryByRole("button", { name: "Cancel" })).toBeNull();
+  });
+
   it("with the native microphone on, this window opens none and Talk hands the turn to Rust", async () => {
     const user = userEvent.setup();
     const { ipc } = await import("@/ipc");
