@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "pet",
-  "description": "Pet window and its hover card window: listen to bus events; the pet can be dragged. Everything else goes through Pluto's own commands.",
-  "windows": ["pet", "pet-card"],
+  "description": "Pet window: listen to bus events; the pet can be dragged. Everything else goes through Pluto's own commands.",
+  "windows": ["pet"],
   "permissions": [
     "core:event:default",
     "core:window:allow-start-dragging"
