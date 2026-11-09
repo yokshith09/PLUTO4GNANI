@@ -2,34 +2,104 @@
 //! on this computer the first time Timbre speaks them, and replayed from disk after that: no
 //! network, no wait (Timbre's first audio is about 0.5–0.6 s warm, `gnani-live-checks.md`).
 //!
-//! Owner: **D1**. Only fixed phrases are kept: short, with no digits and no quotes, so task
-//! titles, times and counts (the user's own content) are never stored. One file per text, voice,
-//! model and language; at most [`MAX_FILES`], oldest removed first.
+//! Only the assistant's own fixed phrases are kept, from an exact list ([`FIXED`] and the page-open
+//! lines), never a guess from the shape of the text: a recall answer or a task title can be short
+//! and free of digits too, and that is the user's own content, which is never stored. One file per
+//! text, voice, model and language; at most [`MAX_FILES`], oldest removed first.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
 use pluto_contracts::error::VoiceResult;
 use pluto_contracts::speech::{AudioContainer, PcmSink, TextToSpeech, TtsRequest};
+use pluto_contracts::voice::pages;
+
+use crate::assistant::page_title;
 
 pub const MAX_FILES: usize = 150;
-/// Longest text kept (a fixed reply is short).
-const MAX_CHARS: usize = 60;
 /// Replayed in 0.1 s pieces (PCM16, 24 kHz mono), as Timbre sends them.
 const CHUNK: usize = 4800;
 
-/// A reply worth keeping: short, and nothing in it that came from the user's data.
+/// The assistant's fixed replies, word for word, in English and Hinglish. A text outside this list
+/// (and the page-open lines) is spoken by Timbre every time and never saved. A phrase the
+/// assistant changes simply stops being saved; the test below keeps the list honest.
+pub const FIXED: &[&str] = &[
+    "Meetings mein iske baare mein kuch nahi mila.",
+    "I couldn't find that in your meetings.",
+    "Koi open commitment nahi hai.",
+    "You have no open commitments.",
+    "Koi kaam late nahi hai.",
+    "Nothing is overdue.",
+    "Aaj koi kaam nahi hai.",
+    "You have no tasks today.",
+    "Koi reminder nahi hai.",
+    "You have no reminders.",
+    "Kaunsa page? Phir se boliye.",
+    "Which page? Say it again.",
+    "Kaunsa kaam? Phir se boliye.",
+    "What's the task? Say it again.",
+    "Kis cheez ka reminder?",
+    "Remind you about what?",
+    "Woh time nikal chuka hai.",
+    "That time has already passed.",
+    "Yeh main nahi kar sakta.",
+    "I can't do that.",
+    "Theek hai, kuch nahi badla.",
+    "Okay, I didn't change anything.",
+    "Ho gaya. Kaam aur reminder dono laga diye.",
+    "Done. Task added, with its reminder.",
+    "Ho gaya. Kaam add kar diya.",
+    "Done. Task added.",
+    "Ho gaya. Kaam done.",
+    "Done. Marked complete.",
+    "Ho gaya. Reminder laga diya.",
+    "Done. Reminder set.",
+    "Ho gaya.",
+    "Done.",
+    "Abhi kuch approve karne ko nahi hai.",
+    "There's nothing waiting for approval.",
+    "Yeh abhi voice se nahi hota. App mein kar lijiye.",
+    "I can't do that by voice yet. Use the app for now.",
+    "Abhi tasks nahi khul rahe. Thodi der mein try kijiye.",
+    "I can't reach your tasks right now. Try again shortly.",
+];
+
+/// "Opening Meetings." / "Meetings khol raha hoon.": the page-open replies, for every page.
+fn page_open(text: &str) -> bool {
+    pages::ALL.iter().any(|page| {
+        let title = page_title(page);
+        text == format!("Opening {title}.") || text == format!("{title} khol raha hoon.")
+    })
+}
+
+/// Is this one of the assistant's own fixed replies? Anything else may carry the user's content.
 pub fn cacheable(text: &str) -> bool {
     let t = text.trim();
-    !t.is_empty()
-        && t.chars().count() <= MAX_CHARS
-        // The assistant puts the user's own words (titles, quotes) in quotation marks, and
-        // times and counts are digits: either means it isn't a fixed reply.
-        && !t
-            .chars()
-            .any(|c| c.is_ascii_digit() || matches!(c, '"' | '\u{201c}' | '\u{201d}'))
+    FIXED.contains(&t) || page_open(t)
+}
+
+/// Run once at start-up. Earlier versions kept any short reply, which could include the user's own
+/// words, so a folder without the marker is emptied before anything new is saved.
+pub fn migrate(dir: &Path) {
+    const MARKER: &str = ".fixed-replies-only";
+    if dir.join(MARKER).exists() {
+        return;
+    }
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.filter_map(Result::ok) {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+    if std::fs::create_dir_all(dir).is_ok() {
+        let _ = std::fs::write(dir.join(MARKER), b"");
+    }
+}
+
+/// Removes every saved reply ("delete my data").
+pub fn clear(dir: &Path) {
+    let _ = std::fs::remove_dir_all(dir);
 }
 
 /// FNV-1a: a stable file name for a text and how it is spoken.
@@ -233,6 +303,7 @@ mod tests {
             "Done. Task added.",
             "Meetings khol raha hoon.",
             "Okay, I didn't change anything.",
+            "  Done.  ",
         ] {
             assert!(cacheable(text), "{text}");
         }
@@ -240,11 +311,53 @@ mod tests {
             "Add \u{201c}Call Ravi\u{201d} for Tue, 10 Nov?",
             "You have 3 tasks today: Budget, Rent, Gym.",
             "Reminder at 5:00 PM?",
+            // Short, no digits, no quotes, and still the user's own content:
+            "Ravi will send the proposal by Friday.",
+            "Ravi: send the proposal",
+            "Opening Secrets.",
             "",
             &"Long reply ".repeat(10),
         ] {
             assert!(!cacheable(text), "{text}");
         }
+    }
+
+    #[test]
+    fn every_listed_phrase_is_one_the_assistant_really_says() {
+        let source = include_str!("assistant.rs");
+        for phrase in FIXED {
+            assert!(
+                source.contains(phrase),
+                "the assistant no longer says: {phrase}"
+            );
+        }
+        for page in pages::ALL {
+            let title = page_title(page);
+            assert_ne!(title, "That", "{page} has no title");
+            assert!(cacheable(&format!("Opening {title}.")));
+        }
+    }
+
+    #[test]
+    fn old_saved_replies_are_cleared_once_and_the_folder_can_be_wiped() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = dir.path().join("tts-cache");
+        std::fs::create_dir_all(&cache).unwrap();
+        std::fs::write(cache.join("old.pcm"), [1, 2, 3]).unwrap();
+        migrate(&cache);
+        assert!(
+            !cache.join("old.pcm").exists(),
+            "an older version's file is gone"
+        );
+        // New files survive later start-ups.
+        std::fs::write(cache.join("new.pcm"), [4]).unwrap();
+        migrate(&cache);
+        assert!(cache.join("new.pcm").exists());
+        clear(&cache);
+        assert!(!cache.exists());
+        // Nothing there yet: no failure.
+        migrate(&cache);
+        assert!(cache.join(".fixed-replies-only").exists());
     }
 
     #[tokio::test]

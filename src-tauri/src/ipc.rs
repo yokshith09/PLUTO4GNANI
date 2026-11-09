@@ -722,8 +722,14 @@ pub async fn data_import(
 
 /// Erase everything. `confirm` must be exactly `DELETE`.
 #[tauri::command]
-pub async fn data_delete_all(confirm: String, core: State<'_, Core>) -> Result<()> {
-    data::delete_all(&core.db, &*core.clock, &confirm).await
+pub async fn data_delete_all(
+    confirm: String,
+    core: State<'_, Core>,
+    voice: State<'_, crate::voice::VoiceShell>,
+) -> Result<()> {
+    data::delete_all(&core.db, &*core.clock, &confirm).await?;
+    voice.clear_reply_cache();
+    Ok(())
 }
 
 // ---- folders and reset (Settings › Data, Advanced) -----------------------------------------

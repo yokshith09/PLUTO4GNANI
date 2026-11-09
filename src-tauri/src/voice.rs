@@ -412,6 +412,8 @@ impl VoiceShell {
             .with_extra_sinks(check_sinks(data_dir.clone())),
         );
         assistant.attach(&runtime);
+        // Replies saved by an older version may hold the user's own words: cleared once.
+        pluto_voice::reply_cache::migrate(&data_dir.join("tts-cache"));
         Ok(Self {
             router,
             secrets,
@@ -462,6 +464,16 @@ impl VoiceShell {
             Some((_, status)) => status.clone(),
             None => self.runtime.status(),
         }
+    }
+
+    /// Where fixed spoken replies are saved on this computer.
+    fn reply_cache_dir(&self) -> PathBuf {
+        self.data_dir.join("tts-cache")
+    }
+
+    /// "Delete my data": saved reply audio goes too.
+    pub(crate) fn clear_reply_cache(&self) {
+        pluto_voice::reply_cache::clear(&self.reply_cache_dir());
     }
 
     /// Cloud voice on and a Gnani key saved → the runtime is ready; otherwise Disabled.
@@ -932,7 +944,7 @@ pub async fn voice_speak(
         // Fixed replies ("Opening Meetings.") play from this computer after the first time.
         Arc::new(pluto_voice::reply_cache::CachedTts::new(
             shell.tts.clone(),
-            shell.data_dir.join("tts-cache"),
+            shell.reply_cache_dir(),
         ))
     } else {
         Arc::new(pluto_gnani::mock::MockTts::new())

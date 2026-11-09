@@ -108,7 +108,7 @@ fn spoken_list(items: &[String], lang: Lang) -> String {
 }
 
 /// The page's name as the sidebar shows it.
-fn page_title(page: &str) -> &'static str {
+pub fn page_title(page: &str) -> &'static str {
     match page {
         "today" => "Today",
         "tasks" => "Tasks",
