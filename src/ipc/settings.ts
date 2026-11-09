@@ -44,6 +44,7 @@ export interface Settings {
   /** Always-on listening is opt-in. */
   "voice.always_on": boolean;
   "meetings.auto_offer": boolean;
+  "voice.native_mic": boolean;
   "llm.gemini_model": string;
   "llm.groq_model": string;
 }

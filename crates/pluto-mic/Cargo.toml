@@ -1,0 +1,16 @@
+[package]
+name = "pluto-mic"
+description = "Captures the default microphone natively (no web view) as 16 kHz mono PCM16 frames"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+pluto-loopback = { path = "../pluto-loopback" }
+thiserror.workspace = true
+tracing = "0.1"
+
+# The microphone is captured on Windows and Mac only; elsewhere `start` says so.
+[target.'cfg(any(windows, target_os = "macos"))'.dependencies]
+cpal = "0.15"

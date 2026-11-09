@@ -15,6 +15,8 @@ export interface NamedEvents {
   "voice://wake": WakeStatus;
   /** Dictation (typing what you say into the focused app) started (true) or ended (false). */
   "voice://dictation": boolean;
+  /** Beta native microphone: Rust could not open it; the window captures instead. */
+  "voice://native-mic-failed": string;
   "meeting://caption": TranscriptSegment;
   "meeting://ticker": ExtractedItem;
   "meeting://job": TranscriptionJob;

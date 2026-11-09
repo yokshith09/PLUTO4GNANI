@@ -104,6 +104,34 @@ describe("Voice bar and approval (T-304), against the in-memory shell", () => {
     await waitFor(() => expect(bar().getByRole("button", { name: "Push to talk" }).getAttribute("aria-pressed")).toBe("false"));
   });
 
+  it("with the native microphone on, this window opens none and Talk hands the turn to Rust", async () => {
+    const user = userEvent.setup();
+    const { ipc } = await import("@/ipc");
+    await ipc.settingSet("voice.native_mic", true);
+    await enableCloud();
+    const toggle = vi.spyOn(ipcMod.voiceIpc, "handsFreeToggle");
+    const audio = fakeAudio();
+    await mount(audio);
+    await user.click(await bar().findByRole("button", { name: "Push to talk" }));
+    await waitFor(() => expect(toggle).toHaveBeenCalledTimes(1));
+    expect(audio.pushed.length, "no microphone opened here").toBe(0);
+  });
+
+  it("if Rust cannot open the microphone the window takes over for the running turn", async () => {
+    const { emitNamed } = await import("@/ipc/namedEvents");
+    const { ipc } = await import("@/ipc");
+    await ipc.settingSet("voice.native_mic", true);
+    await enableCloud();
+    const audio = fakeAudio();
+    await mount(audio);
+    await bar().findByRole("button", { name: "Push to talk" });
+    act(() => emitNamed("voice://status", { state: "listening", mode: "assistant", detail: null, session_id: "hk-2" }));
+    expect(audio.pushed.length).toBe(0);
+    vi.spyOn(ipcMod.voiceIpc, "status").mockResolvedValue({ state: "listening", mode: "assistant", detail: null, session_id: "hk-2" });
+    act(() => emitNamed("voice://native-mic-failed", "no microphone found"));
+    await waitFor(() => expect(audio.pushed).toEqual(["hk-2"]));
+  });
+
   it("speaks answers that ran at once and the result of a click approval, but not a proposal twice", async () => {
     const user = userEvent.setup();
     const { emitNamed } = await import("@/ipc/namedEvents");

@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { FrameSender, PcmPlayer, playbackChannel, pushFrame, startCapture, type CaptureHandle } from "@/audio";
 import { onNamed } from "@/ipc/namedEvents";
 import { createEndpointer, type Endpointer } from "./endpoint";
+import { useSetting } from "@/hooks/useTheme";
 import { voiceErrorMessage, voiceIpc } from "@/ipc/voiceClient";
 import type { Proposal, ProposalResponse, ToolResult, VoiceStatus, WakeClip, WakeStatus } from "@/ipc/generated";
 
@@ -71,6 +72,11 @@ export function VoiceProvider({ children, audio = realAudio }: { children: React
   const spoken = useRef(new Set<string>());
   const lastLanguage = useRef<string | null>(null);
   const [wake, setWake] = useState<WakeStatus | null>(null);
+  // Beta: Rust captures the microphone. This window then opens none, unless Rust says it could not.
+  const [nativeSetting] = useSetting("voice.native_mic");
+  const nativeFailed = useRef(false);
+  const native = useRef(false);
+  native.current = !!nativeSetting && !nativeFailed.current;
   // Set while a Talk-button turn runs: it ends by itself after a pause (no Send press needed).
   const button = useRef<Endpointer | null>(null);
   const stopByPause = useRef<() => void>(() => undefined);
@@ -83,6 +89,9 @@ export function VoiceProvider({ children, audio = realAudio }: { children: React
   // The always-on microphone (T-705). While it is open it is the only one: Rust sends its audio
   // to whichever turn is listening (wake word, hotkey or button).
   const wakeMic = useRef<{ handle: CaptureHandle; sender: FrameSender; session: string } | null>(null);
+  // Always-on listening is on and Rust (not this window) holds its microphone.
+  const wakeNative = useRef(false);
+  const applyWake = useRef<(w: WakeStatus) => void>(() => undefined);
 
   const speak = useCallback(
     (text: string, language: string | null, key: string) => {
@@ -115,6 +124,18 @@ export function VoiceProvider({ children, audio = realAudio }: { children: React
       }),
       onNamed("voice://proposal", (p) => setProposal(p)),
       onNamed("voice://dictation", setDictating),
+      onNamed("voice://native-mic-failed", () => {
+        // Rust couldn't open the microphone: this window takes over, for now and from here on.
+        nativeFailed.current = true;
+        native.current = false;
+        wakeNative.current = false;
+        void voiceIpc.wakeStatus().then((w) => applyWake.current(w)).catch(() => undefined);
+        void voiceIpc.status().then((st) => {
+          if (st.state === "listening" && st.session_id && !mic.current && !wakeMic.current) {
+            void openMicRef.current(st.session_id);
+          }
+        }).catch(() => undefined);
+      }),
       onNamed("voice://error", (e) => setError(e.message)),
     ];
     return () => {
@@ -130,6 +151,11 @@ export function VoiceProvider({ children, audio = realAudio }: { children: React
     await m.handle.stop().catch(() => undefined);
     await m.sender.close().catch(() => undefined);
   }, []);
+
+  // Switching the beta off starts fresh: if Rust failed before, it gets another chance next time.
+  useEffect(() => {
+    if (!nativeSetting) nativeFailed.current = false;
+  }, [nativeSetting]);
 
   // Leaving the app releases the microphone.
   useEffect(() => () => void closeMic(), [closeMic]);
@@ -152,8 +178,13 @@ export function VoiceProvider({ children, audio = realAudio }: { children: React
       if (wakeMic.current?.session === want) return;
       void (async () => {
         await closeWakeMic();
+        wakeNative.current = false;
         if (!want) return;
         await closeMic(); // one microphone
+        if (native.current) {
+          wakeNative.current = true; // Rust opens it for this session
+          return;
+        }
         try {
           const sender = new audio.FrameSender(want, audio.pushFrame);
           const handle = await audio.startCapture({
@@ -173,6 +204,7 @@ export function VoiceProvider({ children, audio = realAudio }: { children: React
         }
       })();
     };
+    applyWake.current = apply;
     void voiceIpc.wakeStatus().then(apply).catch(() => undefined);
     const off = onNamed("voice://wake", apply);
     return () => {
@@ -221,8 +253,22 @@ export function VoiceProvider({ children, audio = realAudio }: { children: React
     [audio, closeMic, watch],
   );
 
+  const openMicRef = useRef<(session: string) => Promise<boolean>>(async () => false);
+  openMicRef.current = openMic;
+
   const toggleTalk = useCallback(async () => {
     setError(null);
+    if (native.current) {
+      // Rust holds the microphone and ends the turn after a pause; a second press ends it now.
+      player.current?.stop();
+      void voiceIpc.stopSpeaking().catch(() => undefined);
+      try {
+        await voiceIpc.handsFreeToggle();
+      } catch (e) {
+        setError(voiceErrorMessage(e));
+      }
+      return;
+    }
     if (mic.current || talking) {
       button.current = null;
       setTalking(false);
@@ -261,6 +307,12 @@ export function VoiceProvider({ children, audio = realAudio }: { children: React
   useEffect(
     () =>
       onNamed("voice://status", (s) => {
+        if (native.current) {
+          // Rust holds the microphone for every turn; this window only shows it.
+          if (s.state === "listening") player.current?.stop();
+          setTalking(s.state === "listening");
+          return;
+        }
         if (wakeMic.current) {
           // The always-on microphone serves every turn; just show whether one is listening,
           // and stop a reply that "Pluto" talked over (Rust already stopped sending it).

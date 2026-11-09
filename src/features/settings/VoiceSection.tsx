@@ -83,6 +83,16 @@ function MeetOfferRow() {
   );
 }
 
+/** Beta: Rust captures the microphone, so listening keeps working with the window hidden. */
+function NativeMicRow() {
+  const [on, setOn] = useSetting("voice.native_mic");
+  return (
+    <Row label="Capture the microphone natively (beta)" hint="Pluto opens the microphone itself instead of through its window, so listening keeps working while the window is hidden. If it can't open the microphone, it falls back automatically. Turn it off if listening gets worse.">
+      <Switch checked={on ?? false} onCheckedChange={(v) => void setOn(v)} aria-label="Capture the microphone natively" />
+    </Row>
+  );
+}
+
 export const DISCLOSURE = "When this is on, audio you record, import or speak is sent to Gnani to be turned into text, and the text of your meetings and commands is sent to Google Gemini or Groq to find decisions, answer questions and write recaps. Nothing is sent while it is off. Pluto keeps a list of everything it sends.";
 
 function KeyRow({ account, label, flag, hint, saved, onChanged }: (typeof KEYS)[number] & { saved: boolean; onChanged: () => void }) {
@@ -208,6 +218,7 @@ export function VoiceSection() {
           <Switch checked={s.audio_tags} onCheckedChange={(v) => patch.mutate({ audio_tags: v })} aria-label="Expressive replies" />
         </Row>
         <AlwaysOnRow s={s} onChange={(on) => patch.mutate({ always_on_enabled: on })} />
+        <NativeMicRow />
         <MeetOfferRow />
       </Section>
 

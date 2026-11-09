@@ -187,6 +187,17 @@ impl RuntimeEvents for AppRuntimeEvents {
         if status.state != VoiceState::Listening {
             emit(&self.0, "voice://dictation", &false);
         }
+        // The native microphone (beta) serves a turn the always-on microphone does not.
+        use tauri::Manager;
+        if let Some(shell) = self.0.try_state::<VoiceShell>() {
+            match (&status.state, &status.session_id) {
+                (VoiceState::Listening, Some(session)) if !shell.native.serving_wake() => {
+                    crate::native_mic::start_if_enabled(&self.0, session.clone(), false);
+                }
+                (VoiceState::Listening, _) => {}
+                _ => shell.native.stop_turn(),
+            }
+        }
     }
 
     fn transcript(&self, _session_id: &str, t: &RtTranscript) {
@@ -248,6 +259,8 @@ pub(crate) struct VoiceShell {
     settings: Arc<Mutex<VoiceSettings>>,
     data_dir: PathBuf,
     app: AppHandle,
+    /// The native microphone (beta); the web view captures otherwise.
+    pub(crate) native: crate::native_mic::NativeMic,
     inner: Mutex<Inner>,
 }
 
@@ -438,6 +451,7 @@ impl VoiceShell {
             settings,
             data_dir,
             app,
+            native: crate::native_mic::NativeMic::default(),
             inner: Mutex::new(Inner {
                 check: None,
                 wake: None,
@@ -586,11 +600,13 @@ impl VoiceShell {
                 turns,
                 WakePolicy::default(),
             ));
-            self.lock().wake = Some((session, task));
+            self.lock().wake = Some((session.clone(), task));
+            crate::native_mic::start_if_enabled(&self.app, session, true);
             #[cfg(debug_assertions)]
             eprintln!("[voice] wake: always-on is listening for Pluto");
         } else if !want && running {
             if let Some((session, task)) = self.lock().wake.take() {
+                self.native.stop(Some(&session));
                 self.router.close(&session);
                 task.abort();
                 #[cfg(debug_assertions)]
@@ -621,6 +637,7 @@ impl VoiceShell {
         };
         self.lock().check = Some((id.clone(), status.clone()));
         emit(&self.app, events::STATUS, &status);
+        crate::native_mic::start_if_enabled(&self.app, id.clone(), false);
         Ok(id)
     }
 
@@ -631,6 +648,7 @@ impl VoiceShell {
             self.runtime.ptt_up();
             return;
         };
+        self.native.stop(Some(&id));
         if let Some((summary, errors)) = self.router.close(&id) {
             tracing::info!(
                 frames = summary.frames,
@@ -907,6 +925,13 @@ pub(crate) fn hotkey(app: &AppHandle, pressed: bool) {
 /// press starts, a pause (hands-free) or the second press (dictation) ends.
 pub(crate) const HANDS_FREE_HOTKEY: &str = "Ctrl+Alt+Space";
 pub(crate) const DICTATION_HOTKEY: &str = "Ctrl+Alt+D";
+
+/// Hands-free from the Talk button (native microphone): starts a turn that ends after a pause,
+/// or ends the one that is running. Returns the session when one started.
+#[tauri::command]
+pub async fn voice_hands_free_toggle(shell: State<'_, VoiceShell>) -> VoiceResult<Option<String>> {
+    shell.runtime.hands_free_toggle()
+}
 
 /// The hands-free hotkey: press once and talk; the command ends after a pause.
 pub(crate) fn hotkey_hands_free(app: &AppHandle) {

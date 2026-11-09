@@ -9,6 +9,7 @@ mod ipc;
 mod logs;
 mod media;
 mod meeting_ai;
+mod native_mic;
 mod note_window;
 mod notify;
 mod pet;
@@ -279,6 +280,7 @@ pub fn run() {
             voice::voice_usage,
             voice::voice_history,
             voice::voice_history_clear,
+            voice::voice_hands_free_toggle,
             voice::voice_text_turn,
             voice::voice_wake_status,
             voice::voice_wake_teach_begin,

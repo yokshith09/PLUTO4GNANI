@@ -30,6 +30,8 @@ export const voiceIpc = {
   usage: () => call<UsageCounters>("voice_usage"),
   /** The assistant's turns, newest first. */
   history: (limit = 50) => call<AssistantTurn[]>("voice_history", { limit }),
+  /** Hands-free: starts a turn that ends after a pause, or ends the one running (native microphone). */
+  handsFreeToggle: () => call<string | null>("voice_hands_free_toggle"),
   historyClear: () => call<null>("voice_history_clear"),
   /** A command typed instead of spoken: the same assistant, the same approval. */
   textTurn: (text: string) => call<null>("voice_text_turn", { text }),
