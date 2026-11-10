@@ -1203,14 +1203,26 @@ pub async fn voice_speak(
     let task = tokio::spawn(async move {
         let (tx, mut rx) = tokio::sync::mpsc::channel::<Vec<u8>>(16);
         let produce = tts.stream(request, tx);
+        let started = std::time::Instant::now();
         let forward = async {
+            let mut bytes = 0usize;
             while let Some(chunk) = rx.recv().await {
+                bytes += chunk.len();
                 if playback.send(InvokeResponseBody::Raw(chunk)).is_err() {
                     break; // the page went away
                 }
             }
+            bytes
         };
-        let (spoken, ()) = tokio::join!(produce, forward);
+        let (spoken, bytes) = tokio::join!(produce, forward);
+        // Speech arrives much faster than it plays. Stay "speaking" until the page has played it
+        // all; otherwise the listening that follows (or the next status change) cuts the end of
+        // the reply off, which sounded like a reply that never came out. PCM16 mono, 24 kHz.
+        if spoken.is_ok() {
+            let audio = std::time::Duration::from_millis((bytes as u64 * 1000) / (24_000 * 2));
+            let left = audio.saturating_sub(started.elapsed());
+            tokio::time::sleep(left + std::time::Duration::from_millis(150)).await;
+        }
         spoken
     });
     // Speaking → Idle through the runtime; a press stops it (barge-in), and a newer reply
