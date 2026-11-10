@@ -133,9 +133,23 @@ impl SpeechToText for RealtimeClient {
         self.cloud.check()?;
         let key = self.key()?;
         let request = handshake(&self.url, &key, &config)?;
-        // The first connection is not retried: the person just pressed the key and should hear
-        // about a problem at once.
-        let ws = connect(request, self.policy.connect_timeout).await?;
+        // A key or credit problem is reported at once. A dropped connection attempt (a reset
+        // handshake, a DNS blip, Gnani not yet letting go of the last session) is tried again
+        // twice, quickly, before saying the internet is the problem: listening is already shown
+        // and what is said meanwhile is kept by the caller.
+        let mut tries: u32 = 0;
+        let ws = loop {
+            match connect(request.clone(), self.policy.connect_timeout).await {
+                Ok(ws) => break ws,
+                Err(e) if e.code == VoiceErrorCode::NetworkOffline && tries < 2 => {
+                    tries += 1;
+                    #[cfg(debug_assertions)]
+                    eprintln!("[gnani] realtime connect failed, retry {tries}");
+                    sleep(Duration::from_millis(300 * u64::from(tries))).await;
+                }
+                Err(e) => return Err(e),
+            }
+        };
         let id = pluto_core::ids::new_id();
         let (input_tx, input_rx) = mpsc::channel::<RtInput>(256);
         let (event_tx, event_rx) = mpsc::channel::<RtEvent>(256);
@@ -247,10 +261,16 @@ async fn connect(request: Request, limit: Duration) -> VoiceResult<Ws> {
                 .unwrap_or_default();
             Err(map_status(Family::SttRest, status, &body))
         }
-        Ok(Err(_)) => Err(VoiceError::new(
-            VoiceErrorCode::NetworkOffline,
-            "Can't reach Gnani. Check your internet connection.",
-        )),
+        Ok(Err(e)) => {
+            #[cfg(debug_assertions)]
+            eprintln!("[gnani] realtime connect error: {e}");
+            #[cfg(not(debug_assertions))]
+            let _ = e;
+            Err(VoiceError::new(
+                VoiceErrorCode::NetworkOffline,
+                "Can't reach Gnani. Check your internet connection.",
+            ))
+        }
     }
 }
 

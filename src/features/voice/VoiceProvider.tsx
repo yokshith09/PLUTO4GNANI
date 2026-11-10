@@ -125,6 +125,7 @@ export function VoiceProvider({ children, audio = realAudio }: { children: React
         if (turn.reply_text && !(turn.proposal && turn.result)) speak(turn.reply_text, turn.language, turn.interaction_id);
       }),
       onNamed("voice://proposal", (p) => setProposal(p)),
+      onNamed("voice://proposal-resolved", (id) => setProposal((p) => (p && p.id === id ? null : p))),
       onNamed("voice://dictation", setDictating),
       onNamed("voice://native-mic-failed", () => {
         // Rust couldn't open the microphone: this window takes over, for now and from here on.

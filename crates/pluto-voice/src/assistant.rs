@@ -63,6 +63,9 @@ pub trait AssistantEvents: Send + Sync {
     fn proposal(&self, proposal: &Proposal);
     /// Switch the dashboard to `page` (one of `pages::ALL`), bringing the window up.
     fn navigate(&self, _page: &str) {}
+    /// The proposal was answered (approved, rejected or edited), by voice, click or the pet: its
+    /// card can go away now.
+    fn resolved(&self, _proposal_id: &str) {}
 }
 
 // ---- language --------------------------------------------------------------------------------
@@ -1529,6 +1532,7 @@ impl Assistant {
                 st.pending = None;
             }
         }
+        self.events.resolved(proposal_id);
         let rt = self.rt();
         let result = match decided {
             Decided::Approved => {

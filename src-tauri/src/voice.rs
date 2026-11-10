@@ -287,6 +287,11 @@ impl AssistantEvents for AppAssistantEvents {
         }
     }
 
+    fn resolved(&self, proposal_id: &str) {
+        let _ = self.0.emit("voice://proposal-resolved", proposal_id);
+        withdraw_pet_ask(&self.0, proposal_id);
+    }
+
     fn proposal(&self, proposal: &Proposal) {
         emit(&self.0, events::PROPOSAL, proposal);
         if dashboard_in_front(&self.0) {

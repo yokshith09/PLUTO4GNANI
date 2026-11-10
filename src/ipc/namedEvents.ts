@@ -10,6 +10,8 @@ export interface NamedEvents {
   "voice://transcript": TranscriptSegment;
   "voice://turn": AssistantTurn;
   "voice://proposal": Proposal;
+  /** A proposal was answered (id): by voice, a click or the pet. Its card goes away. */
+  "voice://proposal-resolved": string;
   "voice://error": VoiceError;
   /** Always-on listening changed: open the always-on microphone for `session_id`, or close it. */
   "voice://wake": WakeStatus;
