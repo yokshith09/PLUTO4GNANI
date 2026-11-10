@@ -219,6 +219,10 @@ impl RuntimeEvents for AppRuntimeEvents {
 
     fn error(&self, error: &VoiceError) {
         emit(&self.0, events::ERROR, error);
+        // Away from the dashboard (dictating into another app, say) the pet says what went wrong.
+        if !dashboard_in_front(&self.0) {
+            pet_say(&self.0, &error.message, 6000);
+        }
     }
 }
 
@@ -1092,11 +1096,22 @@ fn toggle_turn_inner(app: &AppHandle, dictation: bool) {
         Ok(started) => {
             if dictation {
                 emit(app, "voice://dictation", &started.is_some());
+                // The window may be hidden: the pet says whether dictation is on.
+                pet_say(
+                    app,
+                    if started.is_some() {
+                        "Dictating. What you say is typed where your cursor is. Press the dictation key again to stop."
+                    } else {
+                        "Dictation stopped."
+                    },
+                    if started.is_some() { 4500 } else { 2500 },
+                );
             }
         }
         Err(e) => {
             if e.code != VoiceErrorCode::Busy {
                 emit(app, events::ERROR, &e);
+                pet_say(app, &e.message, 6000);
             }
         }
     }

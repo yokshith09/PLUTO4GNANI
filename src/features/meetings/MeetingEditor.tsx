@@ -186,11 +186,14 @@ export function MeetingEditor({ meetingId, focusSegment = null, onBack, onCreate
   const saveRef = useRef(save);
   saveRef.current = save;
 
-  const change = (patch: Partial<MeetingInput>) => {
+  const change = (patch: Partial<MeetingInput>, opts?: { now?: boolean }) => {
     dirty.current = true;
+    draftRef.current = { ...draftRef.current, ...patch };
     setDraft((d) => ({ ...d, ...patch }));
     clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => void saveRef.current().catch(() => {}), SAVE_DELAY_MS);
+    // Something that must not be lost (a freshly written summary) saves at once, not after a pause.
+    if (opts?.now) void saveRef.current().catch(() => {});
+    else timer.current = window.setTimeout(() => void saveRef.current().catch(() => {}), SAVE_DELAY_MS);
   };
   // Leaving the page saves what is pending.
   useEffect(() => () => { clearTimeout(timer.current); if (dirty.current) void saveRef.current().catch(() => {}); }, []);
@@ -295,11 +298,12 @@ export function MeetingEditor({ meetingId, focusSegment = null, onBack, onCreate
 
       {tab === "summary" && (
         <div role="tabpanel" className="space-y-4">
-          {ready && id && (
-            <div className="rounded-xl border border-dashed bg-card/50 p-4">
-              <ReviewPanel meetingId={id} participants={draft.participants} onShowSegment={showSegment} />
-            </div>
-          )}
+          {id ? (
+            <RecapPanel
+              key={id} meetingId={id} notes={draft.notes} hasItems={Boolean(saved?.decisions.length || saved?.action_items.length)}
+              onNotes={(notes) => change({ notes }, { now: true })} onOpenNotes={() => setTab("notes")}
+            />
+          ) : null}
           <section aria-label="Decisions" className="space-y-2 rounded-xl border bg-card p-5">
             <h2 className="flex items-center gap-1.5 text-[13px] font-semibold"><Check className="size-4 text-success" />Decisions</h2>
             {draft.decisions.length === 0 && <p className="text-xs text-muted-foreground">What did you agree on?</p>}
@@ -355,7 +359,11 @@ export function MeetingEditor({ meetingId, focusSegment = null, onBack, onCreate
             </ul>
             <Button size="sm" variant="ghost" onClick={() => change({ action_items: [...draft.action_items, { id: newId(), body: "", assignee: null }] })}><Plus />Add action item</Button>
           </section>
-          {id && (saved?.decisions.length || saved?.action_items.length) ? <RecapPanel key={id} meetingId={id} title={draft.title} /> : null}
+          {ready && id && (
+            <div className="rounded-xl border border-dashed bg-card/50 p-4">
+              <ReviewPanel meetingId={id} participants={draft.participants} onShowSegment={showSegment} />
+            </div>
+          )}
         </div>
       )}
 

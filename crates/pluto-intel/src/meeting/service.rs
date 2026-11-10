@@ -505,10 +505,13 @@ impl MeetingAi {
         // The summary is a bonus: if the language service is busy the items are already saved.
         if let Ok(text) = self.recap_text(meeting_id, "en-IN").await {
             let m = outcome.meeting;
+            // The summary goes at the top of the meeting's notes, under "## Summary" (the Meetings
+            // page reads and rewrites exactly that block, so a regenerated recap replaces it).
+            let text = text.split("\n\n").collect::<Vec<_>>().join("\n");
             let notes = if m.notes.trim().is_empty() {
-                format!("Summary\n{text}")
+                format!("## Summary\n{text}")
             } else {
-                format!("{}\n\nSummary\n{text}", m.notes.trim_end())
+                format!("## Summary\n{text}\n\n{}", m.notes.trim_start())
             };
             let saved = meetings::update(
                 &self.db,

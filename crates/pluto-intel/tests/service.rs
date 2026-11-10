@@ -411,7 +411,7 @@ async fn auto_process_writes_decisions_actions_and_a_summary_without_creating_ta
     assert_eq!(m.decisions.len(), 1);
     assert_eq!(m.action_items.len(), 1);
     assert_eq!(m.action_items[0].assignee.as_deref(), Some("Ravi"));
-    assert!(m.notes.starts_with("Summary\n"), "{}", m.notes);
+    assert!(m.notes.starts_with("## Summary\n"), "{}", m.notes);
     assert!(m.notes.contains("annual plan"));
     // Nothing is pushed into Tasks: the person decides later.
     assert_eq!(m.action_items[0].task_id, None);
@@ -456,7 +456,8 @@ async fn auto_process_keeps_existing_notes_and_survives_a_busy_summary_service()
     assert!(out.summary);
     let m = meetings::get(&r.db, &r.meeting_id).await.unwrap();
     assert!(
-        m.notes.starts_with("My own notes\n\nSummary\n"),
+        m.notes
+            .starts_with("## Summary\nWe start with the annual plan.\n\nMy own notes"),
         "{}",
         m.notes
     );

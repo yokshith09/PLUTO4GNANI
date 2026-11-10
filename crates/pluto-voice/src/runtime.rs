@@ -1029,9 +1029,21 @@ impl VoiceRuntime {
         } else {
             format!(" {phrase}")
         };
+        let chars = out.chars().count();
         let result = tokio::task::spawn_blocking(move || typer.type_text(&out)).await;
-        if let Ok(Err(e)) = result {
-            self.events.error(&e);
+        match result {
+            Ok(Ok(())) => {
+                if cfg!(debug_assertions) {
+                    eprintln!("[voice] dictation: typed {chars} characters");
+                }
+            }
+            Ok(Err(e)) => {
+                if cfg!(debug_assertions) {
+                    eprintln!("[voice] dictation: could not type: {}", e.message);
+                }
+                self.events.error(&e);
+            }
+            Err(_) => {}
         }
     }
 

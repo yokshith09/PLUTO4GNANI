@@ -76,11 +76,14 @@ describe("Recap (T-205)", () => {
     wrap();
     await user.click(await screen.findByRole("button", { name: /Open meeting “Sprint planning”/ }));
     const recap = await screen.findByRole("region", { name: "Recap" });
-    await user.click(within(recap).getByRole("button", { name: "Write recap" }));
+    await user.click(within(recap).getByRole("button", { name: "Write summary" }));
     expect(await within(recap).findByText(/Launch is on 20 November/)).toBeTruthy();
     await user.selectOptions(within(recap).getByLabelText("Recap language"), "hi-IN");
-    await user.click(within(recap).getByRole("button", { name: "Write again" }));
+    await user.click(within(recap).getByRole("button", { name: "Regenerate" }));
     expect(await within(recap).findByText(/लॉन्च 20 नवंबर/)).toBeTruthy();
+    // It was saved in the meeting's notes, and is still there on the Notes tab.
+    await user.click(screen.getByRole("tab", { name: "Notes" }));
+    expect((screen.getByLabelText("Meeting notes") as HTMLTextAreaElement).value).toMatch(/^## Summary\n.*लॉन्च 20 नवंबर/s);
   });
 
   it("is not offered for a meeting with no decisions or action items", async () => {

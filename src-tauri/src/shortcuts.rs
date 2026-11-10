@@ -13,6 +13,7 @@
 
 use std::str::FromStr;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use pluto_core::bus::{EventBus, Recv};
 use pluto_core::events::Event;
@@ -75,6 +76,33 @@ pub fn combos(settings: &std::collections::BTreeMap<String, Value>) -> Vec<(Acti
         .collect()
 }
 
+/// A held key repeats: Windows reports "pressed" again every few milliseconds after the first half
+/// second. A shortcut that toggles something (dictation, hands-free listening) must act once per
+/// real press, or holding the keys a moment longer switches it on and straight off again.
+#[derive(Debug, Default)]
+pub struct OncePerPress {
+    down: bool,
+    last: Option<Instant>,
+}
+
+impl OncePerPress {
+    /// A press where the key was up (or silent for long enough that its release must have been
+    /// missed) counts; repeats while it is held do not.
+    pub fn accept(&mut self, now: Instant) -> bool {
+        let repeat = self.down
+            && self
+                .last
+                .is_some_and(|l| now.duration_since(l) < Duration::from_millis(1500));
+        self.down = true;
+        self.last = Some(now);
+        !repeat
+    }
+
+    pub fn released(&mut self) {
+        self.down = false;
+    }
+}
+
 fn run(app: &AppHandle, action: Action) {
     match action {
         Action::TogglePet => crate::pet::toggle_pet(app),
@@ -109,9 +137,19 @@ fn register_all(app: &AppHandle, combos: &[(Action, String)]) {
             continue;
         };
         let action = *action;
+        let once = std::sync::Mutex::new(OncePerPress::default());
         let result = gs.on_shortcut(shortcut, move |app, _shortcut, event| {
-            if event.state() == ShortcutState::Pressed {
-                run(app, action);
+            let mut once = once
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            match event.state() {
+                ShortcutState::Pressed => {
+                    if once.accept(Instant::now()) {
+                        drop(once);
+                        run(app, action);
+                    }
+                }
+                ShortcutState::Released => once.released(),
             }
         });
         if let Err(error) = result {
@@ -177,6 +215,24 @@ pub fn start(app: AppHandle, settings: Arc<SettingsService>, bus: &EventBus) {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn a_held_key_acts_once_and_the_next_press_acts_again() {
+        let mut k = OncePerPress::default();
+        let t0 = Instant::now();
+        assert!(k.accept(t0), "the first press");
+        // Key repeat while it is held: nothing more.
+        for ms in [500, 530, 560, 590, 1200] {
+            assert!(!k.accept(t0 + Duration::from_millis(ms)), "{ms} ms");
+        }
+        k.released();
+        assert!(
+            k.accept(t0 + Duration::from_millis(1300)),
+            "pressed again after release"
+        );
+        // A release that never arrived: a press long after the last one still counts.
+        assert!(k.accept(t0 + Duration::from_millis(5000)));
+    }
 
     #[test]
     fn defaults_are_distinct_valid_and_leave_mod_shift_t_free() {
