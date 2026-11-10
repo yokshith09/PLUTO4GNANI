@@ -1217,12 +1217,50 @@ pub async fn voice_speak(
     // replaces this one.
     let id = shell.runtime.speaking(task.abort_handle());
     // A cancellation (voice_stop_speaking / voice_cancel / barge-in) is not an error for the caller.
-    let spoken = task.await.unwrap_or(Ok(()));
+    let joined = task.await;
+    let cut_off = joined.is_err();
+    let spoken = joined.unwrap_or(Ok(()));
     shell.runtime.speaking_done(id);
     if let Err(e) = &spoken {
         emit(&app, events::ERROR, e);
     }
+    // Like a phone call: after Pluto asked something, or has just answered, listen for the reply
+    // without a key press or "Pluto". Not after a recap being read, nor after being cut off.
+    if spoken.is_ok()
+        && !cut_off
+        && shell
+            .assistant
+            .answered_within(std::time::Duration::from_secs(20))
+    {
+        let asked = shell.assistant.expects_reply();
+        if asked || conversation_enabled(&app).await {
+            // A moment for the speaker's last sound to die away, or Pluto hears itself.
+            tokio::time::sleep(std::time::Duration::from_millis(350)).await;
+            if shell.runtime.follow_up() {
+                #[cfg(debug_assertions)]
+                eprintln!("[voice] follow-up: listening for your reply");
+            }
+        }
+    }
     spoken
+}
+
+/// `voice.conversation`: keep listening for a few seconds after Pluto answers (on by default).
+async fn conversation_enabled(app: &AppHandle) -> bool {
+    use tauri::Manager;
+    let Some(settings) = app.try_state::<Arc<pluto_core::settings_service::SettingsService>>()
+    else {
+        return true;
+    };
+    settings
+        .get_all()
+        .await
+        .ok()
+        .and_then(|all| {
+            all.get("voice.conversation")
+                .and_then(serde_json::Value::as_bool)
+        })
+        .unwrap_or(true)
 }
 
 #[tauri::command]

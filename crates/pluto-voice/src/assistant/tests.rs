@@ -1262,3 +1262,97 @@ async fn a_reminder_can_be_named_by_its_time_alone() {
     assert_eq!(open.len(), 1);
     assert_ne!(open[0].id, early.id, "the 19:30 one is gone");
 }
+
+// ---- a conversation: questions are answered, not restarted -----------------------------------
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_reminder_without_a_time_asks_and_the_answer_finishes_it() {
+    let at = START + hours(4);
+    let r = rig(
+        Script(vec![
+            (
+                "remind me to call the dentist",
+                Intent::Reminder,
+                Some("reminder_create"),
+                json!({"title": "Call the dentist"}),
+            ),
+            (
+                "remind me to call the dentist, at 5 pm",
+                Intent::Reminder,
+                Some("reminder_create"),
+                json!({"title": "Call the dentist", "remind_at": at}),
+            ),
+        ]),
+        PROPOSAL_WINDOW,
+    );
+    assert!(!r.a.expects_reply());
+    r.a.turn(heard("remind me to call the dentist", "en-IN"))
+        .await
+        .unwrap();
+    let asked = r
+        .seen
+        .turns
+        .lock()
+        .unwrap()
+        .last()
+        .unwrap()
+        .reply_text
+        .clone()
+        .unwrap();
+    assert!(asked.contains('?'), "{asked}");
+    assert!(r.a.pending().is_none(), "nothing is proposed yet");
+    assert!(
+        r.a.expects_reply(),
+        "the voice should listen for the answer"
+    );
+
+    // Only "at 5 pm" is said: it completes the reminder, which then waits for a yes.
+    r.a.turn(heard("at 5 pm", "en-IN")).await.unwrap();
+    let p = r.a.pending().expect("the reminder is proposed now");
+    assert!(
+        p.summary_text
+            .starts_with("Remind you to “Call the dentist” at "),
+        "{}",
+        p.summary_text
+    );
+    assert!(r.a.expects_reply(), "and now it listens for yes or no");
+    r.a.turn(heard("haan", "en-IN")).await.unwrap();
+    assert_eq!(r.a.open_reminders().await.unwrap().len(), 1);
+    assert!(!r.a.expects_reply(), "nothing is left to answer");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn never_mind_drops_the_question_and_an_unrelated_command_is_its_own() {
+    let r = rig(
+        Script(vec![
+            (
+                "remind me to call the dentist",
+                Intent::Reminder,
+                Some("reminder_create"),
+                json!({"title": "Call the dentist"}),
+            ),
+            (
+                "open meetings",
+                Intent::Navigate,
+                Some("open_page"),
+                json!({"page": "meetings"}),
+            ),
+        ]),
+        PROPOSAL_WINDOW,
+    );
+    r.a.turn(heard("remind me to call the dentist", "en-IN"))
+        .await
+        .unwrap();
+    assert!(r.a.expects_reply());
+    r.a.turn(heard("nahi", "en-IN")).await.unwrap();
+    assert!(!r.a.expects_reply(), "dropped");
+    assert!(r.a.open_reminders().await.unwrap().is_empty());
+
+    // Asked again, then something unrelated is said: it is taken as its own command.
+    r.a.turn(heard("remind me to call the dentist", "en-IN"))
+        .await
+        .unwrap();
+    r.a.turn(heard("open meetings", "en-IN")).await.unwrap();
+    assert_eq!(r.seen.pages.lock().unwrap().clone(), ["meetings"]);
+    assert!(!r.a.expects_reply());
+}

@@ -117,6 +117,18 @@ describe("Hands-free and dictation keys", () => {
   });
 });
 
+describe("Keep listening after Pluto answers", () => {
+  it("is on by default and can be switched off", async () => {
+    const user = userEvent.setup();
+    wrap();
+    const toggle = await screen.findByRole("switch", { name: "Keep listening after Pluto answers" });
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByText(/without saying “Pluto” again/)).toBeTruthy();
+    await user.click(toggle);
+    await waitFor(() => expect(screen.getByRole("switch", { name: "Keep listening after Pluto answers" }).getAttribute("aria-checked")).toBe("false"));
+  });
+});
+
 describe("Offer to record Google Meet (auto mode)", () => {
   it("is off by default and can be switched on and off", async () => {
     const user = userEvent.setup();

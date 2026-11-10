@@ -105,7 +105,10 @@ export function VoicePage() {
         <h2 className="text-sm font-semibold">Ways to talk <span className="font-normal text-muted-foreground">· change the keys in Settings → Voice &amp; privacy</span></h2>
         <ul className="mt-2 grid gap-x-6 gap-y-1.5 text-[13px] sm:grid-cols-2">
           <li><Key combo={handsFree} /> <span className="text-muted-foreground">Talk hands-free: press once, say it, stop talking. It sends by itself.</span></li>
-          <li><Key combo={dictation} /> <span className="text-muted-foreground">Dictate: what you say is typed where your cursor is. Press again to stop.</span></li>
+          <li>
+            <Key combo={dictation} /> <span className="text-muted-foreground">Dictate: what you say is typed where your cursor is. Press again to stop.</span>{" "}
+            <button type="button" onClick={() => { notify.info("Click into any text box. In 3 seconds Pluto types a test line there."); void voiceIpc.dictationTestTyping().catch((e: unknown) => notify.error(voiceErrorMessage(e))); }} className="text-[12px] text-primary underline-offset-2 hover:underline">Test typing</button>
+          </li>
           <li><span className="font-medium">Hold the talk key</span> <span className="text-muted-foreground">and release to send.</span></li>
           <li><span className="font-medium">Say “Pluto…”</span> <span className="text-muted-foreground">with always-on listening turned on and taught.</span></li>
         </ul>

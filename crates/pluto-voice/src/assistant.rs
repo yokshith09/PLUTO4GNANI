@@ -364,11 +364,49 @@ struct Pending {
     candidates: Vec<(String, String)>,
 }
 
+/// A command Pluto asked a question about ("When should I remind you?"): the words so far, kept
+/// for a minute so the answer can finish it instead of starting over.
+struct Asked {
+    text: String,
+    at: std::time::Instant,
+}
+
+/// How long Pluto waits for the answer to its own question.
+const ASK_WINDOW: Duration = Duration::from_secs(60);
+
 #[derive(Default)]
 struct State {
     context: VecDeque<Remembered>,
     pending: Option<Pending>,
     history: VecDeque<AssistantTurn>,
+    asked: Option<Asked>,
+    /// When the assistant last answered, so "Pluto just spoke" can be told from a recap being read.
+    last_turn_at: Option<std::time::Instant>,
+}
+
+/// "No", "never mind": the person is dropping the question, not answering it.
+fn drops_the_question(text: &str) -> bool {
+    let t = text
+        .trim()
+        .trim_matches(|c: char| !c.is_alphanumeric())
+        .to_lowercase();
+    [
+        "no",
+        "nope",
+        "nahi",
+        "nahin",
+        "cancel",
+        "stop",
+        "never mind",
+        "nevermind",
+        "forget it",
+        "leave it",
+        "chhod do",
+        "chod do",
+        "rehne do",
+        "mat karo",
+    ]
+    .contains(&t.as_str())
 }
 
 pub struct Assistant {
@@ -447,14 +485,50 @@ impl Assistant {
             .retain(|t| waiting.as_deref() == Some(t.interaction_id.as_str()));
     }
 
+    /// Pluto just asked something and is waiting for the answer: a change waiting for yes or no, or
+    /// a question about a command it could not finish. The voice then listens by itself, so the
+    /// person can simply answer.
+    pub fn expects_reply(&self) -> bool {
+        let st = self.lock();
+        st.pending.is_some()
+            || st
+                .asked
+                .as_ref()
+                .is_some_and(|a| a.at.elapsed() < ASK_WINDOW)
+    }
+
+    fn set_asked(&self, text: String) {
+        self.lock().asked = Some(Asked {
+            text,
+            at: std::time::Instant::now(),
+        });
+    }
+
+    /// The words of the command Pluto asked about, if it is still waiting (and forgets them).
+    fn take_asked(&self) -> Option<String> {
+        self.lock()
+            .asked
+            .take()
+            .filter(|a| a.at.elapsed() < ASK_WINDOW)
+            .map(|a| a.text)
+    }
+
     /// The proposal waiting for an answer, if any.
     pub fn pending(&self) -> Option<Proposal> {
         self.lock().pending.as_ref().map(|p| p.proposal.clone())
     }
 
+    /// The assistant answered within the last `within`.
+    pub fn answered_within(&self, within: Duration) -> bool {
+        self.lock()
+            .last_turn_at
+            .is_some_and(|t| t.elapsed() < within)
+    }
+
     fn record(&self, turn: &AssistantTurn) {
         {
             let mut st = self.lock();
+            st.last_turn_at = Some(std::time::Instant::now());
             st.history
                 .retain(|t| t.interaction_id != turn.interaction_id);
             st.history.push_front(turn.clone());
@@ -1879,7 +1953,16 @@ impl Assistant {
         // Fixed commands ("meetings kholo", "aaj ke kaam batao") are decided here at once;
         // everything else goes to the decider (rules, then the LLM).
         let started = std::time::Instant::now();
-        let decision = match crate::quick::decide(&heard.text) {
+        // An answer to Pluto's own question ("5 pm") finishes the command it asked about.
+        let unfinished = self
+            .take_asked()
+            .filter(|_| !drops_the_question(&heard.text));
+        let mut decide_text = heard.text.clone();
+        let decision = match unfinished
+            .is_none()
+            .then(|| crate::quick::decide(&heard.text))
+            .flatten()
+        {
             Some((intent, tool, args)) => AssistantDecision {
                 intent,
                 tool: Some(tool.to_string()),
@@ -1890,7 +1973,20 @@ impl Assistant {
             },
             None => {
                 let ctx = self.context().await;
-                self.decider.decide(&heard.text, &ctx).await?
+                match &unfinished {
+                    Some(first) => {
+                        let joined = format!("{first}, {}", heard.text);
+                        let d = self.decider.decide(&joined, &ctx).await?;
+                        if d.tool.is_some() && d.intent != Intent::Noise {
+                            decide_text = joined;
+                            d
+                        } else {
+                            // Not an answer after all: take it as a command of its own.
+                            self.decider.decide(&heard.text, &ctx).await?
+                        }
+                    }
+                    None => self.decider.decide(&heard.text, &ctx).await?,
+                }
             }
         };
         if cfg!(debug_assertions) {
@@ -2068,6 +2164,11 @@ impl Assistant {
                         },
                     )
                     .await;
+                    // A question ("When should I remind you?"): remember the command, so the answer
+                    // completes it and the person does not have to say it all again.
+                    if reply.contains('?') {
+                        self.set_asked(decide_text.clone());
+                    }
                     turn.reply_text = Some(reply);
                     self.record(&turn);
                     self.remember(seen);

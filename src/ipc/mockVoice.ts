@@ -198,6 +198,7 @@ export function createVoiceMock({ now, createMeeting, applyItems, delayMs = 250 
     },
     voice_speak: () => null,
     voice_stop_speaking: () => null,
+    dictation_test_typing: () => null,
     voice_hands_free_toggle: () => null,
     voice_history_clear: () => { turns.length = 0; return null; },
     voice_text_turn: (a: Args) => {

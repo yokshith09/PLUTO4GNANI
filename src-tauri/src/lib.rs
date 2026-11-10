@@ -296,6 +296,7 @@ pub fn run() {
             voice::voice_usage,
             voice::voice_history,
             voice::voice_history_clear,
+            dictation::dictation_test_typing,
             voice::pet_proposal_answer,
             voice::voice_hands_free_toggle,
             voice::voice_text_turn,

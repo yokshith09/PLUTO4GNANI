@@ -109,6 +109,16 @@ function VoiceShortcutRows({ pushToTalk }: { pushToTalk: string }) {
   );
 }
 
+/** After Pluto answers, keep listening for a few seconds so the next command needs no "Pluto". */
+function ConversationRow() {
+  const [on, setOn] = useSetting("voice.conversation");
+  return (
+    <Row label="Keep listening after Pluto answers" hint="Like a phone call: when Pluto asks you something, or has just answered, it listens for your next words for a few seconds, so you can reply or give the next command without saying “Pluto” again. It stops by itself if you say nothing. While it listens, your microphone audio is sent to Gnani, as with any command.">
+      <Switch checked={on ?? true} onCheckedChange={(v) => void setOn(v)} aria-label="Keep listening after Pluto answers" />
+    </Row>
+  );
+}
+
 /** Beta: Rust captures the microphone, so listening keeps working with the window hidden. */
 function NativeMicRow() {
   const [on, setOn] = useSetting("voice.native_mic");
@@ -245,6 +255,7 @@ export function VoiceSection() {
           <Switch checked={s.audio_tags} onCheckedChange={(v) => patch.mutate({ audio_tags: v })} aria-label="Expressive replies" />
         </Row>
         <AlwaysOnRow s={s} onChange={(on) => patch.mutate({ always_on_enabled: on })} />
+        <ConversationRow />
         <NativeMicRow />
         <MeetOfferRow />
       </Section>

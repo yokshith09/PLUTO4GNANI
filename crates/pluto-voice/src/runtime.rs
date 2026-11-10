@@ -267,6 +267,9 @@ pub enum TurnKind {
     HandsFree,
     /// One press starts, the next press ends it; each phrase is typed where the cursor is.
     Dictation,
+    /// Pluto asked something and listens for the answer by itself: like `HandsFree`, but if
+    /// nothing is said it ends quietly, with no "didn't catch that".
+    FollowUp,
 }
 
 /// Sends captured frames toward Realtime. Never blocks: when the buffer is full (Realtime far
@@ -537,6 +540,24 @@ impl VoiceRuntime {
         started.map(Some)
     }
 
+    /// After Pluto spoke a question (or asked for a yes or no), listen for the answer without a
+    /// key press or "Pluto". Returns whether it is listening now; it only starts from `Idle` or
+    /// while a change waits for its answer.
+    pub fn follow_up(self: &Arc<Self>) -> bool {
+        if !matches!(
+            self.state(),
+            VoiceState::Idle | VoiceState::AwaitingApproval
+        ) {
+            return false;
+        }
+        self.lock().next_kind = TurnKind::FollowUp;
+        let started = self.ptt_down().is_ok();
+        if !started {
+            self.lock().next_kind = TurnKind::Held;
+        }
+        started
+    }
+
     /// Whether the turn listening now is dictation (the UI shows "Dictating").
     pub fn dictating(&self) -> bool {
         let inner = self.lock();
@@ -700,14 +721,17 @@ impl VoiceRuntime {
                         let stats = Arc::new(CaptureStats::default());
                         let kind = std::mem::take(&mut inner.next_kind);
                         inner.turn_kind = kind;
-                        let auto = (kind == TurnKind::HandsFree).then(|| {
-                            Arc::new(AutoEnd {
-                                endpointer: Mutex::new(Endpointer::new(EndpointPolicy::default())),
-                                runtime: Arc::downgrade(self),
-                                session_id: session_id.clone(),
-                                fired: std::sync::atomic::AtomicBool::new(false),
-                            })
-                        });
+                        let auto =
+                            matches!(kind, TurnKind::HandsFree | TurnKind::FollowUp).then(|| {
+                                Arc::new(AutoEnd {
+                                    endpointer: Mutex::new(Endpointer::new(
+                                        EndpointPolicy::default(),
+                                    )),
+                                    runtime: Arc::downgrade(self),
+                                    session_id: session_id.clone(),
+                                    fired: std::sync::atomic::AtomicBool::new(false),
+                                })
+                            });
                         let mut sinks: Vec<Arc<dyn FrameSink>> =
                             vec![Arc::new(RealtimeSink(tx.clone(), stats.clone(), auto))];
                         sinks.extend((self.extra_sinks)(&session_id));
@@ -774,6 +798,13 @@ impl VoiceRuntime {
                 },
                 detail: match state {
                     VoiceState::Error => detail,
+                    // A follow-up that heard nothing just ends: nobody asked for it to be heard.
+                    VoiceState::Idle
+                        if input == Input::NothingHeard
+                            && inner.turn_kind == TurnKind::FollowUp =>
+                    {
+                        None
+                    }
                     VoiceState::Idle if input == Input::NothingHeard => detail.or_else(|| {
                         Some("Didn't catch that. Hold the key while you speak.".into())
                     }),
@@ -840,6 +871,9 @@ impl VoiceRuntime {
             }
         });
 
+        if dictating && cfg!(debug_assertions) {
+            eprintln!("[voice] dictation: listening, phrases will be typed where your cursor is");
+        }
         let mut config = (self.config)();
         if dictating {
             // Pauses to think are normal while dictating: don't let Gnani hang up on them.
@@ -903,6 +937,9 @@ impl VoiceRuntime {
                         phrase_open = false;
                         self.events.transcript(&session_id, &t);
                         if dictating {
+                            if cfg!(debug_assertions) {
+                                eprintln!("[voice] dictation: heard a phrase of {} characters", t.text.chars().count());
+                            }
                             self.type_phrase(&t.text, words.is_empty()).await;
                         }
                         words.push(t);
@@ -951,6 +988,9 @@ impl VoiceRuntime {
         }
         if dictating {
             // Everything was typed as it came; there is nothing to think about.
+            if cfg!(debug_assertions) {
+                eprintln!("[voice] dictation: ended after {} phrases", words.len());
+            }
             let _ = self.apply(Input::TurnDone, None);
             return;
         }

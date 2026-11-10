@@ -32,6 +32,8 @@ export const voiceIpc = {
   history: (limit = 50) => call<AssistantTurn[]>("voice_history", { limit }),
   /** Hands-free: starts a turn that ends after a pause, or ends the one running (native microphone). */
   handsFreeToggle: () => call<string | null>("voice_hands_free_toggle"),
+  /** Types a short line into the focused window after 3 s, to try typing without speaking. */
+  dictationTestTyping: () => call<null>("dictation_test_typing"),
   historyClear: () => call<null>("voice_history_clear"),
   /** A command typed instead of spoken: the same assistant, the same approval. */
   textTurn: (text: string) => call<null>("voice_text_turn", { text }),

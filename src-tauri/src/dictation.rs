@@ -126,3 +126,15 @@ mod tests {
         assert_eq!(pieces("", 8), Vec::<String>::new());
     }
 }
+
+/// Types a short line into whatever window has the focus after three seconds, so typing can be
+/// tried without speaking (Voice page → "Test typing"). If this appears but dictation does not,
+/// the problem is in what reaches Pluto from the microphone, not in the typing.
+#[tauri::command]
+pub async fn dictation_test_typing() -> Result<(), String> {
+    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    tauri::async_runtime::spawn_blocking(|| OsTyper.type_text("Pluto can type here. "))
+        .await
+        .map_err(|_| "typing was interrupted".to_string())?
+        .map_err(|e| e.message)
+}

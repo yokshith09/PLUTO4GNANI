@@ -116,6 +116,9 @@ pub enum SettingsKey {
     /// default: turning it on lets Pluto read which tab is showing in the browser in front.
     #[serde(rename = "meetings.auto_offer")]
     MeetingsAutoOffer,
+    /// Keep listening for a few seconds after Pluto answers, so the next command needs no "Pluto".
+    #[serde(rename = "voice.conversation")]
+    VoiceConversation,
     /// Beta: Rust captures the microphone for voice instead of the web view. Off by default.
     #[serde(rename = "voice.native_mic")]
     VoiceNativeMic,
@@ -193,6 +196,7 @@ impl SettingsKey {
             Self::VoiceAlwaysOn => "voice.always_on",
             Self::MeetingsAutoOffer => "meetings.auto_offer",
             Self::VoiceNativeMic => "voice.native_mic",
+            Self::VoiceConversation => "voice.conversation",
             Self::LlmGeminiModel => "llm.gemini_model",
             Self::LlmGroqModel => "llm.groq_model",
         }
@@ -234,6 +238,7 @@ impl SettingsKey {
             "voice.always_on" => Some(Self::VoiceAlwaysOn),
             "meetings.auto_offer" => Some(Self::MeetingsAutoOffer),
             "voice.native_mic" => Some(Self::VoiceNativeMic),
+            "voice.conversation" => Some(Self::VoiceConversation),
             "llm.gemini_model" => Some(Self::LlmGeminiModel),
             "llm.groq_model" => Some(Self::LlmGroqModel),
             _ => None,
@@ -276,6 +281,7 @@ impl SettingsKey {
             Self::VoiceAlwaysOn => json!(false),
             Self::MeetingsAutoOffer => json!(false),
             Self::VoiceNativeMic => json!(false),
+            Self::VoiceConversation => json!(true),
             Self::LlmGeminiModel => json!("gemini-2.5-flash"),
             Self::LlmGroqModel => json!("openai/gpt-oss-120b"),
         }
@@ -299,6 +305,7 @@ impl SettingsKey {
             | Self::VoiceAlwaysOn
             | Self::MeetingsAutoOffer
             | Self::VoiceNativeMic
+            | Self::VoiceConversation
             | Self::AdvancedDemoPagesOnly => {
                 if !value.is_boolean() {
                     return Err(AppError::validation(self.as_str(), "must be a boolean"));
@@ -502,6 +509,7 @@ pub fn all_defaults() -> BTreeMap<String, Value> {
         SettingsKey::VoiceAlwaysOn,
         SettingsKey::MeetingsAutoOffer,
         SettingsKey::VoiceNativeMic,
+        SettingsKey::VoiceConversation,
         SettingsKey::LlmGeminiModel,
         SettingsKey::LlmGroqModel,
     ]
@@ -557,7 +565,7 @@ mod tests {
     #[test]
     fn all_defaults_exist() {
         let defaults = all_defaults();
-        assert_eq!(defaults.len(), 35);
+        assert_eq!(defaults.len(), 36);
         assert_eq!(
             defaults["advanced.demo_pages_only"],
             json!(false),

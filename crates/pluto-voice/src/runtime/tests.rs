@@ -728,3 +728,55 @@ async fn a_turn_started_from_a_thread_with_no_runtime_does_not_panic() {
     assert!(started.unwrap().is_some());
     assert_eq!(rt.state(), S::Listening);
 }
+
+// ---- follow-up listening ----------------------------------------------------------------------
+
+#[tokio::test(start_paused = true)]
+async fn a_follow_up_listens_by_itself_and_hands_the_answer_to_the_assistant() {
+    let r = rig(MockStt::new(["5 pm"]), Turn::Reply);
+    assert!(r.rt.follow_up(), "listening starts from idle");
+    assert_eq!(r.rt.state(), S::Listening);
+    let session = r.rt.status().session_id.expect("a session to capture for");
+    for _ in 0..32 {
+        r.router.push(&session, loud()).unwrap();
+        tokio::time::sleep(Duration::from_millis(32)).await;
+    }
+    for _ in 0..60 {
+        if r.rt.state() != S::Listening {
+            break;
+        }
+        r.router.push(&session, vec![0u8; FRAME_BYTES]).unwrap();
+        tokio::time::sleep(Duration::from_millis(32)).await;
+    }
+    until(&r, S::Idle).await;
+    assert_eq!(r.assistant.heard.lock().unwrap()[0].text, "5 pm");
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_follow_up_that_hears_nothing_ends_quietly_without_a_hint() {
+    let r = rig(MockStt::new(Vec::<String>::new()), Turn::Reply);
+    assert!(r.rt.follow_up());
+    let session = r.rt.status().session_id.unwrap();
+    for _ in 0..260 {
+        if r.rt.state() != S::Listening {
+            break;
+        }
+        r.router.push(&session, vec![0u8; FRAME_BYTES]).unwrap();
+        tokio::time::sleep(Duration::from_millis(32)).await;
+    }
+    until(&r, S::Idle).await;
+    assert!(r.assistant.heard.lock().unwrap().is_empty());
+    assert_eq!(
+        r.rt.status().detail,
+        None,
+        "no 'didn't catch that' for a follow-up"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_follow_up_is_refused_while_busy() {
+    let r = rig(MockStt::new(["x"]), Turn::Reply);
+    let session = r.rt.ptt_down().unwrap();
+    assert!(!r.rt.follow_up(), "already listening");
+    drop(session);
+}
