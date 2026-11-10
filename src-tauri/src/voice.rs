@@ -1203,25 +1203,29 @@ pub async fn voice_speak(
     let task = tokio::spawn(async move {
         let (tx, mut rx) = tokio::sync::mpsc::channel::<Vec<u8>>(16);
         let produce = tts.stream(request, tx);
-        let started = std::time::Instant::now();
         let forward = async {
             let mut bytes = 0usize;
+            // Playing starts when the first chunk arrives, not when the request was made.
+            let mut first = None;
             while let Some(chunk) = rx.recv().await {
+                first.get_or_insert_with(std::time::Instant::now);
                 bytes += chunk.len();
                 if playback.send(InvokeResponseBody::Raw(chunk)).is_err() {
                     break; // the page went away
                 }
             }
-            bytes
+            (bytes, first)
         };
-        let (spoken, bytes) = tokio::join!(produce, forward);
+        let (spoken, (bytes, first)) = tokio::join!(produce, forward);
+        let started = first.unwrap_or_else(std::time::Instant::now);
         // Speech arrives much faster than it plays. Stay "speaking" until the page has played it
         // all; otherwise the listening that follows (or the next status change) cuts the end of
         // the reply off, which sounded like a reply that never came out. PCM16 mono, 24 kHz.
         if spoken.is_ok() {
             let audio = std::time::Duration::from_millis((bytes as u64 * 1000) / (24_000 * 2));
             let left = audio.saturating_sub(started.elapsed());
-            tokio::time::sleep(left + std::time::Duration::from_millis(150)).await;
+            // The page starts a little after the chunk arrives (audio device wake-up), so leave room.
+            tokio::time::sleep(left + std::time::Duration::from_millis(600)).await;
         }
         spoken
     });
