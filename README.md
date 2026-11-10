@@ -197,22 +197,6 @@ Releases are built by GitHub Actions: changing the version on `main` produces a 
 
 ---
 
-## 📊 Status
-
-| Area | State |
-|---|---|
-| Voice commands, approval, tasks, reminders | ✅ Working |
-| Hands-free and conversation mode | ✅ Working |
-| Google Meet auto mode, Meetings tab, recap, mp3 export | ✅ Working |
-| Always-on "Pluto" wake word | 🟡 Works; accuracy depends on your voice and microphone |
-| Dictation into other apps | 🟡 Being verified on more setups |
-| macOS | 🟡 Builds and passes checks; less tested on real hardware than Windows |
-| Code signing | ⏳ Not yet |
-
-Detailed task board: [`PROJECT_ROADMAP.md`](PROJECT_ROADMAP.md)
-
----
-
 ## 📁 Project layout
 
 ```
